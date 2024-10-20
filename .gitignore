@@ -1,0 +1,9 @@
+kernels/*
+!kernels/.gitkeep
+toolchains/*
+!toolchains/.gitkeep
+output/*
+!output/.gitkeep
+tags
+
+__pycache__
