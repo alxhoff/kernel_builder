@@ -10,16 +10,15 @@ BUILD_DIR="${SCRIPT_DIR}/build_nv_sources"
 KERNEL_VERSION="5.10"
 CROSS_COMPILE_AARCH64=""
 CROSS_COMPILE_AARCH64_PATH=""
-CROSS_COMPILE_AARCH64_PATH=""
 
 # Usage Information
 function usage {
     echo "Usage: $0 [OPTIONS]"
-    echo "  -p <cross_compile_path> Set the cross compiler prefix path (e.g., /usr/bin/aarch64-linux-gnu-)"
-echo "Options:"
+    echo "Options:"
     echo "  -h              Display this help message"
     echo "  -o <outdir>     Set the output directory for the kernel build"
     echo "  -c <cross_comp> Set the cross compiler path"
+    echo "  -p <cross_compile_path> Set the cross compiler prefix path (e.g., /usr/bin/aarch64-linux-gnu-)"
 }
 
 # Parse Command-Line Arguments
@@ -41,7 +40,6 @@ function parse_args {
             -p)
                 CROSS_COMPILE_AARCH64_PATH="$2"
                 shift 2
-                shift 2
                 ;;
             *)
                 echo "Error: Invalid option $1"
@@ -57,10 +55,10 @@ function check_env {
     if [ -n "$CROSS_COMPILE_AARCH64_PATH" ]; then
         CROSS_COMPILE_AARCH64="$CROSS_COMPILE_AARCH64_PATH"
     fi
-        if [ ! -f "${CROSS_COMPILE_AARCH64}gcc" ]; then
-            echo "Error: Cross compiler not found at ${CROSS_COMPILE_AARCH64}gcc"
-            exit 1
-        fi
+
+    if [ -n "$CROSS_COMPILE_AARCH64" ] && [ ! -f "${CROSS_COMPILE_AARCH64}gcc" ]; then
+        echo "Error: Cross compiler not found at ${CROSS_COMPILE_AARCH64}gcc"
+        exit 1
     fi
 }
 
