@@ -126,12 +126,7 @@ This command deploys the compiled kernel and modules to an x86 host machine.
 
 **Command**:
 ```bash
-python3 kernel_deployer.py deploy-x86 --output-dir <output-directory>
-```
-
-**Example**:
-```bash
-python3 kernel_deployer.py deploy-x86 --output-dir $(pwd)/output/x86
+python3 kernel_deployer.py deploy-x86 
 ```
 
 This command copies the compiled kernel image (`vmlinuz`) and modules to the appropriate locations on the x86 host machine (`/boot` and `/lib/modules/`).
@@ -142,12 +137,12 @@ This command deploys the compiled kernel and modules to a remote device (either 
 
 **Command**:
 ```bash
-python3 kernel_deployer.py deploy-device --output-dir <output-directory> --ip <device-ip> --user <user> [--dry-run]
+python3 kernel_deployer.py deploy-device --ip <device-ip> --user <user> [--dry-run]
 ```
 
 **Example**:
 ```bash
-python3 kernel_deployer.py deploy-device --output-dir $(pwd)/output/jetson --ip 192.168.1.10 --user ubuntu --dry-run
+python3 kernel_deployer.py deploy-device --ip 192.168.1.10 --user ubuntu --dry-run
 ```
 
 This command copies the compiled kernel and modules to the specified device over SSH and SCP. The `--user` argument should be set to `ubuntu` for NVIDIA Jetson or `pi` for Raspberry Pi. The `--dry-run` option prints out the SCP commands without executing them, allowing you to verify the deployment process.
@@ -189,11 +184,7 @@ This command copies the compiled kernel and modules to the specified device over
   - `--clean`: Run `mrproper` to clean the kernel build directory before building.
   - `--use-current-config`: Use the current system kernel configuration for building the kernel.
 
-- **`deploy-x86`**:
-  - `--output-dir`: Directory on the host where the compiled kernel and modules are stored.
-
 - **`deploy-device`**:
-  - `--output-dir`: Directory on the host where the compiled kernel and modules are stored.
   - `--ip`: IP address of the target device.
   - `--user`: Username for accessing the target device (default for Jetson: `ubuntu`, default for Raspberry Pi: `pi`).
 
