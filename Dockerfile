@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     xxd \
     kmod \
+    libyaml-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
