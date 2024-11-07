@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 def build_docker_image(rebuild=False):
     # Command to build/rebuild the Docker image.
@@ -23,8 +24,32 @@ def inspect_docker_image(output_dir="output"):
     os.system(inspect_command)
 
 def cleanup_docker():
-    # Removes the Docker image and prunes unused containers
-    cleanup_command = "docker rmi kernel_builder && docker container prune -f"
-    print(f"Running command: {cleanup_command}")
-    os.system(cleanup_command)
+    # Stop and remove any containers using the 'kernel_builder' image
+    try:
+        # List all containers using the 'kernel_builder' image
+        result = subprocess.run(
+            ["docker", "ps", "-a", "-q", "--filter", "ancestor=kernel_builder"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        container_ids = result.stdout.strip().split("\n")
+
+        # If there are containers found, stop and remove them
+        if container_ids and container_ids[0] != "":
+            for container_id in container_ids:
+                print(f"Stopping container {container_id}")
+                subprocess.run(["docker", "stop", container_id], check=True)
+                print(f"Removing container {container_id}")
+                subprocess.run(["docker", "rm", container_id], check=True)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error stopping or removing containers: {e}")
+
+    # Now remove the image
+    try:
+        print("Removing Docker image 'kernel_builder'")
+        subprocess.run(["docker", "rmi", "-f", "kernel_builder"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error removing image: {e}")
 

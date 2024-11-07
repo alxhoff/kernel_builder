@@ -1,4 +1,4 @@
-    #!/usr/bin/env python3
+#!/usr/bin/env python3
 
 import argparse
 import os
@@ -22,7 +22,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
 
     # Construct the Docker command
     docker_command = [
-        "docker", "run", "-u", f"{user_id}:{group_id}"
+        "docker", "run", "--rm", "-u", f"{user_id}:{group_id}"
     ] + volume_args + [
         "-w", "/builder", "kernel_builder", "/bin/bash", "-c"
     ]
