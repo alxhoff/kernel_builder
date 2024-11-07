@@ -49,7 +49,6 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         combined_command += f"{base_command} mrproper && "
     if config or use_current_config:
         combined_command += f"{base_command} {config or 'oldconfig'} && "
-    combined_command += f"{base_command} INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "  # First make call without a target
 
     if build_target:
         targets = build_target.split(',')
@@ -64,7 +63,8 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 combined_command += f"make -C /builder/kernels/{kernel_name}/kernel/kernel ARCH={arch} {target} && "
     else:
         # If no specific target is provided, build the kernel
-        combined_command += f"{base_command}"
+        combined_command += f"{base_command} &&"
+        combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
