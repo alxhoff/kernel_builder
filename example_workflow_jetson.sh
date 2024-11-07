@@ -1,18 +1,38 @@
 #!/bin/bash
 
 # Example workflow for compiling and flashing a Jetson with a specific kernel
-# Usage: ./example_workflow_jetson.sh <git-tag> <device-ip>
+# Usage: ./example_workflow_jetson.sh <git-tag> [<device-ip>] [--no-deploy]
 # Arguments:
 #   <git-tag>    The Git tag to be used for cloning the repositories (e.g., sensing_world_v1)
-#   <device-ip>  The IP address of the target Jetson device
+#   <device-ip>  The IP address of the target Jetson device (optional if --no-deploy is specified)
+#   --no-deploy  Optional argument to skip deploying the kernel to the device
 
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <git-tag> <device-ip>"
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+  echo "Usage: $0 <git-tag> [<device-ip>] [--no-deploy]"
   exit 1
 fi
 
 GIT_TAG=$1
-DEVICE_IP=$2
+NO_DEPLOY=false
+DEVICE_IP=""
+
+if [ "$#" -eq 2 ]; then
+  if [ "$2" == "--no-deploy" ]; then
+    NO_DEPLOY=true
+  else
+    DEVICE_IP=$2
+  fi
+fi
+
+if [ "$#" -eq 3 ]; then
+  if [ "$3" == "--no-deploy" ]; then
+    NO_DEPLOY=true
+    DEVICE_IP=$2
+  else
+    echo "Invalid arguments"
+    exit 1
+  fi
+fi
 
 # Build the Docker image
 python3 kernel_builder.py build
@@ -32,6 +52,12 @@ python3 kernel_builder.py clone-device-tree --device-tree-url https://github.com
 # Compile the kernel
 python3 kernel_builder.py compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
 
-# Deploy to Jetson device
-python3 kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
+# Deploy to Jetson device (if not skipped)
+if [ "$NO_DEPLOY" == false ]; then
+  if [ -z "$DEVICE_IP" ]; then
+    echo "Error: Device IP is required unless --no-deploy is specified."
+    exit 1
+  fi
+  python3 kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
+fi
 
