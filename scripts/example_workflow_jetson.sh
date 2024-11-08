@@ -35,22 +35,22 @@ if [ "$#" -eq 3 ]; then
 fi
 
 # Build the Docker image
-python3 kernel_builder.py build
+python3 ../kernel_builder.py build
 
 # Clone the toolchain
-python3 kernel_builder.py clone-toolchain --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain --toolchain-name aarch64-buildroot-linux-gnu --git-tag $GIT_TAG
+python3 ../kernel_builder.py clone-toolchain --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain --toolchain-name aarch64-buildroot-linux-gnu --git-tag $GIT_TAG
 
 # Clone the kernel source
-python3 kernel_builder.py clone-kernel --kernel-source-url https://github.com/alxhoff/jetson-kernel --kernel-name jetson --git-tag $GIT_TAG
+python3 ../kernel_builder.py clone-kernel --kernel-source-url https://github.com/alxhoff/jetson-kernel --kernel-name jetson --git-tag $GIT_TAG
 
 # Clone the overlays
-python3 kernel_builder.py clone-overlays --overlays-url https://github.com/alxhoff/jetson-kernel-overlays --kernel-name jetson --git-tag $GIT_TAG
+python3 ../kernel_builder.py clone-overlays --overlays-url https://github.com/alxhoff/jetson-kernel-overlays --kernel-name jetson --git-tag $GIT_TAG
 
 # Clone the device tree hardware
-python3 kernel_builder.py clone-device-tree --device-tree-url https://github.com/alxhoff/jetson-device-tree-hardware --kernel-name jetson --git-tag $GIT_TAG
+python3 ../kernel_builder.py clone-device-tree --device-tree-url https://github.com/alxhoff/jetson-device-tree-hardware --kernel-name jetson --git-tag $GIT_TAG
 
 # Compile the kernel
-python3 kernel_builder.py compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
+python3 ../kernel_builder.py compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
 
 # Deploy to Jetson device (if not skipped)
 if [ "$NO_DEPLOY" == false ]; then
@@ -58,6 +58,6 @@ if [ "$NO_DEPLOY" == false ]; then
     echo "Error: Device IP is required unless --no-deploy is specified."
     exit 1
   fi
-  python3 kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
+  python3 ../kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
 fi
 

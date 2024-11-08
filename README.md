@@ -4,7 +4,7 @@ This document explains how to use the kernel builder and deployer scripts for cr
 
 ## Setup Instructions
 
-For setup instructions, including installing dependencies and cloning the repository, please refer to the [SETUP.md](SETUP.md) file.
+For setup instructions, including installing dependencies and cloning the repository, please refer to the [SETUP.md](./.docs/SETUP.md) file.
 
 ## Usage Instructions
 
@@ -196,6 +196,6 @@ This command copies the compiled kernel and modules to the specified device over
 
 ## Example Workflows
 
-Please refer to the [Kernel Builder Example Workflows](EXAMPLES.md) for detailed examples of workflows for x86, NVIDIA Jetson boards, and Raspberry Pi.
+Please refer to the [Kernel Builder Example Workflows](./.docs/EXAMPLES.md) for detailed examples of workflows for x86, NVIDIA Jetson boards, and Raspberry Pi.
 
 

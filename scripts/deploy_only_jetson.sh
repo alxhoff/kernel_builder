@@ -13,4 +13,4 @@ fi
 DEVICE_IP=$1
 
 # Deploy to Jetson device
-python3 kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
+python3 ../kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken

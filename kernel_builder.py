@@ -3,8 +3,8 @@
 import argparse
 import os
 import subprocess
-from docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
-from clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
+from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
+from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
 def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False):
     # Compiles the kernel using Docker for encapsulation.
