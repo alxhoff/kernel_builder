@@ -20,9 +20,13 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
     user_id = os.getuid()
     group_id = os.getgid()
 
+    # Get total number of CPUs on the machine
+    total_cpus = os.cpu_count()
+
     # Construct the Docker command
     docker_command = [
-        "docker", "run", "--rm", "-it", "-u", f"{user_id}:{group_id}"
+        "docker", "run", "--rm", "-it", "-u", f"{user_id}:{group_id}",
+        "--cpus=" + str(total_cpus)
     ] + volume_args + [
         "-w", "/builder", "kernel_builder", "/bin/bash", "-c"
     ]
