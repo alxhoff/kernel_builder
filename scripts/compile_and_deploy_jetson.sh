@@ -32,8 +32,12 @@ if [ "$#" -eq 2 ]; then
   fi
 fi
 
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
+KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
+
 # Compile the kernel
-python3 ../kernel_builder.py compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
+python3 "$KERNEL_BUILDER_PATH" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
 
 # Deploy to Jetson device (if not skipped)
 if [ "$NO_DEPLOY" == false ]; then
@@ -41,6 +45,6 @@ if [ "$NO_DEPLOY" == false ]; then
     echo "Error: Device IP is required unless --no-deploy is specified."
     exit 1
   fi
-  python3 ../kernel_deployer.py deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
+  python3 "$KERNEL_DEPLOYER_PATH" deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken
 fi
 
