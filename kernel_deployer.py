@@ -105,6 +105,12 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
     if not dry_run:
         subprocess.run(["scp", dtb_file, f"{user}@{device_ip}:/tmp/"], check=True)
 
+    # Rename the current kernel image to Image.previous
+    rename_command = f"ssh root@{device_ip} 'if [ -f /boot/Image ]; then mv /boot/Image /boot/Image.previous; fi'"
+    print(f"Renaming existing kernel image to Image.previous: {rename_command}")
+    if not dry_run:
+        subprocess.run(rename_command, shell=True, check=True)
+
     # Move kernel image to /boot as root
     move_command = f"ssh root@{device_ip} 'mv /tmp/{os.path.basename(kernel_image)} /boot/'"
     print(f"Moving kernel image to /boot on remote device: {move_command}")
