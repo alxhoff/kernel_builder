@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Example workflow for running menuconfig for a Jetson kernel
+# Example workflow for compiling a Jetson kernel
 # Usage: ./compile_jetson.sh
 
 # Compile the kernel with the menuconfig target
