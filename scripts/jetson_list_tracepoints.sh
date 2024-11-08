@@ -28,7 +28,7 @@ else
   if [ "$#" -eq 2 ]; then
     USERNAME=$2
   else
-    USERNAME="cartken"
+    USERNAME="root"
   fi
 fi
 
