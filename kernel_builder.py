@@ -27,6 +27,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         "-w", "/builder", "kernel_builder", "/bin/bash", "-c"
     ]
 
+    # Base command for invoking make
     base_command = f"make -C /builder/kernels/{kernel_name}/kernel/kernel ARCH={arch} -j{threads if threads else '$(nproc)'}"
 
     if toolchain_name:
@@ -60,7 +61,8 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
             else:
-                combined_command += f"make -C /builder/kernels/{kernel_name}/kernel/kernel ARCH={arch} {target} && "
+                # General case for any target, including menuconfig
+                combined_command += f"{base_command} {target} && "
     else:
         # If no specific target is provided, build the kernel
         combined_command += f"{base_command} && "
