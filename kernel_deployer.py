@@ -124,7 +124,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
         subprocess.run(move_command, shell=True, check=True)
 
     # Rename existing kernel modules folder to _previous, if it exists
-    rename_modules_command = f"ssh root@{device_ip} 'if [ -d /lib/modules/{kernel_version} ]; then mv /lib/modules/{kernel_version} /lib/modules/{kernel_version}_previous; fi'"
+    rename_modules_command = f"ssh root@{device_ip} 'if [ -d /lib/modules/{kernel_version} ]; then rm -rf /lib/modules/{kernel_version}_previous && mv /lib/modules/{kernel_version} /lib/modules/{kernel_version}_previous; fi'"
     print(f"Renaming existing kernel modules to {kernel_version}_previous on remote device: {rename_modules_command}")
     if not dry_run:
         subprocess.run(rename_modules_command, shell=True, check=True)
