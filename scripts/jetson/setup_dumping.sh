@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # Variables
-SCRIPT_DIR="$(realpath "$(dirname "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KDUMP_DIR="/xavier_ssd/data/kdump"
 KERNEL_IMAGE="/boot/Image"
+
+echo "$SCRIPT_DIR"
 
 # Usage Information
 if [ "$#" -gt 2 ]; then
@@ -40,47 +42,42 @@ echo "Connecting to $DEVICE_IP as $USERNAME..."
 echo "Creating kdump directory at $KDUMP_DIR..."
 ssh "$USERNAME@$DEVICE_IP" "sudo mkdir -p $KDUMP_DIR && sudo chmod 755 $KDUMP_DIR"
 
-# Step 2: Configure kdump to save dumps to this folder
+# Step 2: Configure kernel dump settings and enable earlyprintk
 echo "Configuring kernel dump settings..."
-ssh "$USERNAME@$DEVICE_IP" << 'EOF'
-sudo apt-get update
-sudo apt-get install -y kexec-tools
+ssh "$USERNAME@$DEVICE_IP" "sudo apt-get update"
+ssh "$USERNAME@$DEVICE_IP" "sudo apt-get install -y kexec-tools"
 
-# Set up kexec with crashkernel and specify the dump location
-if ! grep -q "crashkernel=" /boot/extlinux/extlinux.conf; then
-    sudo sed -i 's|/boot/Image|/boot/Image crashkernel=128M|' /boot/extlinux/extlinux.conf
-fi
+echo "Updating /boot/extlinux/extlinux.conf to add crashkernel parameter..."
+ssh "$USERNAME@$DEVICE_IP" "if ! grep -q 'crashkernel=' /boot/extlinux/extlinux.conf; then sudo sed -i 's|/boot/Image|/boot/Image crashkernel=128M|' /boot/extlinux/extlinux.conf; fi"
 
-# Update kernel command line for kdump and earlyprintk
-if ! grep -q "crashkernel=128M" /proc/cmdline; then
-    sudo kexec -p "$KERNEL_IMAGE" --append="crashkernel=128M root=$(awk '$2 == "/" {print $1}' /etc/fstab) rd.lvm=1 rd.md=0 rd.dm=0"
-fi
+echo "Setting kexec to use crashkernel parameter..."
+ssh "$USERNAME@$DEVICE_IP" "if ! grep -q 'crashkernel=128M' /proc/cmdline; then sudo kexec -p '$KERNEL_IMAGE' --append='crashkernel=128M root=$(awk '\$2 == \"/\" {print \$1}' /etc/fstab) rd.lvm=1 rd.md=0 rd.dm=0'; fi"
 
-# Enable earlyprintk
-if ! grep -q "earlyprintk" /boot/extlinux/extlinux.conf; then
-    sudo sed -i 's|/boot/Image|& earlyprintk=serial,ttyS0,115200|' /boot/extlinux/extlinux.conf
-fi
-EOF
+echo "Enabling earlyprintk for kernel..."
+ssh "$USERNAME@$DEVICE_IP" "if ! grep -q 'earlyprintk' /boot/extlinux/extlinux.conf; then sudo sed -i 's|/boot/Image|& earlyprintk=serial,ttyS0,115200|' /boot/extlinux/extlinux.conf; fi"
 
 # Step 3: Persistent dmesg logging and trace-cmd setup
-echo "Setting up persistent dmesg logging and trace-cmd capture..."
+echo "Setting up persistent dmesg logging..."
+ssh "$USERNAME@$DEVICE_IP" "
+  sudo mkdir -p /var/log/dmesg
+  if ! grep -q '/var/log/dmesg' /etc/rsyslog.d/50-default.conf; then
+    echo '/var/log/dmesg' | sudo tee -a /etc/rsyslog.d/50-default.conf
+  else
+    echo '/var/log/dmesg is already configured in 50-default.conf, skipping this step.'
+  fi
+"
 
-ssh "$USERNAME@$DEVICE_IP" << 'EOF'
-# Install necessary tools
-sudo apt-get install -y trace-cmd
+echo "Installing trace-cmd..."
+ssh "$USERNAME@$DEVICE_IP" "sudo apt-get install -y trace-cmd"
 
-# Enable persistent dmesg logging
-sudo mkdir -p /var/log/dmesg
-echo '/var/log/dmesg' | sudo tee -a /etc/rsyslog.d/50-default.conf
+echo "Creating directory for trace logs..."
+ssh "$USERNAME@$DEVICE_IP" "sudo mkdir -p $KDUMP_DIR/trace_logs"
 
-# Set up trace-cmd to log kernel events to persistent storage
-TRACE_DIR="$KDUMP_DIR/trace_logs"
-sudo mkdir -p $TRACE_DIR
-sudo trace-cmd record -D -o $TRACE_DIR/trace.dat
+echo "Starting trace-cmd to capture kernel events..."
+ssh "$USERNAME@$DEVICE_IP" "sudo trace-cmd record -D -o $KDUMP_DIR/trace_logs/trace.dat"
 
-# Ensure logs are saved even after reboot
-echo "@reboot sudo trace-cmd record -D -o $TRACE_DIR/trace.dat" | sudo tee -a /etc/crontab
-EOF
+echo "Ensuring trace-cmd starts on reboot..."
+ssh "$USERNAME@$DEVICE_IP" "echo '@reboot sudo trace-cmd record -D -o $KDUMP_DIR/trace_logs/trace.dat' | sudo tee -a /etc/crontab"
 
 echo "Configuration complete. Reboot your device to apply changes."
 
