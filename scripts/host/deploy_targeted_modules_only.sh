@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script to build kernel modules and copy them to a Jetson device
-# Usage: ./build_and_deploy_targeted_modules.sh [--dry-run]
+# Script to deploy kernel modules to a Jetson device
+# Usage: ./deploy_targeted_modules_only.sh [--dry-run]
 # Arguments:
 #   --dry-run: Optional argument to simulate the process without copying anything to the Jetson device.
 
@@ -19,26 +19,12 @@ fi
 
 # Set up variables
 KERNEL_NAME="jetson"
-TOOLCHAIN_NAME="aarch64-buildroot-linux-gnu"
-ARCH="arm64"
 MODULE_DIR="kernels/$KERNEL_NAME/kernel/nvidia/drivers/media/i2c"
-KERNEL_DIR="kernels/$KERNEL_NAME/kernel"
 KERNEL_VERSION="$(ls kernels/$KERNEL_NAME/modules/lib/modules)"
 TARGET_DIR="/lib/modules/$KERNEL_VERSION/kernel/drivers/media/i2c"
 
-# Build the modules using the build_target_modules.sh script
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-BUILD_SCRIPT_PATH="$SCRIPT_DIR/host/build_targeted_modules.sh"
-
-if [ -f "$BUILD_SCRIPT_PATH" ]; then
-  echo "Running build_targeted_modules.sh script"
-  "$BUILD_SCRIPT_PATH" "$KERNEL_NAME" "$TOOLCHAIN_NAME" "$ARCH"
-else
-  echo "Error: build_targeted_modules.sh script not found."
-  exit 1
-fi
-
 # Set up device information
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 DEVICE_IP_FILE="$SCRIPT_DIR/device_ip"
 DEVICE_USERNAME_FILE="$SCRIPT_DIR/device_username"
 
@@ -90,14 +76,14 @@ for ko_filename in $TARGET_MODULES; do
 
 done
 
-# Update the initramfs on the target device if any modules were copied
-if [ "$MODULES_COPIED" = true ]; then
+# Update initramfs if any modules were copied
+if [ "$DRY_RUN" = false ]; then
+  echo "Updating initramfs on the target device."
   update_initramfs_command="ssh root@$DEVICE_IP 'update-initramfs -u'"
-  echo "Updating initramfs on target device: $update_initramfs_command"
-  if [ "$DRY_RUN" = false ]; then
-    eval $update_initramfs_command
-  fi
+  eval $update_initramfs_command
+else
+  echo "Dry run enabled: Skipping initramfs update."
 fi
 
-echo "Kernel module build and deploy process complete."
+echo "Kernel module deploy process complete."
 

@@ -142,6 +142,12 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
     if not dry_run:
         subprocess.run(depmod_command, shell=True, check=True)
 
+    # Run update-initramfs on the target device
+    initramfs_command = f"ssh root@{device_ip} 'update-initramfs -c -k {kernel_version}'"
+    print(f"Regenerating initramfs on remote device: {initramfs_command}")
+    if not dry_run:
+        subprocess.run(initramfs_command, shell=True, check=True)
+
 def main():
     parser = argparse.ArgumentParser(description="Kernel Deployer Script")
     subparsers = parser.add_subparsers(dest="command")
