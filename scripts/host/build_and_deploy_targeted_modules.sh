@@ -90,13 +90,19 @@ for ko_filename in $TARGET_MODULES; do
 
 done
 
-# Update the initramfs on the target device if any modules were copied
-if [ "$MODULES_COPIED" = true ]; then
-  update_initramfs_command="ssh root@$DEVICE_IP 'update-initramfs -u'"
-  echo "Updating initramfs on target device: $update_initramfs_command"
-  if [ "$DRY_RUN" = false ]; then
-    eval $update_initramfs_command
-  fi
+# Update initramfs if modules were copied
+if [ "$DRY_RUN" = false ]; then
+  echo "Generating and deploying new initramfs on the target device..."
+
+  # Generate new initramfs on the target device
+  initramfs_command="ssh root@$DEVICE_IP 'mkinitramfs -o /tmp/initrd.img-$KERNEL_VERSION $KERNEL_VERSION'"
+  echo "Generating new initramfs: $initramfs_command"
+  eval $initramfs_command
+
+  # Move new initramfs to /boot
+  move_initramfs_command="ssh root@$DEVICE_IP 'mv /tmp/initrd.img-$KERNEL_VERSION /boot/initrd'"
+  echo "Moving new initramfs to /boot on target device: $move_initramfs_command"
+  eval $move_initramfs_command
 fi
 
 echo "Kernel module build and deploy process complete."

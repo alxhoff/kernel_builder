@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# Script to deploy kernel modules to a Jetson device
+# Script to deploy kernel modules to a Jetson device without building
 # Usage: ./deploy_targeted_modules_only.sh [--dry-run]
 # Arguments:
 #   --dry-run: Optional argument to simulate the process without copying anything to the Jetson device.
+
+set -e  # Exit on any command failure
 
 DRY_RUN=false
 
@@ -73,16 +75,21 @@ for ko_filename in $TARGET_MODULES; do
   else
     echo "Warning: Module $ko_filename not found in $MODULE_DIR. Skipping."
   fi
-
 done
 
-# Update initramfs if any modules were copied
+# Update initramfs if modules were copied
 if [ "$DRY_RUN" = false ]; then
-  echo "Updating initramfs on the target device."
-  update_initramfs_command="ssh root@$DEVICE_IP 'update-initramfs -u'"
-  eval $update_initramfs_command
-else
-  echo "Dry run enabled: Skipping initramfs update."
+  echo "Generating and deploying new initramfs on the target device..."
+
+  # Generate new initramfs on the target device
+  initramfs_command="ssh root@$DEVICE_IP 'mkinitramfs -o /tmp/initrd.img-$KERNEL_VERSION $KERNEL_VERSION'"
+  echo "Generating new initramfs: $initramfs_command"
+  eval $initramfs_command
+
+  # Move new initramfs to /boot
+  move_initramfs_command="ssh root@$DEVICE_IP 'mv /tmp/initrd.img-$KERNEL_VERSION /boot/initrd'"
+  echo "Moving new initramfs to /boot on target device: $move_initramfs_command"
+  eval $move_initramfs_command
 fi
 
 echo "Kernel module deploy process complete."
