@@ -6,7 +6,7 @@
 #   [<build-target>]   Optional build target (e.g., "clean")
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-BUILD_SCRIPT="$SCRIPT_DIR/build_kernel_host.sh"
+BUILD_SCRIPT="$SCRIPT_DIR/host/build_kernel.sh"
 
 KERNEL_NAME="jetson"
 TOOLCHAIN_NAME="aarch64-buildroot-linux-gnu"
