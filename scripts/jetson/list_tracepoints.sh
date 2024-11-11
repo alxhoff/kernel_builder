@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Simple script to install trace-cmd on a Jetson device using kernel_debugger.py
-# Usage: ./install_trace_cmd.sh [<device-ip>] [<username>]
+# Simple script to list available tracepoints on a Jetson device using kernel_debugger.py
+# Usage: ./list_tracepoints.sh [<device-ip>] [<username>]
 # Arguments:
 #   [<device-ip>]   The IP address of the target Jetson device (optional if device_ip file exists)
 #   [<username>]    The username for accessing the Jetson device (optional if device_username file exists, default: "cartken")
 
 # Get the path to the kernel_debugger.py script
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
 
 # Check if device_ip file exists
@@ -28,19 +28,19 @@ else
   if [ "$#" -eq 2 ]; then
     USERNAME=$2
   else
-    USERNAME="cartken"
+    USERNAME="root"
   fi
 fi
 
-# Install trace-cmd on the Jetson device as root
-echo "Installing trace-cmd on the Jetson device at $DEVICE_IP using kernel_debugger.py..."
+# List available tracepoints on the Jetson device
+echo "Listing available tracepoints on the Jetson device at $DEVICE_IP using kernel_debugger.py..."
 
-python3 "$KERNEL_DEBUGGER_PATH" install-trace-cmd --ip "$DEVICE_IP" --user "$USERNAME"
+python3 "$KERNEL_DEBUGGER_PATH" list-tracepoints --ip "$DEVICE_IP" --user "$USERNAME"
 
 if [ $? -eq 0 ]; then
-  echo "trace-cmd installed successfully on the Jetson device at $DEVICE_IP"
+  echo "Tracepoints listed successfully on the Jetson device at $DEVICE_IP"
 else
-  echo "Failed to install trace-cmd on the Jetson device at $DEVICE_IP"
+  echo "Failed to list tracepoints on the Jetson device at $DEVICE_IP"
   exit 1
 fi
 

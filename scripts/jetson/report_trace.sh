@@ -6,7 +6,7 @@
 #   <trace-file-path>  Path to the trace.dat file on the host
 #   <output-file>      Path to save the generated trace report
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
 
 if [ "$#" -ne 2 ]; then

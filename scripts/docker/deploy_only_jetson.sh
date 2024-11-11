@@ -12,8 +12,8 @@ fi
 
 DEVICE_IP=$1
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../../kernel_deployer.py"
 
 # Deploy to Jetson device
 python3 "$KERNEL_DEPLOYER_PATH" deploy-jetson --kernel-name jetson --ip $DEVICE_IP --user cartken

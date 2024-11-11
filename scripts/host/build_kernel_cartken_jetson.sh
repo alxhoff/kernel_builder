@@ -5,7 +5,7 @@
 # Arguments:
 #   [<build-target>]   Optional build target (e.g., "clean")
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 BUILD_SCRIPT="$SCRIPT_DIR/build_kernel_host.sh"
 
 KERNEL_NAME="jetson"

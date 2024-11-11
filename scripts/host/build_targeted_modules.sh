@@ -17,7 +17,7 @@ ARCH=${3:-$DEFAULT_ARCH}
 BUILD_TARGET=${4:-"modules"}  # Optional build target, default to "modules"
 
 # Set up directories
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DIR="$SCRIPT_DIR/../kernels/$KERNEL_NAME/kernel"
 MODULES_DIR="$SCRIPT_DIR/../kernels/$KERNEL_NAME/modules/lib/modules"
 BUILD_DIR="$KERNEL_DIR/nvidia/drivers/media/i2c"

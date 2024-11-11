@@ -3,7 +3,7 @@
 # Script to start tracing all events from a specified system on a Jetson device
 # Usage: ./start_tracing_system.sh <system-name> [device-ip] [device-username]
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
 
 # Get system name as the first argument

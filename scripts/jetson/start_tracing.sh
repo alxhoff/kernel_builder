@@ -8,7 +8,7 @@
 #   [<username>]    The username for accessing the Jetson device (optional if device_username file exists, default: "cartken")
 
 # Get the path to the kernel_debugger.py script
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
 
 EVENTS=$1

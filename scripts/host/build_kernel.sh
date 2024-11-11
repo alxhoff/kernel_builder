@@ -16,7 +16,7 @@ KERNEL_NAME=$1
 TOOLCHAIN_NAME=$2
 BUILD_TARGET=${3:-}
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DIR="$SCRIPT_DIR/../kernels/$KERNEL_NAME/kernel/kernel"
 TOOLCHAIN_PATH="$SCRIPT_DIR/../toolchains/$TOOLCHAIN_NAME/bin/$TOOLCHAIN_NAME-"
 

@@ -34,9 +34,9 @@ if [ "$#" -eq 3 ]; then
   fi
 fi
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
-KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+KERNEL_BUILDER_PATH="$SCRIPT_DIR/../../kernel_builder.py"
+KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../../kernel_deployer.py"
 
 # Build the Docker image
 python3 "$KERNEL_BUILDER_PATH" build
