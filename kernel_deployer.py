@@ -155,9 +155,12 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(backup_extlinux_conf_command, shell=True, check=True)
 
     # Update extlinux.conf to use the new kernel
-    new_kernel_entry = f"LINUX /boot/Image.{localversion if localversion else 'Image'}"
-    update_command = f"ssh root@{device_ip} \"sed -i 's|^LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
+    new_kernel_entry = f"      LINUX /boot/Image.{localversion if localversion else 'Image'}"
+    update_command = (
+        f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
+    )
     print(f"Updating {extlinux_conf_path} on remote device to use new kernel: {new_kernel_entry}")
+    print(f"Command: {update_command}")
     if not dry_run:
         subprocess.run(update_command, shell=True, check=True)
 
@@ -167,11 +170,23 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     if not dry_run:
         subprocess.run(initramfs_command, shell=True, check=True)
 
-    # Copy new initramfs to /boot
-    move_initramfs_command = f"ssh root@{device_ip} 'mv /boot/initrd.img-{kernel_version} /boot/initrd'"
-    print(f"Copying new initramfs to /boot on the target device: {move_initramfs_command}")
+    # Update extlinux.conf to use the new initrd (INITRD)
+    new_initrd_entry = f"      INITRD /boot/initrd.img-{kernel_version}"
+    update_initrd_command = (
+        f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*INITRD .*|{new_initrd_entry}|' {extlinux_conf_path}\""
+    )
+    print(f"Updating {extlinux_conf_path} on remote device to use new initrd: {new_initrd_entry}")
     if not dry_run:
-        subprocess.run(move_initramfs_command, shell=True, check=True)
+        subprocess.run(update_initrd_command, shell=True, check=True)
+
+    # Update extlinux.conf to use the new FDT (Flattened Device Tree)
+    new_fdt_entry = f"      FDT /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+    update_fdt_command = (
+        f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*FDT .*|{new_fdt_entry}|' {extlinux_conf_path}\""
+    )
+    print(f"Updating {extlinux_conf_path} on remote device to use new FDT: {new_fdt_entry}")
+    if not dry_run:
+        subprocess.run(update_fdt_command, shell=True, check=True)
 
 def main():
     parser = argparse.ArgumentParser(description="Kernel Deployer Script")
