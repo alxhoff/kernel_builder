@@ -4,12 +4,15 @@ import argparse
 import os
 import subprocess
 
-def deploy_x86(dry_run=False):
+def deploy_x86(dry_run=False, localversion=None):
     # Deploys the compiled kernel to an x86 host machine.
     modules_base_dir = os.path.join("kernels", "compiled", "modules")
-    kernel_version = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))[0]
+    kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
+
+    # Determine the kernel version to use, either from argument or default to the first
+    kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
-    kernel_image = os.path.join("kernels", "compiled", "vmlinuz")
+    kernel_image = os.path.join("kernels", "compiled", f"vmlinuz-{kernel_version}")
 
     if not os.path.exists(kernel_image):
         print(f"Error: Kernel image {kernel_image} does not exist.")
@@ -30,12 +33,15 @@ def deploy_x86(dry_run=False):
     if not dry_run:
         subprocess.run(["sudo", "cp", "-r", modules_dir, target_modules_dir], check=True)
 
-def deploy_device(device_ip, user, dry_run=False):
+def deploy_device(device_ip, user, dry_run=False, localversion=None):
     # Deploys the compiled kernel to a remote device via SSH and SCP.
     modules_base_dir = os.path.join("kernels", "compiled", "modules")
-    kernel_version = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))[0]
+    kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
+
+    # Determine the kernel version to use, either from argument or default to the first
+    kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
-    kernel_image = os.path.join("kernels", "compiled", "vmlinuz")
+    kernel_image = os.path.join("kernels", "compiled", f"vmlinuz-{kernel_version}")
 
     if not os.path.exists(kernel_image):
         print(f"Error: Kernel image {kernel_image} does not exist.")
@@ -56,15 +62,18 @@ def deploy_device(device_ip, user, dry_run=False):
     if not dry_run:
         subprocess.run(["scp", "-r", modules_dir, remote_modules_dir], check=True)
 
-def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
+def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None):
     # Deploys the compiled kernel to a remote Jetson device via SCP.
     kernel_dir = os.path.join("kernels", kernel_name, "kernel", "kernel")
+
+    # Determine the kernel version to use, either from argument or default to the first
+    modules_base_dir = os.path.join("kernels", kernel_name, "modules")
+    kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
+    kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
 
     # Define paths for deployment
     kernel_image = os.path.join(kernel_dir, "arch/arm64/boot/Image")
     dtb_file = os.path.join(kernel_dir, "arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb")
-    modules_base_dir = os.path.join("kernels", kernel_name, "modules")
-    kernel_version = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))[0]
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
 
     # Ensure required files exist
@@ -129,7 +138,6 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
     if not dry_run:
         subprocess.run(rename_modules_command, shell=True, check=True)
 
-
     # Move modules to the final destination as root
     move_command = f"ssh root@{device_ip} 'cp -r /tmp/modules/{kernel_version} /lib/modules/'"
     print(f"Moving kernel modules to /lib/modules/{kernel_version} on remote device: {move_command}")
@@ -137,7 +145,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False):
         subprocess.run(move_command, shell=True, check=True)
 
     # Run depmod on the target device
-    depmod_command = f"ssh root@{device_ip} 'sudo depmod {kernel_version}'"
+    depmod_command = f"ssh root@{device_ip} 'depmod {kernel_version}'"
     print(f"Running depmod on the target device: {depmod_command}")
     if not dry_run:
         subprocess.run(depmod_command, shell=True, check=True)
@@ -161,12 +169,14 @@ def main():
     # Deploy to x86 command
     deploy_x86_parser = subparsers.add_parser("deploy-x86")
     deploy_x86_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+    deploy_x86_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
 
     # Deploy to device command
     deploy_device_parser = subparsers.add_parser("deploy-device")
     deploy_device_parser.add_argument("--ip", required=True, help="IP address of the target device")
     deploy_device_parser.add_argument("--user", required=True, help="Username for accessing the target device")
     deploy_device_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+    deploy_device_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
 
     # Deploy to Jetson command
     deploy_jetson_parser = subparsers.add_parser("deploy-jetson")
@@ -174,6 +184,7 @@ def main():
     deploy_jetson_parser.add_argument("--ip", required=True, help="IP address of the Jetson device")
     deploy_jetson_parser.add_argument("--user", required=True, help="Username for accessing the Jetson device")
     deploy_jetson_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+    deploy_jetson_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
 
     args = parser.parse_args()
 
@@ -183,11 +194,11 @@ def main():
         exit(1)
 
     if args.command == "deploy-x86":
-        deploy_x86(dry_run=args.dry_run)
+        deploy_x86(dry_run=args.dry_run, localversion=args.localversion)
     elif args.command == "deploy-device":
-        deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run)
+        deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
     elif args.command == "deploy-jetson":
-        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
+        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
 
 if __name__ == "__main__":
     main()

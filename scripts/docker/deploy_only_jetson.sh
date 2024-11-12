@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # Simple script to deploy a compiled kernel to a Jetson device
-# Usage: ./deploy_only_jetson.sh [--ip <device-ip>] [--user <username>] [--dry-run]
+# Usage: ./deploy_only_jetson.sh [--ip <device-ip>] [--user <username>] [--dry-run] [--localversion <version>]
 # Arguments:
-#   [--ip <device-ip>]  The IP address of the target Jetson device (optional if device_ip file is present)
-#   [--user <username>] The username to access the device (optional if device_username file is present)
-#   [--dry-run]         Optional argument to simulate the deployment without copying anything to the Jetson device
+#   [--ip <device-ip>]    The IP address of the target Jetson device (optional if device_ip file is present)
+#   [--user <username>]   The username to access the device (optional if device_username file is present)
+#   [--dry-run]           Optional argument to simulate the deployment without copying anything to the Jetson device
+#   [--localversion]      Optional argument to specify the kernel version (localversion) for deployment
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
@@ -15,6 +16,7 @@ KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
 USERNAME="cartken"
 DEVICE_IP=""
 DRY_RUN=false
+LOCALVERSION_ARG=""
 
 # Check if device_ip file exists in the script directory
 if [ -f "$SCRIPT_DIR/device_ip" ]; then
@@ -32,6 +34,7 @@ while [[ "$#" -gt 0 ]]; do
         --ip) DEVICE_IP="$2"; shift ;;
         --user) USERNAME="$2"; shift ;;
         --dry-run) DRY_RUN=true ;;
+        --localversion) LOCALVERSION_ARG="--localversion $2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -45,14 +48,18 @@ fi
 
 # Deploy to Jetson device
 echo "Deploying compiled kernel to the Jetson device at $DEVICE_IP using kernel_deployer.py..."
-if [ "$DRY_RUN" = true ]; then
-    python3 "$KERNEL_DEPLOYER_PATH" deploy-jetson --kernel-name jetson --ip "$DEVICE_IP" --user "$USERNAME" --dry-run
-else
-    python3 "$KERNEL_DEPLOYER_PATH" deploy-jetson --kernel-name jetson --ip "$DEVICE_IP" --user "$USERNAME"
+DEPLOY_COMMAND="python3 \"$KERNEL_DEPLOYER_PATH\" deploy-jetson --kernel-name jetson --ip \"$DEVICE_IP\" --user \"$USERNAME\""
+
+if [ -n "$LOCALVERSION_ARG" ]; then
+    DEPLOY_COMMAND+=" $LOCALVERSION_ARG"
 fi
 
-# Check if the deployment was successful
-if [ $? -ne 0 ]; then
+if [ "$DRY_RUN" = true ]; then
+    DEPLOY_COMMAND+=" --dry-run"
+fi
+
+# Execute deployment command
+if ! eval $DEPLOY_COMMAND; then
     echo "Failed to deploy the compiled kernel to the Jetson device at $DEVICE_IP"
     exit 1
 fi
