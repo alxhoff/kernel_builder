@@ -43,7 +43,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --localversion)
       if [ -n "$2" ]; then
-        LOCALVERSION_ARG="--localversion $2"
+        LOCALVERSION_ARG="$2"
         shift 2
       else
         echo "Error: --localversion requires a value"
@@ -70,6 +70,11 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+# If LOCALVERSION is not provided, create a default one
+if [ -z "$LOCALVERSION_ARG" ]; then
+  LOCALVERSION_ARG="cartken_$(date +%Y_%m_%d__%H_%M)"
+fi
+
 # Read the device IP and username from files, if they exist
 DEVICE_IP=""
 USERNAME="cartken" # default username
@@ -83,7 +88,7 @@ if [ -f "$SCRIPT_DIR/device_username" ]; then
 fi
 
 # Compile the kernel using the compile_jetson_kernel.sh script
-if ! "$KERNEL_BUILDER_SCRIPT" $CONFIG_ARG $LOCALVERSION_ARG $THREADS_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG; then
   echo "Kernel compilation failed. Aborting deployment."
   exit 1
 fi
@@ -98,7 +103,7 @@ if [ "$NO_DEPLOY" == false ]; then
   # Prepare deploy command with the correct options
   DEPLOY_COMMAND="$DEPLOY_SCRIPT --ip $DEVICE_IP --user $USERNAME"
   [ "$DRY_RUN" == true ] && DEPLOY_COMMAND+=" --dry-run"
-  [ -n "$LOCALVERSION_ARG" ] && DEPLOY_COMMAND+=" $LOCALVERSION_ARG"
+  DEPLOY_COMMAND+=" --localversion $LOCALVERSION_ARG"
 
   # Execute deployment command
   echo "Deploying compiled kernel to the Jetson device at $DEVICE_IP..."
