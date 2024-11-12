@@ -64,6 +64,8 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
             if target == "kernel":
                 combined_command += f"{base_command} && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
+                combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
+                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/ && "
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
@@ -71,9 +73,11 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 # General case for any target, including menuconfig
                 combined_command += f"{base_command} {target} && "
     else:
-        # If no specific target is provided, build the kernel
+        # If no specific target is provided, build the kernel and copy the Image
         combined_command += f"{base_command} && "
-        combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules"
+        combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
+        combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
+        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
