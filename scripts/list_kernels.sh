@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Script to list all built kernels and corresponding images inside the /kernels directory
-
-KERNELS_DIR="../kernels"
+SCRIPT_DIR="$(realpath "$(dirname "$0")")"
+KERNELS_DIR="$SCRIPT_DIR/../kernels"
 
 # Ensure the kernels directory exists
 if [ ! -d "$KERNELS_DIR" ]; then
