@@ -96,7 +96,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(["scp", modules_archive, f"{user}@{device_ip}:/tmp/"], check=True)
 
     # Extract the modules archive on the remote device
-    extract_command = f"ssh {user}@{device_ip} 'mkdir -p /tmp/modules && tar -xzf /tmp/{kernel_version}.tar.gz -C /tmp/modules'"
+    extract_command = f"ssh root@{device_ip} 'mkdir -p /tmp/modules && tar -xzf /tmp/{kernel_version}.tar.gz -C /tmp/modules'"
     print(f"Extracting modules on remote device: {extract_command}")
     if not dry_run:
         subprocess.run(extract_command, shell=True, check=True)
@@ -147,10 +147,16 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     if not dry_run:
         subprocess.run(depmod_command, shell=True, check=True)
 
-    # Update extlinux.conf to use the new kernel
+    # Backup extlinux.conf before updating
     extlinux_conf_path = "/boot/extlinux/extlinux.conf"
+    backup_extlinux_conf_command = f"ssh root@{device_ip} 'cp {extlinux_conf_path} {extlinux_conf_path}.previous'"
+    print(f"Backing up extlinux.conf to {extlinux_conf_path}.previous: {backup_extlinux_conf_command}")
+    if not dry_run:
+        subprocess.run(backup_extlinux_conf_command, shell=True, check=True)
+
+    # Update extlinux.conf to use the new kernel
     new_kernel_entry = f"LINUX /boot/Image.{localversion if localversion else 'Image'}"
-    update_command = f"ssh {user}@{device_ip} \"sudo sed -i 's|^LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
+    update_command = f"ssh root@{device_ip} \"sed -i 's|^LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
     print(f"Updating {extlinux_conf_path} on remote device to use new kernel: {new_kernel_entry}")
     if not dry_run:
         subprocess.run(update_command, shell=True, check=True)
