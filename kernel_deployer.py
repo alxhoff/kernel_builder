@@ -64,16 +64,13 @@ def deploy_device(device_ip, user, dry_run=False, localversion=None):
 
 def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None):
     # Deploys the compiled kernel to a remote Jetson device via SCP.
-    kernel_dir = os.path.join("kernels", kernel_name, "kernel", "kernel")
-
-    # Determine the kernel version to use, either from argument or default to the first
     modules_base_dir = os.path.join("kernels", kernel_name, "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
     kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
 
     # Define paths for deployment
-    kernel_image = os.path.join(kernel_dir, "arch/arm64/boot/Image")
-    dtb_file = os.path.join(kernel_dir, "arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb")
+    kernel_image = os.path.join(modules_base_dir, "boot", f"Image.{localversion}") if localversion else os.path.join(modules_base_dir, "boot", "Image")
+    dtb_file = os.path.join("kernels", kernel_name, "kernel", "kernel", "arch", "arm64", "boot", "dts", "nvidia", "tegra234-p3701-0000-p3737-0000.dtb")
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
 
     # Ensure required files exist
@@ -152,7 +149,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
 
     # Update extlinux.conf to use the new kernel
     extlinux_conf_path = "/boot/extlinux/extlinux.conf"
-    new_kernel_entry = f"LINUX /Image"
+    new_kernel_entry = f"LINUX /boot/Image.{localversion if localversion else 'Image'}"
     update_command = f"ssh {user}@{device_ip} \"sudo sed -i 's|^LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
     print(f"Updating {extlinux_conf_path} on remote device to use new kernel: {new_kernel_entry}")
     if not dry_run:
