@@ -16,22 +16,25 @@ for KERNEL_NAME in "$KERNELS_DIR"/*; do
         MODULES_DIR="$KERNEL_NAME/modules/lib/modules"
         BOOT_DIR="$KERNEL_NAME/modules/boot"
 
-        # Check for built kernel versions in the modules directory
+        # Check for compiled kernel version modules in the modules directory
         echo "Kernel Name: $(basename "$KERNEL_NAME")"
 
-        # List built kernel versions
+        # List compiled kernel version modules
         BUILT_VERSIONS=()
         if [ -d "$MODULES_DIR" ]; then
-            echo "Built Kernel Versions:"
+            echo "Compiled Kernel Version Modules:"
             for VERSION in "$MODULES_DIR"/*; do
                 if [ -d "$VERSION" ]; then
                     BUILT_VERSION=$(basename "$VERSION")
                     BUILT_VERSIONS+=("$BUILT_VERSION")
-                    echo "  - $BUILT_VERSION"
+
+                    # Extract LOCALVERSION (everything after the first occurrence of a digit or period sequence)
+                    LOCALVERSION=$(echo "$BUILT_VERSION" | sed -E 's/^[0-9.]+//')
+                    echo "  - Version: $BUILT_VERSION (LOCALVERSION: $LOCALVERSION)"
                 fi
             done
         else
-            echo "  No built kernel versions found."
+            echo "  No compiled kernel version modules found."
         fi
 
         # List kernel images in boot directory
@@ -42,11 +45,16 @@ for KERNEL_NAME in "$KERNELS_DIR"/*; do
                     IMAGE_NAME=$(basename "$IMAGE")
                     echo "  - $IMAGE_NAME"
 
-                    # Attempt to match the image to a kernel version if possible
-                    # Extract the LOCALVERSION from the image name (assuming format Image.LOCALVERSION)
+                    # Extract LOCALVERSION from the image name if available
                     LOCALVERSION=$(echo "$IMAGE_NAME" | sed -n 's/^Image\.\(.*\)$/\1/p')
 
-                    # Check if there's a matching kernel version using the LOCALVERSION
+                    if [ -n "$LOCALVERSION" ]; then
+                        echo "    -> LOCALVERSION: $LOCALVERSION"
+                    else
+                        echo "    -> LOCALVERSION: <none>"
+                    fi
+
+                    # Attempt to match the image to a kernel version if possible
                     MATCHED_VERSION=""
                     for BUILT_VERSION in "${BUILT_VERSIONS[@]}"; do
                         if [[ "$BUILT_VERSION" == *"$LOCALVERSION" ]]; then
