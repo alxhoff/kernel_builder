@@ -150,6 +150,14 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     if not dry_run:
         subprocess.run(depmod_command, shell=True, check=True)
 
+    # Update extlinux.conf to use the new kernel
+    extlinux_conf_path = "/boot/extlinux/extlinux.conf"
+    new_kernel_entry = f"LINUX /Image"
+    update_command = f"ssh {user}@{device_ip} \"sudo sed -i 's|^LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
+    print(f"Updating {extlinux_conf_path} on remote device to use new kernel: {new_kernel_entry}")
+    if not dry_run:
+        subprocess.run(update_command, shell=True, check=True)
+
     # Run update-initramfs on the target device
     initramfs_command = f"ssh root@{device_ip} 'update-initramfs -c -k {kernel_version}'"
     print(f"Regenerating initramfs on remote device: {initramfs_command}")
