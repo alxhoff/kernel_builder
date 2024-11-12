@@ -157,7 +157,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(initramfs_command, shell=True, check=True)
 
     # Copy new initramfs to /boot
-    move_initramfs_command = f"ssh root@{device_ip} 'mv /tmp/initrd.img-{kernel_version} /boot/initrd'"
+    move_initramfs_command = f"ssh root@{device_ip} 'mv /boot/initrd.img-{kernel_version} /boot/initrd'"
     print(f"Copying new initramfs to /boot on the target device: {move_initramfs_command}")
     if not dry_run:
         subprocess.run(move_initramfs_command, shell=True, check=True)
