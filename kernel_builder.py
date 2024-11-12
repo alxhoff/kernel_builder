@@ -6,7 +6,7 @@ import subprocess
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -36,6 +36,9 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
 
     if toolchain_name:
         base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+
+    if localversion:
+        base_command += f" LOCALVERSION={localversion}"
 
     env = os.environ.copy()
     if toolchain_name:
@@ -128,6 +131,7 @@ def main():
     compile_parser.add_argument("--threads", type=int, help="Number of threads to use for compilation (default: use all available cores)")
     compile_parser.add_argument("--clean", action="store_true", help="Run mrproper to clean the kernel build directory before building")
     compile_parser.add_argument("--use-current-config", action="store_true", help="Use the current system kernel configuration for building the kernel")
+    compile_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
 
     # Inspect Docker image command
     inspect_parser = subparsers.add_parser("inspect")
@@ -163,7 +167,8 @@ def main():
             build_target=args.build_target,
             threads=args.threads,
             clean=args.clean,
-            use_current_config=args.use_current_config
+            use_current_config=args.use_current_config,
+            localversion=args.localversion
         )
     elif args.command == "inspect":
         inspect_docker_image()
