@@ -6,6 +6,145 @@ import subprocess
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
+def locate_target_modules(kernel_name):
+    # Locate target modules based on their `.c` files.
+    kernels_dir = os.path.join("kernels")
+    kernel_source_path = os.path.join(kernels_dir, kernel_name, "kernel")
+
+    target_modules_file = os.path.join("target_modules.txt")
+    if not os.path.exists(target_modules_file):
+        raise FileNotFoundError("Error: target_modules.txt not found. Please create the file with the list of modules to build.")
+
+    with open(target_modules_file, 'r') as file:
+        target_modules = [line.strip() for line in file if line.strip()]
+
+    if not target_modules:
+        raise ValueError("Error: No target modules specified in target_modules.txt.")
+
+    # Dictionary to store module directories and the modules they contain
+    module_locations = {}
+
+    # Find the module paths based on directories containing `.c` files
+    for module in target_modules:
+        find_command = f"find {kernel_source_path} -type f -name {module}.c"
+        try:
+            find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+            if find_output:
+                found_path = find_output.splitlines()[0]
+                module_dir = os.path.dirname(found_path)
+
+                # Convert the found path to a relative path from the kernel root
+                kernel_root = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
+                relative_module_dir = os.path.relpath(module_dir, kernel_root)
+
+                if relative_module_dir not in module_locations:
+                    module_locations[relative_module_dir] = {
+                        "modules": []
+                    }
+
+                module_locations[relative_module_dir]["modules"].append(module)
+
+        except subprocess.CalledProcessError:
+            print(f"Warning: Could not locate source file for module {module}. Make sure {module}.c exists in the source.")
+
+    return module_locations
+
+
+def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localversion=None, dry_run=False):
+    module_locations = locate_target_modules(kernel_name)
+
+    if not module_locations:
+        print("No modules to compile.")
+        return
+
+    # Base command for invoking make on the host system
+    kernels_dir = os.path.join("kernels")
+    kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
+    base_command = f"make -C {kernel_dir} ARCH={arch}"
+
+    if toolchain_name:
+        # Get the absolute path for the cross compiler
+        toolchain_bin_path = os.path.abspath(os.path.join('toolchains', toolchain_name, 'bin', toolchain_name))
+        base_command += f" CROSS_COMPILE={toolchain_bin_path}-"
+
+    if localversion:
+        base_command += f" LOCALVERSION={localversion}"
+
+    # Run make for each unique module directory located earlier
+    for module_dir_relative, modules in module_locations.items():
+        module_command = f"{base_command} M={module_dir_relative} modules"
+        if dry_run:
+            print(f"[Dry-run] Would run command: {module_command} for modules: {', '.join(modules)}")
+        else:
+            print(f"Running command: {module_command} for modules: {', '.join(modules)}")
+            subprocess.Popen(module_command, shell=True).wait()
+
+
+def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion=None, dry_run=False):
+    # Compiles targeted kernel modules using Docker for encapsulation.
+    kernels_dir = os.path.join("kernels")
+    toolchains_dir = os.path.join("toolchains")
+
+    # Create Docker volume arguments to mount kernel, toolchain, and overlays directories into a builder working directory
+    kernels_dir_abs = os.path.abspath(kernels_dir)
+    toolchains_dir_abs = os.path.abspath(toolchains_dir)
+    volume_args = ["-v", f"{kernels_dir_abs}:/builder/kernels", "-v", f"{toolchains_dir_abs}:/builder/toolchains"]
+
+    # Get current user ID and group ID to run Docker commands as the current user
+    user_id = os.getuid()
+    group_id = os.getgid()
+
+    # Get total number of CPUs on the machine
+    total_cpus = os.cpu_count()
+
+    # Construct the Docker command
+    docker_command = [
+        "docker", "run", "--rm", "-it", "-u", f"{user_id}:{group_id}",
+        "--cpus=" + str(total_cpus)
+    ] + volume_args + [
+        "-w", f"/builder/kernels/{kernel_name}/kernel/kernel", "kernel_builder", "/bin/bash", "-c"
+    ]
+
+    # Base command for invoking make
+    base_command = f"make ARCH={arch} -j{total_cpus if total_cpus else '$(nproc)'}"
+
+    if toolchain_name:
+        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+
+    if localversion:
+        base_command += f" LOCALVERSION={localversion}"
+
+    env = os.environ.copy()
+    if toolchain_name:
+        env["PATH"] = f"/builder/toolchains/{toolchain_name}/bin:" + env["PATH"]
+
+    # Locate module directories
+    module_locations = locate_target_modules(kernel_name)
+
+    if not module_locations:
+        print("No modules to compile.")
+        return
+
+    # Add the configuration steps (make oldconfig, make prepare, and make modules_prepare) before building modules
+    config_commands = f"{base_command} oldconfig && {base_command} prepare && {base_command} modules_prepare"
+
+    # Create commands to build each directory (if not empty)
+    combined_command = f"{config_commands} && "  # Ensure configuration runs first
+    for module_dir_relative, modules in module_locations.items():
+        combined_command += f"{base_command} M={module_dir_relative} modules && "
+
+    # Remove trailing "&&" if present
+    combined_command = combined_command.rstrip("&& ")
+
+    # Run the combined command in Docker
+    if dry_run:
+        print(f"[Dry-run] Would run Docker command: {' '.join(docker_command + [combined_command])}")
+    else:
+        full_command = docker_command + [combined_command]
+        print(f"Running Docker command: {' '.join(full_command)}")
+        subprocess.Popen(full_command, env=env).wait()
+
+
 def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
@@ -89,7 +228,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
 
     # Construct the Docker command
     docker_command = [
-        "docker", "run", "--rm", "-it", "-u", f"{user_id}:{group_id}",
+        "docker", "run", "--rm", "-it", "--init", "-u", f"{user_id}:{group_id}",
         "--cpus=" + str(total_cpus)
     ] + volume_args + [
         "-w", "/builder", "kernel_builder", "/bin/bash", "-c"
@@ -207,6 +346,14 @@ def main():
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
+    target_modules_parser = subparsers.add_parser("compile-target-modules")
+    target_modules_parser.add_argument("--kernel-name", required=True, help="Name of the kernel subfolder to use for targeted module compilation")
+    target_modules_parser.add_argument("--arch", required=True, help="Target architecture (e.g., arm64 for Jetson)")
+    target_modules_parser.add_argument("--toolchain-name", help="Name of the toolchain to use for cross-compiling")
+    target_modules_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
+    target_modules_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
+    target_modules_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
+
     # Inspect Docker image command
     inspect_parser = subparsers.add_parser("inspect")
 
@@ -257,6 +404,23 @@ def main():
                 threads=args.threads,
                 clean=args.clean,
                 use_current_config=args.use_current_config,
+                localversion=args.localversion,
+                dry_run=args.dry_run
+            )
+    elif args.command == "compile-target-modules":
+        if args.host_build:
+            compile_target_modules_host(
+                kernel_name=args.kernel_name,
+                arch=args.arch,
+                toolchain_name=args.toolchain_name,
+                localversion=args.localversion,
+                dry_run=args.dry_run
+            )
+        else:
+            compile_target_modules_docker(
+                kernel_name=args.kernel_name,
+                arch=args.arch,
+                toolchain_name=args.toolchain_name,
                 localversion=args.localversion,
                 dry_run=args.dry_run
             )
