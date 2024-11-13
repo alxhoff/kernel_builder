@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Example workflow for compiling a Jetson kernel
-# Usage: ./compile_jetson_kernel.sh [--config <config-file>] [--localversion <version>] [--threads <number>]
+# Usage: ./compile_jetson_kernel.sh [--config <config-file>] [--localversion <version>] [--threads <number>] [--host-build] [--dry-run]
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
@@ -11,6 +11,8 @@ KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
 CONFIG_ARG=""
 LOCALVERSION_ARG=""
 THREADS_ARG=""
+HOST_BUILD_ARG=""
+DRY_RUN_ARG=""
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -42,6 +44,14 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --host-build)
+      HOST_BUILD_ARG="--host-build"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN_ARG="--dry-run"
+      shift
+      ;;
     *)
       echo "Unknown parameter: $1"
       exit 1
@@ -50,10 +60,13 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG"
-[ -n "$LOCALVERSION_ARG" ] && COMMAND+=" $LOCALVERSION_ARG"
+COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $HOST_BUILD_ARG $DRY_RUN_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"
-eval $COMMAND
+if [[ -n "$DRY_RUN_ARG" ]]; then
+  echo "[Dry-run] Command: $COMMAND"
+else
+  eval $COMMAND
+fi
 

@@ -6,7 +6,71 @@ import subprocess
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dry_run=False):
+    # Compiles the kernel directly on the host system.
+    kernels_dir = os.path.join("kernels")
+    kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
+
+    # Base command for invoking make
+    base_command = f"make -C {kernel_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
+
+    if toolchain_name:
+        base_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, 'bin', toolchain_name)}-"
+
+    if localversion:
+        base_command += f" LOCALVERSION={localversion}"
+
+    # If use_current_config is specified, get the current kernel config and place it in the kernel directory
+    if use_current_config:
+        current_config_path = os.path.join(kernel_dir, ".config")
+        zcat_command = f"zcat /proc/config.gz > {current_config_path}"
+        print(f"Fetching current kernel config: {zcat_command}")
+        if not dry_run:
+            subprocess.run(zcat_command, shell=True, check=True)
+
+    # Combine mrproper (if enabled), configuration, and kernel compilation into a single command
+    combined_command = ""
+    if clean:
+        combined_command += f"{base_command} mrproper && "
+    if config or use_current_config:
+        combined_command += f"{base_command} {config or 'oldconfig'} && "
+
+    if build_target:
+        targets = build_target.split(',')
+        for target in targets:
+            if target == "kernel":
+                combined_command += f"{base_command} && "
+                combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
+                combined_command += f"mkdir -p ../modules/boot && "
+                combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
+            elif target == "modules":
+                combined_command += f"{base_command} modules && "
+                combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
+            else:
+                # General case for any target, including menuconfig
+                combined_command += f"{base_command} {target} && "
+    else:
+        # If no specific target is provided, build the kernel and copy the Image
+        combined_command += f"{base_command} && "
+        combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
+        combined_command += f"mkdir -p ../modules/boot && "
+        combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion}"
+
+    # Remove any trailing '&&'
+    combined_command = combined_command.rstrip(' &&')
+
+    # Adjust permissions before running ctags to avoid permission issues
+    if generate_ctags:
+        combined_command += f" && chmod -R u+w {kernel_dir} && ctags -R -f ../tags {kernel_dir}"
+
+    # Run the combined command directly on the host
+    if dry_run:
+        print(f"[Dry-run] Would run combined command: {combined_command}")
+    else:
+        print(f"Running combined command: {combined_command}")
+        subprocess.Popen(combined_command, shell=True).wait()
+
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -49,7 +113,8 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         current_config_path = f"/builder/kernels/{kernel_name}/kernel/kernel/.config"
         zcat_command = f"zcat /proc/config.gz > {current_config_path}"
         print(f"Fetching current kernel config: {zcat_command}")
-        subprocess.run(zcat_command, shell=True, check=True)
+        if not dry_run:
+            subprocess.run(zcat_command, shell=True, check=True)
 
     # Combine mrproper (if enabled), configuration, and kernel compilation into a single Docker run command
     combined_command = ""
@@ -87,9 +152,12 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         combined_command += f" && chmod -R u+w /builder/kernels/{kernel_name}/kernel && ctags -R -f /builder/tags /builder/kernels/{kernel_name}/kernel"
 
     # Run the combined command in a single Docker container session to ensure files are preserved
-    full_command = docker_command + [combined_command]
-    print(f"Running combined command: {' '.join(full_command)}")
-    subprocess.Popen(full_command, env=env).wait()
+    if dry_run:
+        print(f"[Dry-run] Would run combined command: {' '.join(docker_command + [combined_command])}")
+    else:
+        full_command = docker_command + [combined_command]
+        print(f"Running combined command: {' '.join(full_command)}")
+        subprocess.Popen(full_command, env=env).wait()
 
 def main():
     parser = argparse.ArgumentParser(description="Kernel Builder Script")
@@ -136,6 +204,8 @@ def main():
     compile_parser.add_argument("--clean", action="store_true", help="Run mrproper to clean the kernel build directory before building")
     compile_parser.add_argument("--use-current-config", action="store_true", help="Use the current system kernel configuration for building the kernel")
     compile_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
+    compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
+    compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
     # Inspect Docker image command
     inspect_parser = subparsers.add_parser("inspect")
@@ -161,19 +231,35 @@ def main():
     elif args.command == "clone-device-tree":
         clone_device_tree(device_tree_url=args.device_tree_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "compile":
-        compile_kernel_docker(
-            kernel_name=args.kernel_name,
-            arch=args.arch,
-            toolchain_name=args.toolchain_name,
-            rpi_model=args.rpi_model,
-            config=args.config,
-            generate_ctags=args.generate_ctags,
-            build_target=args.build_target,
-            threads=args.threads,
-            clean=args.clean,
-            use_current_config=args.use_current_config,
-            localversion=args.localversion
-        )
+        if args.host_build:
+            compile_kernel_host(
+                kernel_name=args.kernel_name,
+                arch=args.arch,
+                toolchain_name=args.toolchain_name,
+                config=args.config,
+                generate_ctags=args.generate_ctags,
+                build_target=args.build_target,
+                threads=args.threads,
+                clean=args.clean,
+                use_current_config=args.use_current_config,
+                localversion=args.localversion,
+                dry_run=args.dry_run
+            )
+        else:
+            compile_kernel_docker(
+                kernel_name=args.kernel_name,
+                arch=args.arch,
+                toolchain_name=args.toolchain_name,
+                rpi_model=args.rpi_model,
+                config=args.config,
+                generate_ctags=args.generate_ctags,
+                build_target=args.build_target,
+                threads=args.threads,
+                clean=args.clean,
+                use_current_config=args.use_current_config,
+                localversion=args.localversion,
+                dry_run=args.dry_run
+            )
     elif args.command == "inspect":
         inspect_docker_image()
     elif args.command == "cleanup":
