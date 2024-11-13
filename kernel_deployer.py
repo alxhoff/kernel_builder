@@ -188,6 +188,84 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     if not dry_run:
         subprocess.run(update_fdt_command, shell=True, check=True)
 
+def locate_compiled_modules(kernel_name, target_modules):
+    """
+    Locate the compiled kernel module (.ko) files for the given list of target modules.
+    """
+    # Search in the entire kernel source including any overlays
+    kernels_dir = os.path.join("kernels", kernel_name)
+
+    compiled_modules = []
+
+    for module in target_modules:
+        # Search from the root of the kernel directory
+        find_command = f"find {kernels_dir} -type f -name {module}.ko"
+        try:
+            find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+            if find_output:
+                found_paths = find_output.splitlines()
+                compiled_modules.extend(found_paths)
+            else:
+                print(f"Warning: Module {module}.ko not found.")
+        except subprocess.CalledProcessError:
+            print(f"Warning: Could not locate compiled module for {module}. Make sure the module was built successfully.")
+
+    # Remove duplicates in case there are multiple paths (e.g., redundant overlays)
+    compiled_modules = list(set(compiled_modules))
+
+    return compiled_modules
+
+def deploy_targeted_modules(kernel_name, device_ip, user, dry_run=False):
+    target_modules_file = os.path.join("target_modules.txt")
+    if not os.path.exists(target_modules_file):
+        raise FileNotFoundError("Error: target_modules.txt not found. Please create the file with the list of modules to build.")
+
+    with open(target_modules_file, 'r') as file:
+        target_modules = [line.strip() for line in file if line.strip()]
+
+    if not target_modules:
+        raise ValueError("Error: No target modules specified in target_modules.txt.")
+
+    # Locate the compiled .ko files for the specified modules
+    compiled_modules = locate_compiled_modules(kernel_name, target_modules)
+
+    if not compiled_modules:
+        print("No compiled modules found to deploy.")
+        return
+
+    # Create a temporary archive of the compiled .ko files
+    modules_archive = "/tmp/targeted_modules.tar.gz"
+    print(f"Compressing compiled modules into {modules_archive}")
+    if not dry_run:
+        with open("/tmp/compiled_modules.txt", "w") as f:
+            for module_path in compiled_modules:
+                f.write(module_path + "\n")
+        subprocess.run(["tar", "-czf", modules_archive, "-T", "/tmp/compiled_modules.txt"], check=True)
+
+    # Copy the compressed modules archive to /tmp on the remote device
+    print(f"Copying {modules_archive} to /tmp on remote device")
+    if not dry_run:
+        subprocess.run(["scp", modules_archive, f"{user}@{device_ip}:/tmp/"], check=True)
+
+    # Extract the modules archive on the remote device
+    kernel_version = subprocess.check_output(f"ssh {user}@{device_ip} 'uname -r'", shell=True).strip().decode('utf-8')
+    extract_command = f"ssh root@{device_ip} 'mkdir -p /tmp/targeted_modules && tar -xzf /tmp/targeted_modules.tar.gz -C /tmp/targeted_modules'"
+    print(f"Extracting targeted modules on remote device: {extract_command}")
+    if not dry_run:
+        subprocess.run(extract_command, shell=True, check=True)
+
+    # Copy the extracted modules to the appropriate location under /lib/modules/<kernel_version>/
+    move_command = f"ssh root@{device_ip} 'cp /tmp/targeted_modules/*.ko /lib/modules/{kernel_version}/extra/'"
+    print(f"Moving compiled kernel modules to /lib/modules/{kernel_version}/extra on remote device: {move_command}")
+    if not dry_run:
+        subprocess.run(move_command, shell=True, check=True)
+
+    # Run depmod to refresh module dependencies
+    depmod_command = f"ssh root@{device_ip} 'depmod -a'"
+    print(f"Running depmod on the target device: {depmod_command}")
+    if not dry_run:
+        subprocess.run(depmod_command, shell=True, check=True)
+
 def main():
     parser = argparse.ArgumentParser(description="Kernel Deployer Script")
     subparsers = parser.add_subparsers(dest="command")
@@ -212,6 +290,13 @@ def main():
     deploy_jetson_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
     deploy_jetson_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
 
+    # Deploy targeted modules command
+    deploy_targeted_modules_parser = subparsers.add_parser("deploy-targeted-modules")
+    deploy_targeted_modules_parser.add_argument("--kernel-name", required=True, help="Name of the kernel subfolder to use for deployment")
+    deploy_targeted_modules_parser.add_argument("--ip", required=True, help="IP address of the target device")
+    deploy_targeted_modules_parser.add_argument("--user", required=True, help="Username for accessing the target device")
+    deploy_targeted_modules_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+
     args = parser.parse_args()
 
     # Print help if no command is provided
@@ -225,6 +310,8 @@ def main():
         deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
     elif args.command == "deploy-jetson":
         deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
+    elif args.command == "deploy-targeted-modules":
+        deploy_targeted_modules(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
 
 if __name__ == "__main__":
     main()
