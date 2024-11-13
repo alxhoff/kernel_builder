@@ -8,7 +8,7 @@
 
 # Set the base kernels directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
-KERNELS_DIR="$SCRIPT_DIR/../kernels"
+KERNELS_DIR="$SCRIPT_DIR/../../kernels"
 
 # Default values
 DRY_RUN=false

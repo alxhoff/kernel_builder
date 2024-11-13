@@ -8,7 +8,7 @@
 
 # Set up base paths and read device IP
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
-DEVICE_IP_FILE="$SCRIPT_DIR/device_ip"
+DEVICE_IP_FILE="$SCRIPT_DIR/../device_ip"
 if [ ! -f "$DEVICE_IP_FILE" ]; then
     echo "Error: Device IP file not found at $DEVICE_IP_FILE"
     exit 1
