@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Script to clean up compiled kernel modules and images across all kernels in the 'kernels' directory.
-# Usage: ./cleanup_all_kernel_builds.sh [--dry-run] [--interactive]
+# Usage: ./cleanup_all_kernel_builds.sh [--dry-run] [--interactive] [--help]
 # Arguments:
 #   --dry-run      Optional argument to simulate the cleanup without deleting anything
 #   --interactive  Optional argument to prompt for confirmation before each deletion
+#   --help         Show detailed help information with examples
 
 # Set the base kernels directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
@@ -13,6 +14,34 @@ KERNELS_DIR="$SCRIPT_DIR/../../kernels"
 # Default values
 DRY_RUN=false
 INTERACTIVE=false
+
+# Function to display help
+show_help() {
+    echo "Usage: ./cleanup_all_kernel_builds.sh [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --dry-run       Simulate the cleanup process without deleting anything."
+    echo "                  This is useful to preview what files and directories would be affected."
+    echo
+    echo "  --interactive   Prompt for confirmation before deleting each kernel version or image."
+    echo "                  The script will ask you whether to delete specific items."
+    echo
+    echo "  --help          Display this help message and exit."
+    echo
+    echo "Examples:"
+    echo "  ./cleanup_all_kernel_builds.sh"
+    echo "      Perform a cleanup of kernel builds without prompting and deletes files directly."
+    echo
+    echo "  ./cleanup_all_kernel_builds.sh --dry-run"
+    echo "      Show what would be deleted without actually deleting anything."
+    echo
+    echo "  ./cleanup_all_kernel_builds.sh --interactive"
+    echo "      Prompt for confirmation before deleting each kernel version or image."
+    echo
+    echo "  ./cleanup_all_kernel_builds.sh --dry-run --interactive"
+    echo "      Simulate the cleanup process and ask for confirmation at each step."
+    exit 0
+}
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -23,8 +52,12 @@ while [[ "$#" -gt 0 ]]; do
         --interactive)
             INTERACTIVE=true
             ;;
+        --help)
+            show_help
+            ;;
         *)
             echo "Unknown parameter: $1"
+            echo "Use --help for more information."
             exit 1
             ;;
     esac
