@@ -63,7 +63,7 @@ def locate_target_modules(kernel_name):
     return module_locations
 
 
-def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localversion=None, dry_run=False):
+def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
     module_locations = locate_target_modules(kernel_name)
 
     if not module_locations:
@@ -93,7 +93,7 @@ def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localver
             subprocess.Popen(module_command, shell=True).wait()
 
 
-def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion=None, dry_run=False):
+def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
     # Compiles targeted kernel modules using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -157,7 +157,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command, env=env).wait()
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dtb_name=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -235,7 +235,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dtb_name=None, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
