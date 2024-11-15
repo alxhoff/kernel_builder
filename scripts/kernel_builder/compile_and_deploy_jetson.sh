@@ -1,17 +1,67 @@
 #!/bin/bash
 
 # Example workflow for compiling and optionally deploying a Jetson kernel
-# Usage: ./compile_and_deploy_jetson.sh [--no-deploy] [--config <config-file>] [--localversion <version>] [--dry-run] [--threads <number>]
-# Arguments:
-#   --no-deploy     Optional argument to skip deploying the kernel to the device
-#   --config        Optional argument to specify the kernel configuration file to use
-#   --localversion  Optional argument to set a custom local version string during kernel compilation
-#   --dry-run       Optional argument to simulate the deployment process without copying anything to the Jetson device
-#   --threads       Optional argument to specify the number of threads to use during kernel compilation
+# Usage: ./compile_and_deploy_jetson.sh [OPTIONS]
+# Description:
+# This script automates the process of compiling a custom Jetson kernel and optionally deploying it to a Jetson device.
+# It first compiles the kernel, and if deployment is enabled, it deploys the compiled kernel and associated modules to the specified device.
 
-if [ "$#" -gt 6 ]; then
-  echo "Usage: $0 [--no-deploy] [--config <config-file>] [--localversion <version>] [--dry-run] [--threads <number>]"
+# Options:
+#   --help               Display this help message with examples.
+#   --no-deploy          Skip deploying the kernel to the device. Only compile the kernel.
+#   --config <file>      Specify the kernel configuration file to use during the build.
+#   --localversion <str> Set a custom local version string during kernel compilation. If not provided, a default string is generated.
+#   --dry-run            Simulate the compilation and/or deployment processes without actually executing them. Useful for debugging.
+#   --threads <number>   Specify the number of threads to use during kernel compilation for better performance.
+#
+# Examples:
+#   1. Compile and deploy the kernel to a Jetson device with a custom configuration file:
+#      ./compile_and_deploy_jetson.sh --config tegra_defconfig --localversion custom_version
+#
+#   2. Compile the kernel only (skip deployment):
+#      ./compile_and_deploy_jetson.sh --no-deploy --localversion custom_version
+#
+#   3. Compile with 4 threads and deploy to Jetson device:
+#      ./compile_and_deploy_jetson.sh --threads 4
+#
+#   4. Perform a dry-run (only print commands without executing them):
+#      ./compile_and_deploy_jetson.sh --dry-run --localversion custom_version
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: $0 [OPTIONS]"
+  echo "Try '$0 --help' for more information."
   exit 1
+fi
+
+if [[ "$1" == "--help" ]]; then
+  echo "
+  Usage: ./compile_and_deploy_jetson.sh [OPTIONS]
+  Description:
+    This script automates the process of compiling a custom Jetson kernel and optionally deploying it to a Jetson device.
+    It first compiles the kernel, and if deployment is enabled, it deploys the compiled kernel and associated modules to the specified device.
+
+  Options:
+    --help               Display this help message with examples.
+    --no-deploy          Skip deploying the kernel to the device. Only compile the kernel.
+    --config <file>      Specify the kernel configuration file to use during the build.
+    --localversion <str> Set a custom local version string during kernel compilation. If not provided, a default string is generated.
+    --dry-run            Simulate the compilation and/or deployment processes without actually executing them. Useful for debugging.
+    --threads <number>   Specify the number of threads to use during kernel compilation for better performance.
+
+  Examples:
+    1. Compile and deploy the kernel to a Jetson device with a custom configuration file:
+       ./compile_and_deploy_jetson.sh --config tegra_defconfig --localversion custom_version
+
+    2. Compile the kernel only (skip deployment):
+       ./compile_and_deploy_jetson.sh --no-deploy --localversion custom_version
+
+    3. Compile with 4 threads and deploy to Jetson device:
+       ./compile_and_deploy_jetson.sh --threads 4
+
+    4. Perform a dry-run (only print commands without executing them):
+       ./compile_and_deploy_jetson.sh --dry-run --localversion custom_version
+  "
+  exit 0
 fi
 
 # Set the script directory to be one level up from the current script's directory
