@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # Simple script to deploy a compiled kernel to a Jetson device
-# Usage: ./deploy_only_jetson.sh [--ip <device-ip>] [--user <username>] [--dry-run] [--localversion <version>]
+# Usage: ./deploy_only_jetson.sh [--ip <device-ip>] [--user <username>] [--dry-run] [--localversion <version>] [--help]
 # Arguments:
 #   [--ip <device-ip>]    The IP address of the target Jetson device (optional if device_ip file is present)
 #   [--user <username>]   The username to access the device (optional if device_username file is present)
 #   [--dry-run]           Optional argument to simulate the deployment without copying anything to the Jetson device
 #   [--localversion]      Optional argument to specify the kernel version (localversion) for deployment
+#   [--help]              Display this help message with examples
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
@@ -17,6 +18,31 @@ USERNAME="cartken"
 DEVICE_IP=""
 DRY_RUN=false
 LOCALVERSION_ARG=""
+
+# Function to display help message
+function display_help() {
+    echo "Usage: ./deploy_only_jetson.sh [OPTIONS]"
+    echo ""
+    echo "Deploy a compiled kernel to a Jetson device."
+    echo ""
+    echo "Options:"
+    echo "  --ip <device-ip>        The IP address of the target Jetson device (optional if device_ip file is present)"
+    echo "  --user <username>       The username to access the device (optional if device_username file is present)"
+    echo "  --dry-run               Simulate the deployment without copying anything to the Jetson device"
+    echo "  --localversion <version> Specify the kernel version (localversion) for deployment"
+    echo "  --help                  Display this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ./deploy_only_jetson.sh --ip 192.168.1.100 --user cartken --localversion my_kernel"
+    echo "  ./deploy_only_jetson.sh --ip 192.168.1.100 --dry-run"
+    echo "  ./deploy_only_jetson.sh --help"
+}
+
+# Check if --help is passed
+if [[ "$1" == "--help" ]]; then
+    display_help
+    exit 0
+fi
 
 # Check if device_ip file exists in the script directory
 if [ -f "$SCRIPT_DIR/device_ip" ]; then
