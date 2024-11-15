@@ -56,9 +56,8 @@ done
 
 # List unmounted disks
 echo "Available unmounted disks:"
-DISKS=($(lsblk -dno NAME | while read -r disk; do
-    mountpoint=$(lsblk -nro MOUNTPOINT "/dev/$disk" | grep -v "^$")
-    if [ -z "$mountpoint" ]; then
+DISKS=($(lsblk -dnpo NAME | while read -r disk; do
+    if [ -z "$(lsblk -nro MOUNTPOINT "$disk" | grep -v "^$")" ]; then
         echo "$disk"
     fi
 done))
@@ -69,7 +68,10 @@ if [ ${#DISKS[@]} -eq 0 ]; then
 fi
 
 for i in "${!DISKS[@]}"; do
-    echo "$((i + 1)): /dev/${DISKS[i]}"
+    SIZE=$(lsblk -dnro SIZE "${DISKS[$i]}")
+    PARTITIONS=$(lsblk -no NAME,SIZE,MOUNTPOINT "${DISKS[$i]}" | tail -n +2)
+    echo "$((i + 1)): ${DISKS[$i]} ($SIZE)"
+    echo "$PARTITIONS"
 done
 
 # Prompt user to select a disk by index
@@ -81,7 +83,7 @@ if [ -z "${DISKS[$DISK_INDEX]}" ]; then
     exit 1
 fi
 
-DEVICE="/dev/${DISKS[$DISK_INDEX]}"
+DEVICE="${DISKS[$DISK_INDEX]}"
 echo "Selected disk: $DEVICE"
 
 # Ask user for image filename
