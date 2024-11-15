@@ -144,8 +144,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command, env=env).wait()
 
-
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dtb_paths=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -182,6 +181,9 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
                 combined_command += f"mkdir -p ../modules/boot && "
                 combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
+                if dtb_paths:
+                    for dtb in dtb_paths:
+                        combined_command += f"cp {dtb} ../modules/boot/ && "
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
@@ -194,6 +196,9 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
         combined_command += f"mkdir -p ../modules/boot && "
         combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion}"
+        if dtb_paths:
+            for dtb in dtb_paths:
+                combined_command += f" && cp {dtb} ../modules/boot/"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
@@ -209,7 +214,8 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dry_run=False):
+
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dtb_paths=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -270,6 +276,9 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
                 combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
                 combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion} && "
+                if dtb_paths:
+                    for dtb in dtb_paths:
+                        combined_command += f"cp {dtb} /builder/kernels/{kernel_name}/modules/boot/ && "
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
@@ -282,6 +291,9 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
         combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
         combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion}"
+        if dtb_paths:
+            for dtb in dtb_paths:
+                combined_command += f" && cp {dtb} /builder/kernels/{kernel_name}/modules/boot/"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
@@ -343,6 +355,7 @@ def main():
     compile_parser.add_argument("--clean", action="store_true", help="Run mrproper to clean the kernel build directory before building")
     compile_parser.add_argument("--use-current-config", action="store_true", help="Use the current system kernel configuration for building the kernel")
     compile_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
+    compile_parser.add_argument("--dtb-paths", nargs='+', help="Paths to the DTB files to copy alongside the kernel image")
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
@@ -390,6 +403,7 @@ def main():
                 clean=args.clean,
                 use_current_config=args.use_current_config,
                 localversion=args.localversion,
+                dtb_paths=args.dtb_paths,
                 dry_run=args.dry_run
             )
         else:
@@ -405,6 +419,7 @@ def main():
                 clean=args.clean,
                 use_current_config=args.use_current_config,
                 localversion=args.localversion,
+                dtb_paths=args.dtb_paths,
                 dry_run=args.dry_run
             )
     elif args.command == "compile-target-modules":
