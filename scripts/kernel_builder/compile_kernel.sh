@@ -1,11 +1,22 @@
 #!/bin/bash
 
-# Example workflow for compiling a Jetson kernel and specifying the DTB file
-# Usage: ./compile_jetson_kernel.sh [OPTIONS]
+# General workflow for compiling a kernel, specifying the kernel to be built.
+# Usage: ./compile_kernel.sh [KERNEL_NAME] [OPTIONS]
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
+
+# Ensure kernel name is provided
+if [ -z "$1" ]; then
+  echo "Error: Kernel name must be provided as the first argument."
+  echo "Usage: ./compile_kernel.sh [KERNEL_NAME] [OPTIONS]"
+  echo "Use --help for more information."
+  exit 1
+fi
+
+KERNEL_NAME="$1"
+shift # Shift arguments to parse the rest of the options
 
 # Initialize arguments
 CONFIG_ARG=""
@@ -17,7 +28,10 @@ DRY_RUN_ARG=""
 
 # Function to display help message
 show_help() {
-    echo "Usage: ./compile_jetson_kernel.sh [OPTIONS]"
+    echo "Usage: ./compile_kernel.sh [KERNEL_NAME] [OPTIONS]"
+    echo ""
+    echo "Arguments:"
+    echo "  KERNEL_NAME                    Specify the name of the kernel to be built (e.g., 'jetson')."
     echo ""
     echo "Options:"
     echo "  --config <config-file>         Specify the kernel configuration file to use (e.g., defconfig, tegra_defconfig)."
@@ -29,17 +43,17 @@ show_help() {
     echo "  --help                         Display this help message and exit."
     echo ""
     echo "Examples:"
-    echo "  Compile with default settings:"
-    echo "    ./compile_jetson_kernel.sh"
+    echo "  Compile a kernel named 'jetson' with default settings:"
+    echo "    ./compile_kernel.sh jetson"
     echo ""
-    echo "  Compile using a specific kernel config and local version:"
-    echo "    ./compile_jetson_kernel.sh --config tegra_defconfig --localversion custom_version"
+    echo "  Compile a kernel using a specific kernel config and local version:"
+    echo "    ./compile_kernel.sh jetson --config tegra_defconfig --localversion custom_version"
     echo ""
-    echo "  Compile with 8 threads and specify a DTB file:"
-    echo "    ./compile_jetson_kernel.sh --threads 8 --dtb-name tegra234-p3701-0000-p3737-0000.dtb"
+    echo "  Compile a kernel with 8 threads and specify a DTB file:"
+    echo "    ./compile_kernel.sh jetson --threads 8 --dtb-name tegra234-p3701-0000-p3737-0000.dtb"
     echo ""
     echo "  Compile directly on the host system instead of using Docker:"
-    echo "    ./compile_jetson_kernel.sh --host-build"
+    echo "    ./compile_kernel.sh jetson --host-build"
     echo ""
     exit 0
 }
@@ -96,13 +110,14 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     *)
       echo "Unknown parameter: $1"
+      echo "Use --help for more information."
       exit 1
       ;;
   esac
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG"
+COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name \"$KERNEL_NAME\" --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"
