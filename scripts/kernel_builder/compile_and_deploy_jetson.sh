@@ -66,8 +66,8 @@ fi
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-KERNEL_BUILDER_SCRIPT="$SCRIPT_DIR/docker/compile_jetson_kernel.sh"
-DEPLOY_SCRIPT="$SCRIPT_DIR/docker/deploy_only_jetson.sh"
+KERNEL_BUILDER_SCRIPT="$SCRIPT_DIR/kernel_builder/compile_jetson_kernel.sh"
+DEPLOY_SCRIPT="$SCRIPT_DIR/kernel_builder/deploy_only_jetson.sh"
 
 # Check arguments
 NO_DEPLOY=false

@@ -70,7 +70,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
 
     # Define paths for deployment
     kernel_image = os.path.join(modules_base_dir, "boot", f"Image.{localversion}") if localversion else os.path.join(modules_base_dir, "boot", "Image")
-    dtb_file = os.path.join("kernels", kernel_name, "kernel", "kernel", "arch", "arm64", "boot", "dts", "nvidia", "tegra234-p3701-0000-p3737-0000.dtb")
+    dtb_file = os.path.join(modules_base_dir, "boot", f"tegra234-p3701-0000-p3737-0000{localversion}.dtb") if localversion else os.path.join(modules_base_dir, "boot", "tegra234-p3701-0000-p3737-0000.dtb")
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
 
     # Ensure required files exist
@@ -124,7 +124,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(move_command, shell=True, check=True)
 
     # Move DTB file to /boot/dtb as root
-    move_command = f"ssh root@{device_ip} 'mv /tmp/{os.path.basename(dtb_file)} /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb'"
+    move_command = f"ssh root@{device_ip} 'mv /tmp/{os.path.basename(dtb_file)} /boot/dtb/{os.path.basename(dtb_file)}'"
     print(f"Moving DTB file to /boot/dtb on remote device: {move_command}")
     if not dry_run:
         subprocess.run(move_command, shell=True, check=True)
@@ -155,7 +155,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(backup_extlinux_conf_command, shell=True, check=True)
 
     # Update extlinux.conf to use the new kernel
-    new_kernel_entry = f"      LINUX /boot/Image.{localversion if localversion else 'Image'}"
+    new_kernel_entry = f"      LINUX /boot/Image.{localversion if localversion else ''}"
     update_command = (
         f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*LINUX .*|{new_kernel_entry}|' {extlinux_conf_path}\""
     )
@@ -180,7 +180,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(update_initrd_command, shell=True, check=True)
 
     # Update extlinux.conf to use the new FDT (Flattened Device Tree)
-    new_fdt_entry = f"      FDT /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+    new_fdt_entry = f"      FDT /boot/dtb/{os.path.basename(dtb_file)}"
     update_fdt_command = (
         f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*FDT .*|{new_fdt_entry}|' {extlinux_conf_path}\""
     )
