@@ -6,19 +6,18 @@ import subprocess
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
-def find_dtb_file(kernel_name, dtb_name):
-    kernels_dir = os.path.join("kernels")
-    kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel")
-
-    find_command = f"find {kernel_dir} -type f -name {dtb_name}"
+def locate_dtb_file(kernel_dir, dtb_name):
+    # Search for the specified DTB file within the kernel directory
+    find_command = f"find {kernel_dir} -name {dtb_name}"
+    print(f"Running DTB search command: {find_command}")  # Debugging print
     try:
-        dtb_path = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
-        if dtb_path:
-            return dtb_path
-        else:
-            raise FileNotFoundError(f"DTB file '{dtb_name}' not found.")
+        find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+        if find_output:
+            print(f"DTB file found at: {find_output}")  # Debugging print
+            return find_output.splitlines()[0]  # Return the first match found
     except subprocess.CalledProcessError:
-        raise FileNotFoundError(f"DTB file '{dtb_name}' not found.")
+        print(f"Warning: DTB file {dtb_name} not found in {kernel_dir}.")  # Better logging
+    return None
 
 def locate_target_modules(kernel_name):
     # Locate target modules based on their `.c` files.
@@ -194,11 +193,15 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                 combined_command += f"{base_command} && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
                 combined_command += f"mkdir -p ../modules/boot && "
-                combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
+                combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image{localversion} && "
+                # Copy the DTB file with modified filename to include localversion
                 if dtb_name:
-                    dtb_source_path = os.path.join(kernel_dir, "arch", arch, "boot", "dts", "nvidia", dtb_name)
-                    dtb_target_path = os.path.join("..", "modules", "boot", dtb_name)
-                    combined_command += f"cp {dtb_source_path} {dtb_target_path} && "
+                    dtb_path = locate_dtb_file(kernel_dir, dtb_name)
+                    if dtb_path:
+                        new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
+                        combined_command += f"cp {dtb_path} ../modules/boot/{new_dtb_name} && "
+                    else:
+                        print(f"Warning: DTB file {dtb_name} not found in the kernel directory.")
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
@@ -210,11 +213,13 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         combined_command += f"{base_command} && "
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
         combined_command += f"mkdir -p ../modules/boot && "
-        combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
+        combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image{localversion} && "
+        # Copy the DTB file with modified filename to include localversion
         if dtb_name:
-            dtb_source_path = os.path.join(kernel_dir, "arch", arch, "boot", "dts", "nvidia", dtb_name)
-            dtb_target_path = os.path.join("..", "modules", "boot", dtb_name)
-            combined_command += f"cp {dtb_source_path} {dtb_target_path}"
+            dtb_path = locate_dtb_file(kernel_dir, dtb_name)
+            if dtb_path:
+                new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
+                combined_command += f"cp {dtb_path} ../modules/boot/{new_dtb_name}"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
@@ -229,7 +234,6 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
     else:
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
-
 
 def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion=None, dtb_name=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
@@ -291,11 +295,15 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 combined_command += f"{base_command} && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
                 combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion} && "
+                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image{localversion} && "
+                # Copy the DTB file with modified filename to include localversion
                 if dtb_name:
-                    dtb_source_path = f"/builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/dts/nvidia/{dtb_name}"
-                    dtb_target_path = f"/builder/kernels/{kernel_name}/modules/boot/{dtb_name}"
-                    combined_command += f"cp {dtb_source_path} {dtb_target_path} && "
+                    dtb_path = locate_dtb_file(f"/builder/kernels/{kernel_name}/kernel/kernel", dtb_name)
+                    if dtb_path:
+                        new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
+                        combined_command += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name} && "
+                    else:
+                        print(f"Warning: DTB file {dtb_name} not found in the kernel directory.")
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
@@ -307,11 +315,13 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         combined_command += f"{base_command} && "
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
         combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion} && "
+        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image{localversion} && "
+        # Copy the DTB file with modified filename to include localversion
         if dtb_name:
-            dtb_source_path = f"/builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/dts/nvidia/{dtb_name}"
-            dtb_target_path = f"/builder/kernels/{kernel_name}/modules/boot/{dtb_name}"
-            combined_command += f"cp {dtb_source_path} {dtb_target_path}"
+            dtb_path = locate_dtb_file(f"kernels/{kernel_name}/kernel/kernel", dtb_name)
+            if dtb_path:
+                new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
+                combined_command += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}"
 
     # Remove any trailing '&&'
     combined_command = combined_command.rstrip(' &&')
