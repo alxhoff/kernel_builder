@@ -1,14 +1,34 @@
 #!/bin/bash
 
 # Script to clean up kernel module folders, kernel images, and initrd files on a target Jetson device.
-# Usage: ./cleanup_jetson_kernel.sh [--dry-run] [--interactive]
+# Usage: ./cleanup_jetson_kernel.sh [--help] [--dry-run] [--interactive]
+#
 # Arguments:
-#   --dry-run      Optional argument to simulate the cleanup without deleting anything
-#   --interactive  Optional argument to prompt for confirmation before each deletion
+#   --help          Show this help message and exit.
+#   --dry-run       Optional argument to simulate the cleanup without deleting anything.
+#   --interactive   Optional argument to prompt for confirmation before each deletion.
+#
+# Description:
+# This script connects to a Jetson device via SSH and performs cleanup of old kernel images,
+# module folders, and initrd files. It is useful when multiple kernels have been deployed,
+# and you need to remove older versions to free up space and keep the system organized.
+# By default, the current kernel (as determined from extlinux.conf) is preserved, and only
+# non-default kernel files are removed.
+#
+# Example Usage:
+# 1. To perform a cleanup without deleting anything:
+#    ./cleanup_jetson_kernel.sh --dry-run
+#
+# 2. To perform a cleanup and prompt for confirmation before deleting each file:
+#    ./cleanup_jetson_kernel.sh --interactive
+#
+# 3. To execute a full cleanup without any prompts or simulations:
+#    ./cleanup_jetson_kernel.sh
 
 # Set up base paths and read device IP
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
 DEVICE_IP_FILE="$SCRIPT_DIR/../device_ip"
+
 if [ ! -f "$DEVICE_IP_FILE" ]; then
     echo "Error: Device IP file not found at $DEVICE_IP_FILE"
     exit 1
@@ -23,6 +43,30 @@ INTERACTIVE=false
 # Parse script arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        --help)
+            echo "Usage: ./cleanup_jetson_kernel.sh [--help] [--dry-run] [--interactive]"
+            echo
+            echo "Arguments:"
+            echo "  --help          Show this help message and exit."
+            echo "  --dry-run       Optional argument to simulate the cleanup without deleting anything."
+            echo "  --interactive   Optional argument to prompt for confirmation before each deletion."
+            echo
+            echo "Description:"
+            echo "  This script connects to a Jetson device via SSH and performs cleanup of old kernel images,"
+            echo "  module folders, and initrd files. It preserves the current kernel as per extlinux.conf"
+            echo "  and removes only non-default kernel files."
+            echo
+            echo "Example Usage:"
+            echo "  1. To perform a cleanup without deleting anything:"
+            echo "     ./cleanup_jetson_kernel.sh --dry-run"
+            echo
+            echo "  2. To perform a cleanup and prompt for confirmation before deleting each file:"
+            echo "     ./cleanup_jetson_kernel.sh --interactive"
+            echo
+            echo "  3. To execute a full cleanup without any prompts or simulations:"
+            echo "     ./cleanup_jetson_kernel.sh"
+            exit 0
+            ;;
         --dry-run)
             DRY_RUN=true
             ;;
