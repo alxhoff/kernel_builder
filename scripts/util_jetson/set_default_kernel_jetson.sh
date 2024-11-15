@@ -217,5 +217,18 @@ else
     echo "Default kernel updated successfully to version: $SELECTED_VERSION"
 fi
 
+# Ask the user if they want to reboot the device
+read -p "Do you want to reboot the device now to apply changes? (default: no) [y/N]: " REBOOT_DEVICE
+if [[ "$REBOOT_DEVICE" =~ ^[yY]$ ]]; then
+    if [ "$DRY_RUN" == true ]; then
+        echo "[Dry-run] Would run: ssh root@$DEVICE_IP 'reboot'"
+    else
+        echo "Rebooting the device..."
+        ssh root@$DEVICE_IP "reboot"
+    fi
+else
+    echo "Reboot canceled. The changes will take effect on the next reboot."
+fi
+
 exit 0
 
