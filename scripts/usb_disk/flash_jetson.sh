@@ -185,7 +185,7 @@ echo "To put the Jetson into recovery mode, hold the reset button for 5 seconds 
 read -p "Press Enter to continue after the Jetson is in recovery mode."
 
 echo "Using external device: $EXTERNAL_DEVICE"
-sudo ./flash.sh -r --no-systemimg jetson-agx-orin-devkit "$EXTERNAL_DEVICE" || {
+sudo ./flash.sh -r -c bootloader/t186ref/cfg/flash_t234_qspi.xml --no-systemimg jetson-agx-orin-devkit "$EXTERNAL_DEVICE" || {
   echo "Bootloader flash failed. Exiting."
   exit 1
 }
