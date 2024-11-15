@@ -193,7 +193,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                 combined_command += f"{base_command} && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
                 combined_command += f"mkdir -p ../modules/boot && "
-                combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image{localversion} && "
+                combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
                 # Copy the DTB file with modified filename to include localversion
                 if dtb_name:
                     dtb_path = locate_dtb_file(kernel_dir, dtb_name)
@@ -213,7 +213,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         combined_command += f"{base_command} && "
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
         combined_command += f"mkdir -p ../modules/boot && "
-        combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image{localversion} && "
+         # Conditional logic for the kernel image filename
+        image_filename = f"Image.{localversion}" if localversion else "Image"
+        combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/{image_filename} && "
+
         # Copy the DTB file with modified filename to include localversion
         if dtb_name:
             dtb_path = locate_dtb_file(kernel_dir, dtb_name)
@@ -295,7 +298,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
                 combined_command += f"{base_command} && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
                 combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image{localversion} && "
+                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion} && "
                 # Copy the DTB file with modified filename to include localversion
                 if dtb_name:
                     dtb_path = locate_dtb_file(f"/builder/kernels/{kernel_name}/kernel/kernel", dtb_name)
@@ -315,7 +318,9 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         combined_command += f"{base_command} && "
         combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
         combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image{localversion} && "
+        image_filename = f"Image.{localversion}" if localversion else "Image"
+        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/{image_filename} && "
+
         # Copy the DTB file with modified filename to include localversion
         if dtb_name:
             dtb_path = locate_dtb_file(f"kernels/{kernel_name}/kernel/kernel", dtb_name)
