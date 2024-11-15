@@ -1,186 +1,239 @@
 #!/bin/bash
 
-# Usage: ./setup_function_graph_tracing.sh [<device-ip>] [--start-trace] [--stop-trace] [--duration <seconds>] [--dry-run] [--help]
+# Usage: ./setup_function_graph_tracing.sh [<device-ip>] [--start-trace] [--stop-trace] [--add-filter <function>] [--remove-filter <function>] [--list-filters] [--clear-filters] [--trace-single-function <module> <function>] [--trace-all-functions <module>] [--trace-gpio] [--enable-boot-trace] [--disable-boot-trace] [--duration <seconds>] [--dry-run] [--help]
 # Options:
-#   <device-ip>       The IP address of the remote Jetson device (required unless device_ip file is present).
-#   --start-trace     Starts function graph tracing.
-#   --stop-trace      Stops function graph tracing.
-#   --duration <sec>  Runs the trace for a specified duration before stopping automatically.
-#   --dry-run         Simulate the operations without making actual changes.
-#   --help            Shows this help message with verbose explanation of each step.
+#   <device-ip>                The IP address of the remote device (required unless device_ip file is present).
+#   --start-trace              Starts function graph tracing.
+#   --stop-trace               Stops function graph tracing.
+#   --add-filter <func>        Adds a function to the ftrace filter.
+#   --remove-filter <func>     Removes a function from the ftrace filter.
+#   --list-filters             Lists all currently active filters.
+#   --clear-filters            Clears all filters.
+#   --trace-single-function    Traces a single function from a specified module.
+#   --trace-all-functions      Traces all functions from a specified module.
+#   --trace-gpio               Interactive workflow for tracing GPIO operations.
+#   --enable-boot-trace        Enables function graph tracing during boot.
+#   --disable-boot-trace       Disables function graph tracing during boot.
+#   --duration <seconds>       Traces for a specified duration, then stops automatically.
+#   --dry-run                  Simulate the operations without making actual changes.
+#   --help                     Shows this help message.
 
-# Extended Help: If --help is provided, a detailed description of each feature will be provided
-if [[ "$1" == "--help" ]]; then
+show_help() {
   cat << EOF
-
-This script sets up and manages function graph tracing on a Linux system with ftrace enabled (e.g., on a Jetson device).
-Function graph tracing is a powerful way to see what functions are being called in the kernel, along with their entry
-and exit points. This can help debug kernel performance issues or verify that certain kernel functions are executed.
-
-Prerequisites:
-  - Root permissions are required to write into the tracefs (ftrace) system.
-  - The kernel must be compiled with CONFIG_FTRACE and CONFIG_FUNCTION_GRAPH_TRACER enabled.
-  - SSH access to the target device is required if using the script remotely.
-
-Usage:
-  ./setup_function_graph_tracing.sh [<device-ip>] [--start-trace] [--stop-trace] [--duration <seconds>] [--dry-run] [--help]
+This script sets up and manages function graph tracing on a Linux system with ftrace enabled.
 
 Options:
-  <device-ip>       The IP address of the remote Jetson device (required unless device_ip file is present).
-  --start-trace     Starts function graph tracing.
-  --stop-trace      Stops function graph tracing.
-  --duration <sec>  Runs the trace for a specified duration before stopping automatically.
-  --dry-run         Simulate the operations without making actual changes.
-  --help            Shows this help message with verbose explanation of each step.
+  <device-ip>                The IP address of the remote device (required unless device_ip file is present).
+  --start-trace              Starts function graph tracing.
+  --stop-trace               Stops function graph tracing.
+  --add-filter <func>        Adds a function to the ftrace filter.
+  --remove-filter <func>     Removes a function from the ftrace filter.
+  --list-filters             Lists all currently active filters.
+  --clear-filters            Clears all filters.
+  --trace-single-function    Traces a single function from a specified module.
+  --trace-all-functions      Traces all functions from a specified module.
+  --trace-gpio               Interactive workflow for tracing GPIO operations.
+  --enable-boot-trace        Enables function graph tracing during boot.
+  --disable-boot-trace       Disables function graph tracing during boot.
+  --duration <seconds>       Traces for a specified duration, then stops automatically.
+  --dry-run                  Simulate the operations without making actual changes.
+  --help                     Shows this help message.
 
-Examples of Use:
-1. **Start tracing and stop manually**:
-   ```bash
-   sudo ./setup_function_graph_tracing.sh <device-ip> --start-trace
-   ```
-   This will start function graph tracing and keep it running. You can then stop the trace by running:
-   ```bash
-   sudo ./setup_function_graph_tracing.sh <device-ip> --stop-trace
-   ```
+Example Workflows:
+-----------------
 
-2. **Start tracing for a fixed duration**:
-   ```bash
-   sudo ./setup_function_graph_tracing.sh <device-ip> --start-trace --duration 10
-   ```
-   This will run the tracing for 10 seconds and then stop automatically, after which you can check the output.
+1. **Start and Stop Tracing Manually**:
+   Start tracing and leave it running:
+   ./setup_function_graph_tracing.sh <device-ip> --start-trace
+   Perform your kernel interactions, then stop tracing:
+   ./setup_function_graph_tracing.sh <device-ip> --stop-trace
 
-3. **Stop tracing and output the results**:
-   If tracing is already running, you can stop it and see the trace by executing:
-   ```bash
-   sudo ./setup_function_graph_tracing.sh <device-ip> --stop-trace
-   ```
+2. **Trace for a Specific Duration**:
+   Start tracing and stop automatically after 10 seconds:
+   ./setup_function_graph_tracing.sh <device-ip> --start-trace --duration 10
 
-4. **View help information**:
-   To understand the script's options:
-   ```bash
-   ./setup_function_graph_tracing.sh --help
-   ```
+3. **Filter Specific Functions**:
+   Add a filter for specific functions:
+   ./setup_function_graph_tracing.sh <device-ip> --add-filter my_function
+   List active filters:
+   ./setup_function_graph_tracing.sh <device-ip> --list-filters
+   Remove a filter:
+   ./setup_function_graph_tracing.sh <device-ip> --remove-filter my_function
+   Clear all filters:
+   ./setup_function_graph_tracing.sh <device-ip> --clear-filters
 
-5. **Simulate operations without making changes (dry-run)**:
-   To simulate the script without applying any changes, use the --dry-run flag. For example:
-   ```bash
-   sudo ./setup_function_graph_tracing.sh <device-ip> --start-trace --dry-run
-   ```
+4. **Trace a Single Function in a Module**:
+   Trace a specific function `my_function` from the module `my_module`:
+   ./setup_function_graph_tracing.sh <device-ip> --trace-single-function my_module my_function
 
+5. **Trace All Functions in a Module**:
+   Trace all functions from the module `my_module`:
+   ./setup_function_graph_tracing.sh <device-ip> --trace-all-functions my_module
+
+6. **Interactive GPIO Tracing**:
+   Perform GPIO-related tracing interactively:
+   ./setup_function_graph_tracing.sh <device-ip> --trace-gpio
+   This will:
+     - Trace GPIO interactions.
+     - Export a GPIO pin, set its direction, and toggle its value.
+     - Save the trace log to ./trace_log_gpio.txt.
+
+7. **Enable Boot-Time Tracing**:
+   Enable function graph tracing during boot:
+   ./setup_function_graph_tracing.sh <device-ip> --enable-boot-trace
+   Reboot the device for the changes to take effect.
+
+8. **Disable Boot-Time Tracing**:
+   Disable function graph tracing during boot:
+   ./setup_function_graph_tracing.sh <device-ip> --disable-boot-trace
+   Reboot the device to stop tracing during boot.
+
+9. **Simulate Operations with Dry-Run**:
+   Test the script without making actual changes:
+   ./setup_function_graph_tracing.sh <device-ip> --start-trace --dry-run
 EOF
-  exit 0
-fi
+}
 
-# Set the script directory and device IP
+# Get the device IP
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-# Check if device_ip file exists
+
 if [ -f "$SCRIPT_DIR/device_ip" ]; then
   DEVICE_IP=$(cat "$SCRIPT_DIR/device_ip")
 else
   if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 [<device-ip>] [<username>]"
+    echo "Usage: $0 <device-ip> [options]"
     exit 1
   fi
   DEVICE_IP=$1
+  shift
 fi
+
+TRACE_DIR="/sys/kernel/debug/tracing"
+BOOT_CONFIG_FILE="/boot/extlinux/extlinux.conf"
 USERNAME="root"
 
-# Verify root privileges since the tracing requires it.
-if [ "$EUID" -ne 0 ]; then
-  echo "This script must be run as root. Please run it again with sudo."
-  exit 1
-fi
-
-# Base directory for tracing on the remote device
-TRACE_DIR="/sys/kernel/debug/tracing"
-
-# Ensure tracing directory exists on remote device
-if ! ssh "$USERNAME@$DEVICE_IP" "test -d $TRACE_DIR"; then
-  echo "Error: Tracefs directory '$TRACE_DIR' does not exist on remote device. Make sure the kernel is configured with tracing support."
-  exit 1
-fi
-
 # Parse Arguments
-START_TRACE=false
-STOP_TRACE=false
+ACTION=""
+FILTER_FUNCTION=""
+MODULE_NAME=""
+GPIO_PIN="507"  # Default GPIO pin for GPIO tracing workflow
 DURATION=0
 DRY_RUN=false
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in
-    --start-trace)
-      START_TRACE=true
-      ;;
-    --stop-trace)
-      STOP_TRACE=true
-      ;;
-    --duration)
-      if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
-        DURATION=$2
-        shift
-      else
-        echo "Error: --duration requires a positive integer value."
-        exit 1
-      fi
-      ;;
-    --dry-run)
-      DRY_RUN=true
-      ;;
-    *)
-      echo "Unknown parameter: $1"
-      exit 1
-      ;;
+    --start-trace) ACTION="start-trace" ;;
+    --stop-trace) ACTION="stop-trace" ;;
+    --add-filter) ACTION="add-filter"; FILTER_FUNCTION="$2"; shift ;;
+    --remove-filter) ACTION="remove-filter"; FILTER_FUNCTION="$2"; shift ;;
+    --list-filters) ACTION="list-filters" ;;
+    --clear-filters) ACTION="clear-filters" ;;
+    --trace-single-function) ACTION="trace-single-function"; MODULE_NAME="$2"; FILTER_FUNCTION="$3"; shift 2 ;;
+    --trace-all-functions) ACTION="trace-all-functions"; MODULE_NAME="$2"; shift ;;
+    --trace-gpio) ACTION="trace-gpio" ;;
+    --enable-boot-trace) ACTION="enable-boot-trace" ;;
+    --disable-boot-trace) ACTION="disable-boot-trace" ;;
+    --duration) DURATION=$2; shift ;;
+    --dry-run) DRY_RUN=true ;;
+    --help) show_help; exit 0 ;;
+    *) echo "Unknown argument: $1"; show_help; exit 1 ;;
   esac
   shift
 done
 
-# Start Function Graph Tracing
-if [ "$START_TRACE" == true ]; then
-  echo "Setting up function graph tracing on remote device $DEVICE_IP..."
-
-  if [ "$DRY_RUN" == true ]; then
-    echo "[Dry-run] Would enable function graph tracer on remote device."
-    echo "[Dry-run] Would set tracing on to 1 on remote device."
-  else
-    # Enable function graph tracer on the remote device
-    ssh "$USERNAME@$DEVICE_IP" "echo 'function_graph' > $TRACE_DIR/current_tracer"
-    echo "Enabled function graph tracer on remote device."
-
-    # Set options for verbose output and start tracing
-    ssh "$USERNAME@$DEVICE_IP" "echo 1 > $TRACE_DIR/tracing_on"
-    echo "Tracing is now ON on remote device."
-  fi
-
-  # If duration is provided, automatically stop tracing after the specified time
+# Functions for tracing actions
+start_trace() {
+  echo "Starting function graph tracing..."
+  ssh "$USERNAME@$DEVICE_IP" "echo 'function_graph' > $TRACE_DIR/current_tracer && echo 1 > $TRACE_DIR/tracing_on"
   if [ "$DURATION" -gt 0 ]; then
-    echo "Recording trace for $DURATION seconds on remote device..."
-    if [ "$DRY_RUN" == false ]; then
-      sleep "$DURATION"
-      ssh "$USERNAME@$DEVICE_IP" "echo 0 > $TRACE_DIR/tracing_on"
-      echo "Tracing has been stopped after $DURATION seconds on remote device."
-    else
-      echo "[Dry-run] Would sleep for $DURATION seconds and then stop tracing."
-    fi
-  else
-    echo "Tracing is running on remote device. Use --stop-trace to stop it manually."
+    echo "Tracing for $DURATION seconds..."
+    sleep "$DURATION"
+    stop_trace
   fi
-fi
+}
 
-# Stop Function Graph Tracing
-if [ "$STOP_TRACE" == true ]; then
-  echo "Stopping function graph tracing on remote device $DEVICE_IP..."
+stop_trace() {
+  echo "Stopping tracing and fetching logs..."
+  ssh "$USERNAME@$DEVICE_IP" "echo 0 > $TRACE_DIR/tracing_on"
+  ssh "$USERNAME@$DEVICE_IP" "cat $TRACE_DIR/trace" > ./trace_log.txt
+  echo "Trace log saved as ./trace_log.txt"
+}
 
-  if [ "$DRY_RUN" == true ]; then
-    echo "[Dry-run] Would disable tracing on remote device."
-    echo "[Dry-run] Would output the trace log from remote device."
-  else
-    # Disable tracing on the remote device
-    ssh "$USERNAME@$DEVICE_IP" "echo 0 > $TRACE_DIR/tracing_on"
-    echo "Tracing is now OFF on remote device."
+enable_boot_trace() {
+  echo "Enabling function graph tracing during boot..."
+  ssh "$USERNAME@$DEVICE_IP" "sed -i '/^APPEND /s/$/ ftrace=function_graph/' $BOOT_CONFIG_FILE"
+  echo "Boot-time tracing enabled. Reboot the device for changes to take effect."
+}
 
-    # Output the trace results from the remote device
-    echo "Outputting the trace log from remote device $DEVICE_IP:"
-    ssh "$USERNAME@$DEVICE_IP" "cat $TRACE_DIR/trace"
-  fi
-fi
+disable_boot_trace() {
+  echo "Disabling function graph tracing during boot..."
+  ssh "$USERNAME@$DEVICE_IP" "sed -i '/ftrace=function_graph/d' $BOOT_CONFIG_FILE"
+  echo "Boot-time tracing disabled. Reboot the device for changes to take effect."
+}
+
+add_filter() {
+  echo "Adding function '$FILTER_FUNCTION' to trace filter..."
+  ssh "$USERNAME@$DEVICE_IP" "echo '$FILTER_FUNCTION' > $TRACE_DIR/set_ftrace_filter"
+}
+
+remove_filter() {
+  echo "Removing function '$FILTER_FUNCTION' from trace filter..."
+  ssh "$USERNAME@$DEVICE_IP" "sed -i '/^$FILTER_FUNCTION\$/d' $TRACE_DIR/set_ftrace_filter"
+}
+
+list_filters() {
+  echo "Listing active trace filters..."
+  ssh "$USERNAME@$DEVICE_IP" "cat $TRACE_DIR/set_ftrace_filter"
+}
+
+clear_filters() {
+  echo "Clearing all trace filters..."
+  ssh "$USERNAME@$DEVICE_IP" "echo > $TRACE_DIR/set_ftrace_filter"
+}
+
+trace_single_function() {
+  echo "Tracing single function '$FILTER_FUNCTION' from module '$MODULE_NAME'..."
+  ssh "$USERNAME@$DEVICE_IP" "echo '$FILTER_FUNCTION' > $TRACE_DIR/set_ftrace_filter"
+  start_trace
+}
+
+trace_all_functions() {
+  echo "Tracing all functions in module '$MODULE_NAME'..."
+  ssh "$USERNAME@$DEVICE_IP" "echo '${MODULE_NAME}:*' > $TRACE_DIR/set_ftrace_filter"
+  start_trace
+}
+
+trace_gpio() {
+  echo "Interactive GPIO tracing workflow..."
+  ssh "$USERNAME@$DEVICE_IP" <<EOF
+    echo 'gpio_request' > $TRACE_DIR/set_ftrace_filter
+    echo 'gpio_direction_output' >> $TRACE_DIR/set_ftrace_filter
+    echo 'gpio_set_value' >> $TRACE_DIR/set_ftrace_filter
+    echo 'function_graph' > $TRACE_DIR/current_tracer
+    echo 1 > $TRACE_DIR/tracing_on
+    echo $GPIO_PIN > /sys/class/gpio/export
+    echo out > /sys/class/gpio/gpio$GPIO_PIN/direction
+    echo 1 > /sys/class/gpio/gpio$GPIO_PIN/value
+    echo 0 > /sys/class/gpio/gpio$GPIO_PIN/value
+    echo 0 > $TRACE_DIR/tracing_on
+EOF
+  ssh "$USERNAME@$DEVICE_IP" "cat $TRACE_DIR/trace" > ./trace_log_gpio.txt
+  echo "Trace log saved as ./trace_log_gpio.txt"
+}
+
+# Execute the selected action
+case $ACTION in
+  start-trace) start_trace ;;
+  stop-trace) stop_trace ;;
+  add-filter) add_filter ;;
+  remove-filter) remove_filter ;;
+  list-filters) list_filters ;;
+  clear-filters) clear_filters ;;
+  trace-single-function) trace_single_function ;;
+  trace-all-functions) trace_all_functions ;;
+  trace-gpio) trace_gpio ;;
+  enable-boot-trace) enable_boot_trace ;;
+  disable-boot-trace) disable_boot_trace ;;
+  *) echo "Invalid or no action specified."; show_help; exit 1 ;;
+esac
 
