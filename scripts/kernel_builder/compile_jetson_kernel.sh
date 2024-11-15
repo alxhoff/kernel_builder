@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Example workflow for compiling a Jetson kernel
-# Usage: ./compile_jetson_kernel.sh [--config <config-file>] [--localversion <version>] [--threads <number>] [--host-build] [--dry-run]
+# Usage: ./compile_jetson_kernel.sh [--config <config-file>] [--localversion <version>] [--threads <number>] [--host-build] [--dry-run] [--help]
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
@@ -13,6 +13,33 @@ LOCALVERSION_ARG=""
 THREADS_ARG=""
 HOST_BUILD_ARG=""
 DRY_RUN_ARG=""
+
+function show_help {
+  echo "Usage: ./compile_jetson_kernel.sh [OPTIONS]"
+  echo ""
+  echo "Options:"
+  echo "  --config <config-file>      Specify the kernel configuration file to use (e.g., defconfig, tegra_defconfig)."
+  echo "  --localversion <version>    Set a local version string to append to the kernel version."
+  echo "  --threads <number>          Number of threads to use for compilation. Default: All available cores."
+  echo "  --host-build                Compile the kernel directly on the host instead of using Docker."
+  echo "  --dry-run                   Print the commands without executing them."
+  echo "  --help                      Show this help message."
+  echo ""
+  echo "Examples:"
+  echo "  Compile the Jetson kernel with a specific configuration:"
+  echo "    ./compile_jetson_kernel.sh --config tegra_defconfig"
+  echo ""
+  echo "  Compile the Jetson kernel with a local version string and 8 threads:"
+  echo "    ./compile_jetson_kernel.sh --localversion custom_version --threads 8"
+  echo ""
+  echo "  Compile the kernel directly on the host system:"
+  echo "    ./compile_jetson_kernel.sh --host-build"
+  echo ""
+  echo "  Perform a dry run to print commands without executing them:"
+  echo "    ./compile_jetson_kernel.sh --config tegra_defconfig --dry-run"
+  echo ""
+  exit 0
+}
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -51,6 +78,9 @@ while [[ "$#" -gt 0 ]]; do
     --dry-run)
       DRY_RUN_ARG="--dry-run"
       shift
+      ;;
+    --help)
+      show_help
       ;;
     *)
       echo "Unknown parameter: $1"
