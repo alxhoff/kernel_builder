@@ -63,37 +63,70 @@ MODULES_DIRS=$(ssh root@$DEVICE_IP "ls -d /lib/modules/5.10.120*" 2>/dev/null)
 
 # Map to store versions with complete sets and orphaned components
 declare -A KERNEL_VERSIONS
+ORPHANED_COMPONENTS=()
 
-echo "\n--- Listing All Kernel Components ---"
+echo -e "\n--- Listing All Kernel Components ---"
+
 # Populate the map with versions that have all components
 for IMAGE in $IMAGE_FILES; do
     if [[ $IMAGE =~ Image\.(.*) ]]; then
         LOCALVERSION="${BASH_REMATCH[1]}"
-        INITRD="/boot/initrd.img-${LOCALVERSION}"
+        KERNEL_VERSION="5.10.120${LOCALVERSION}"
+        INITRD="/boot/initrd.img-${KERNEL_VERSION}"
         DTB="/boot/dtb/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
-        MODULES="/lib/modules/5.10.120${LOCALVERSION}"
+        MODULES="/lib/modules/${KERNEL_VERSION}"
 
         # Check if all components exist
         if ssh root@$DEVICE_IP "[ -f $INITRD ] && [ -f $DTB ] && [ -d $MODULES ]"; then
-            KERNEL_VERSIONS[$LOCALVERSION]="Image: $IMAGE, Initrd: $INITRD, DTB: $DTB, Modules: $MODULES"
-        else
-            echo "Incomplete set for version: $LOCALVERSION"
+            KERNEL_VERSIONS[$LOCALVERSION]="\n    Image: $IMAGE\n    Initrd: $INITRD\n    DTB: $DTB\n    Modules: $MODULES"
+        fi
+    fi
+done
+
+# Display the available complete kernel versions before moving on to incomplete sets
+echo -e "\n--- Available Complete Kernel Versions ---"
+if [ ${#KERNEL_VERSIONS[@]} -eq 0 ]; then
+    echo "No complete kernel versions found on the device."
+    exit 1
+fi
+
+index=1
+for VERSION in "${!KERNEL_VERSIONS[@]}"; do
+    echo -e "  [$index] Version: $VERSION"
+    echo -e "      ${KERNEL_VERSIONS[$VERSION]}"
+    ((index++))
+done
+
+# Now, display incomplete sets
+for IMAGE in $IMAGE_FILES; do
+    if [[ $IMAGE =~ Image\.(.*) ]]; then
+        LOCALVERSION="${BASH_REMATCH[1]}"
+        KERNEL_VERSION="5.10.120${LOCALVERSION}"
+        INITRD="/boot/initrd.img-${KERNEL_VERSION}"
+        DTB="/boot/dtb/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
+        MODULES="/lib/modules/${KERNEL_VERSION}"
+
+        # Check for incomplete sets
+        if ! ssh root@$DEVICE_IP "[ -f $INITRD ] && [ -f $DTB ] && [ -d $MODULES ]"; then
+            echo -e "\nIncomplete set for version: $LOCALVERSION"
             echo "  Image: $IMAGE"
-            [ -f "$INITRD" ] && echo "  Initrd: $INITRD" || echo "  Initrd: MISSING"
-            [ -f "$DTB" ] && echo "  DTB: $DTB" || echo "  DTB: MISSING"
-            [ -d "$MODULES" ] && echo "  Modules: $MODULES" || echo "  Modules: MISSING"
+            ssh root@$DEVICE_IP "[ -f $INITRD ]" && echo "  Initrd: $INITRD" || { echo "  Initrd: MISSING"; ORPHANED_COMPONENTS+=("$INITRD"); }
+            ssh root@$DEVICE_IP "[ -f $DTB ]" && echo "  DTB: $DTB" || { echo "  DTB: MISSING"; ORPHANED_COMPONENTS+=("$DTB"); }
+            ssh root@$DEVICE_IP "[ -d $MODULES ]" && echo "  Modules: $MODULES" || { echo "  Modules: MISSING"; ORPHANED_COMPONENTS+=("$MODULES"); }
         fi
     else
-        echo "Orphan Image found: $IMAGE"
+        echo -e "\nOrphan Image found: $IMAGE"
+        ORPHANED_COMPONENTS+=("$IMAGE")
     fi
 done
 
 # Display orphaned Initrds
 for INITRD in $INITRD_FILES; do
     if [[ $INITRD =~ initrd\.img\-(.*) ]]; then
-        LOCALVERSION="${BASH_REMATCH[1]}"
+        LOCALVERSION="${BASH_REMATCH[1]#5.10.120}"
         if [ -z "${KERNEL_VERSIONS[$LOCALVERSION]}" ]; then
-            echo "Orphan Initrd found: $INITRD"
+            echo -e "\nOrphan Initrd found: $INITRD"
+            ORPHANED_COMPONENTS+=("$INITRD")
         fi
     fi
 done
@@ -103,7 +136,8 @@ for DTB in $DTB_FILES; do
     if [[ $DTB =~ tegra234-p3701-0000-p3737-0000(.*)\.dtb ]]; then
         LOCALVERSION="${BASH_REMATCH[1]}"
         if [ -z "${KERNEL_VERSIONS[$LOCALVERSION]}" ]; then
-            echo "Orphan DTB found: $DTB"
+            echo -e "\nOrphan DTB found: $DTB"
+            ORPHANED_COMPONENTS+=("$DTB")
         fi
     fi
 done
@@ -113,25 +147,34 @@ for MODULES in $MODULES_DIRS; do
     if [[ $MODULES =~ 5\.10\.120(.*) ]]; then
         LOCALVERSION="${BASH_REMATCH[1]}"
         if [ -z "${KERNEL_VERSIONS[$LOCALVERSION]}" ]; then
-            echo "Orphan Modules directory found: $MODULES"
+            echo -e "\nOrphan Modules directory found: $MODULES"
+            ORPHANED_COMPONENTS+=("$MODULES")
         fi
     fi
 done
 
-# Check if we have any complete kernel versions
-if [ ${#KERNEL_VERSIONS[@]} -eq 0 ]; then
-    echo "\nNo complete kernel versions found on the device."
-    exit 1
-fi
+# Prompt the user to delete orphaned components after listing complete kernels
+if [ ${#ORPHANED_COMPONENTS[@]} -gt 0 ]; then
+    echo -e "\n--- Orphaned Components Found ---"
+    for COMPONENT in "${ORPHANED_COMPONENTS[@]}"; do
+        echo "  $COMPONENT"
+    done
 
-# Display the available complete kernel versions
-echo "\n--- Available Complete Kernel Versions ---"
-index=1
-for VERSION in "${!KERNEL_VERSIONS[@]}"; do
-    echo "  [$index] Version: $VERSION"
-    echo "      ${KERNEL_VERSIONS[$VERSION]}"
-    ((index++))
-done
+    read -p "Do you want to delete all orphaned components? (default: no) [y/N]: " DELETE_ORPHANS
+    if [[ "$DELETE_ORPHANS" =~ ^[yY]$ ]]; then
+        for COMPONENT in "${ORPHANED_COMPONENTS[@]}"; do
+            if [ "$DRY_RUN" == true ]; then
+                echo "[Dry-run] Would delete: $COMPONENT"
+            else
+                echo "Deleting: $COMPONENT"
+                ssh root@$DEVICE_IP "rm -rf $COMPONENT"
+            fi
+        done
+        echo "Orphaned components deleted."
+    else
+        echo "Orphaned components were not deleted."
+    fi
+fi
 
 # Prompt the user to select a version to set as default
 read -p "Enter the number of the kernel version to set as default: " SELECTED_INDEX
@@ -155,7 +198,7 @@ done
 
 # Extract components for the selected version
 SELECTED_IMAGE="/boot/Image.${SELECTED_VERSION}"
-SELECTED_INITRD="/boot/initrd.img-${SELECTED_VERSION}"
+SELECTED_INITRD="/boot/initrd.img-5.10.120${SELECTED_VERSION}"
 SELECTED_DTB="/boot/dtb/tegra234-p3701-0000-p3737-0000${SELECTED_VERSION}.dtb"
 
 # Update extlinux.conf to set the selected kernel as default
@@ -166,7 +209,7 @@ UPDATE_COMMAND="sed -i.bak '
   s|^\s*FDT .*|      FDT ${SELECTED_DTB}|;
 ' $EXTLINUX_CONF_PATH"
 
-echo "\nUpdating extlinux.conf to set the selected kernel as default..."
+echo -e "\nUpdating extlinux.conf to set the selected kernel as default..."
 if [ "$DRY_RUN" == true ]; then
     echo "[Dry-run] Would run: ssh root@$DEVICE_IP \"$UPDATE_COMMAND\""
 else
