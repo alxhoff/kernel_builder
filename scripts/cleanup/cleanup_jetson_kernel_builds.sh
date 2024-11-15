@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to clean up kernel module folders, kernel images, and initrd files on a target Jetson device.
+# Script to clean up kernel module folders, kernel images, DTB files, and initrd files on a target Jetson device.
 # Usage: ./cleanup_jetson_kernel.sh [--help] [--dry-run] [--interactive]
 #
 # Arguments:
@@ -10,7 +10,7 @@
 #
 # Description:
 # This script connects to a Jetson device via SSH and performs cleanup of old kernel images,
-# module folders, and initrd files. It is useful when multiple kernels have been deployed,
+# module folders, DTB files, and initrd files. It is useful when multiple kernels have been deployed,
 # and you need to remove older versions to free up space and keep the system organized.
 # By default, the current kernel (as determined from extlinux.conf) is preserved, and only
 # non-default kernel files are removed.
@@ -53,7 +53,7 @@ while [[ "$#" -gt 0 ]]; do
             echo
             echo "Description:"
             echo "  This script connects to a Jetson device via SSH and performs cleanup of old kernel images,"
-            echo "  module folders, and initrd files. It preserves the current kernel as per extlinux.conf"
+            echo "  module folders, DTB files, and initrd files. It preserves the current kernel as per extlinux.conf"
             echo "  and removes only non-default kernel files."
             echo
             echo "Example Usage:"
@@ -129,9 +129,10 @@ for IMAGE in $IMAGE_FILES; do
         LOCALVERSION="default"
     fi
 
-    # Determine matching kernel version directory and initrd file
+    # Determine matching kernel version directory, initrd file, and DTB file
     KERNEL_MODULES_DIR="/lib/modules/5.10.120${LOCALVERSION}"
     INITRD_FILE="/boot/initrd.img-${LOCALVERSION}"
+    DTB_FILE="/boot/dtb/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
 
     # Handle cases where the initrd might just be "/boot/initrd"
     if [ "$INITRD_FILE" == "$DEFAULT_INITRD" ] || [ "$DEFAULT_INITRD" == "/boot/initrd" ]; then
@@ -140,7 +141,7 @@ for IMAGE in $IMAGE_FILES; do
 
     # Skip the default kernel and its related files
     if [ "$LOCALVERSION" == "$DEFAULT_LOCALVERSION" ]; then
-        echo "Skipping default kernel image, modules, and initrd: $IMAGE_NAME, $KERNEL_MODULES_DIR, $INITRD_FILE"
+        echo "Skipping default kernel image, modules, initrd, and dtb: $IMAGE_NAME, $KERNEL_MODULES_DIR, $INITRD_FILE, $DTB_FILE"
         continue
     fi
 
@@ -150,14 +151,15 @@ for IMAGE in $IMAGE_FILES; do
         echo -e "\nKernel Image: $IMAGE_NAME"
         echo "Matching Kernel Modules Directory: $KERNEL_MODULES_DIR"
         echo "Matching Initrd File: $INITRD_FILE"
-        read -p "Delete kernel image, modules directory, and initrd? (default yes) [Y/n]: " CONFIRM
+        echo "Matching DTB File: $DTB_FILE"
+        read -p "Delete kernel image, modules directory, initrd, and dtb? (default yes) [Y/n]: " CONFIRM
         case "$CONFIRM" in
             [nN][oO]|[nN]) REMOVE=false ;;
             *) REMOVE=true ;; # Default to yes
         esac
     fi
 
-    # Delete kernel image, modules directory, and initrd if confirmed
+    # Delete kernel image, modules directory, initrd, and dtb if confirmed
     if [ "$REMOVE" == true ]; then
         echo "Deleting kernel image: $IMAGE_NAME"
         execute_remote "rm -f $IMAGE"
@@ -171,8 +173,13 @@ for IMAGE in $IMAGE_FILES; do
             echo "Deleting initrd file: $INITRD_FILE"
             execute_remote "rm -f $INITRD_FILE"
         fi
+
+        if ssh root@$DEVICE_IP "[ -f $DTB_FILE ]"; then
+            echo "Deleting DTB file: $DTB_FILE"
+            execute_remote "rm -f $DTB_FILE"
+        fi
     else
-        echo "Skipped kernel image, modules directory, and initrd: $IMAGE_NAME, $KERNEL_MODULES_DIR, $INITRD_FILE"
+        echo "Skipped kernel image, modules directory, initrd, and dtb: $IMAGE_NAME, $KERNEL_MODULES_DIR, $INITRD_FILE, $DTB_FILE"
     fi
 done
 
