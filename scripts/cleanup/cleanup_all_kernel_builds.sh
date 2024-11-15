@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to clean up compiled kernel modules and images across all kernels in the 'kernels' directory.
+# Script to clean up compiled kernel modules, images, and DTB files across all kernels in the 'kernels' directory.
 # Usage: ./cleanup_all_kernel_builds.sh [--dry-run] [--interactive] [--help]
 # Arguments:
 #   --dry-run      Optional argument to simulate the cleanup without deleting anything
@@ -23,7 +23,7 @@ show_help() {
     echo "  --dry-run       Simulate the cleanup process without deleting anything."
     echo "                  This is useful to preview what files and directories would be affected."
     echo
-    echo "  --interactive   Prompt for confirmation before deleting each kernel version or image."
+    echo "  --interactive   Prompt for confirmation before deleting each kernel version, image, or dtb."
     echo "                  The script will ask you whether to delete specific items."
     echo
     echo "  --help          Display this help message and exit."
@@ -36,7 +36,7 @@ show_help() {
     echo "      Show what would be deleted without actually deleting anything."
     echo
     echo "  ./cleanup_all_kernel_builds.sh --interactive"
-    echo "      Prompt for confirmation before deleting each kernel version or image."
+    echo "      Prompt for confirmation before deleting each kernel version, image, or dtb."
     echo
     echo "  ./cleanup_all_kernel_builds.sh --dry-run --interactive"
     echo "      Simulate the cleanup process and ask for confirmation at each step."
@@ -64,7 +64,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-echo "Starting cleanup of compiled kernel modules and images in $KERNELS_DIR..."
+echo "Starting cleanup of compiled kernel modules, images, and DTB files in $KERNELS_DIR..."
 
 # Iterate over all kernels in the kernels directory
 for KERNEL in "$KERNELS_DIR"/*; do
@@ -109,13 +109,15 @@ for KERNEL in "$KERNELS_DIR"/*; do
 
                     REMOVE=true
                     IMAGE_TO_DELETE=${KERNEL_IMAGE_MAP[$LOCALVERSION]}
+                    DTB_TO_DELETE="$BOOT_DIR/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
 
                     # If interactive, prompt the user
                     if [ "$INTERACTIVE" == true ]; then
                         if [ -n "$IMAGE_TO_DELETE" ]; then
                             echo "Compiled Kernel Version Modules: $VERSION_NAME"
                             echo "Image: $IMAGE_TO_DELETE"
-                            read -p "Delete kernel version and image? (default yes) [Y/n]: " CONFIRM
+                            echo "DTB: $DTB_TO_DELETE"
+                            read -p "Delete kernel version, image, and dtb? (default yes) [Y/n]: " CONFIRM
                         else
                             echo "Compiled Kernel Version Modules: $VERSION_NAME"
                             read -p "Delete kernel version? (default yes) [Y/n]: " CONFIRM
@@ -132,6 +134,7 @@ for KERNEL in "$KERNELS_DIR"/*; do
                             echo "[Dry-run] Would delete kernel version: $VERSION_NAME"
                             if [ -n "$IMAGE_TO_DELETE" ]; then
                                 echo "[Dry-run] Would delete image: $(basename "$IMAGE_TO_DELETE")"
+                                echo "[Dry-run] Would delete DTB: $(basename "$DTB_TO_DELETE")"
                                 PROCESSED_IMAGES+=("$IMAGE_TO_DELETE")
                             fi
                         else
@@ -140,6 +143,8 @@ for KERNEL in "$KERNELS_DIR"/*; do
                             if [ -n "$IMAGE_TO_DELETE" ]; then
                                 echo "Deleting image: $(basename "$IMAGE_TO_DELETE")"
                                 rm -f "$IMAGE_TO_DELETE"
+                                echo "Deleting DTB: $(basename "$DTB_TO_DELETE")"
+                                rm -f "$DTB_TO_DELETE"
                                 PROCESSED_IMAGES+=("$IMAGE_TO_DELETE")
                             fi
                         fi
@@ -147,6 +152,7 @@ for KERNEL in "$KERNELS_DIR"/*; do
                         echo "Skipped: $VERSION_NAME"
                         if [ -n "$IMAGE_TO_DELETE" ]; then
                             echo "Skipped: $(basename "$IMAGE_TO_DELETE")"
+                            echo "Skipped: $(basename "$DTB_TO_DELETE")"
                             PROCESSED_IMAGES+=("$IMAGE_TO_DELETE")
                         fi
                     fi
@@ -156,7 +162,7 @@ for KERNEL in "$KERNELS_DIR"/*; do
             echo "No modules directory found for: $KERNEL_NAME"
         fi
 
-        # Clean up any orphan kernel images (images without matching kernel versions)
+        # Clean up any orphan kernel images and DTBs (images without matching kernel versions)
         for IMAGE in "${IMAGE_FILES[@]}"; do
             # Skip images that were already processed (either deleted or marked as skipped)
             if [[ " ${PROCESSED_IMAGES[@]} " =~ " ${IMAGE} " ]]; then
@@ -173,12 +179,15 @@ for KERNEL in "$KERNELS_DIR"/*; do
                 LOCALVERSION="default"
             fi
 
+            DTB_TO_DELETE="$BOOT_DIR/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
+
             REMOVE=true
 
             # If interactive, prompt the user
             if [ "$INTERACTIVE" == true ]; then
                 echo "Orphan image: $IMAGE_NAME"
-                read -p "Delete orphan kernel image? (default yes) [Y/n]: " CONFIRM
+                echo "Matching DTB: $DTB_TO_DELETE"
+                read -p "Delete orphan kernel image and dtb? (default yes) [Y/n]: " CONFIRM
                 case "$CONFIRM" in
                     [nN][oO]|[nN]) REMOVE=false ;;
                     *) REMOVE=true ;; # Default to yes
@@ -189,12 +198,16 @@ for KERNEL in "$KERNELS_DIR"/*; do
             if [ "$REMOVE" == true ]; then
                 if [ "$DRY_RUN" == true ]; then
                     echo "[Dry-run] Would delete orphan image: $IMAGE_NAME"
+                    echo "[Dry-run] Would delete DTB: $(basename "$DTB_TO_DELETE")"
                 else
                     echo "Deleting orphan image: $IMAGE_NAME"
                     rm -f "$IMAGE"
+                    echo "Deleting DTB: $(basename "$DTB_TO_DELETE")"
+                    rm -f "$DTB_TO_DELETE"
                 fi
             else
                 echo "Skipped orphan image: $IMAGE_NAME"
+                echo "Skipped orphan DTB: $(basename "$DTB_TO_DELETE")"
             fi
         done
     fi
