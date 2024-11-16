@@ -126,6 +126,7 @@ list_complete_kernels() {
     echo "Listing complete kernel versions..."
     KERNELS_DIR="$(realpath $(dirname "$0"))/../../kernels"
     COMPLETE_KERNELS=()
+    KERNEL_INFO=()
     INDEX=1
 
     for KERNEL in "$KERNELS_DIR"/*; do
@@ -143,6 +144,7 @@ list_complete_kernels() {
                     echo "   DTB: $(basename "$DTB")"
                     echo "   Modules: $(basename "$MODULES")"
                     COMPLETE_KERNELS+=("$KERNEL")
+                    KERNEL_INFO+=("$IMAGE|$DTB|$MODULES")
                     ((INDEX++))
                 fi
             fi
@@ -160,8 +162,10 @@ select_kernel() {
         exit 1
     fi
     SELECTED_KERNEL=${COMPLETE_KERNELS[$KERNEL_INDEX-1]}
-    # Set the kernel version explicitly
-    KERNEL_VERSION=$(basename $(ls "$SELECTED_KERNEL/modules/lib/modules/" 2>/dev/null | head -n 1))
+
+    # Extract kernel information directly from the listing step
+    IFS='|' read -r SELECTED_IMAGE_PATH SELECTED_DTB_PATH SELECTED_MODULES_PATH <<< "${KERNEL_INFO[$KERNEL_INDEX-1]}"
+    KERNEL_VERSION=$(basename "$SELECTED_MODULES_PATH")
 }
 
 # Function to copy kernel files to USB boot drive
@@ -227,9 +231,9 @@ update_extlinux_conf() {
         # Backup extlinux.conf
         cp "$MOUNT_POINT/boot/extlinux/extlinux.conf" "$MOUNT_POINT/boot/extlinux/extlinux.conf.previous"
 
-        # Get the correct kernel image, dtb, and initrd from the selected kernel
-        SELECTED_IMAGE=$(basename $(ls "$SELECTED_KERNEL/modules/boot/Image*" 2>/dev/null | head -n 1))
-        SELECTED_DTB=$(basename $(ls "$SELECTED_KERNEL/modules/boot/tegra234-p3701-0000-p3737-0000*.dtb" 2>/dev/null | head -n 1))
+        # Use the paths derived from the selected kernel components
+        SELECTED_IMAGE=$(basename "$SELECTED_IMAGE_PATH")
+        SELECTED_DTB=$(basename "$SELECTED_DTB_PATH")
         SELECTED_INITRD="initrd.img-$KERNEL_VERSION"
 
         # Update extlinux.conf
