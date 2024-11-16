@@ -40,8 +40,9 @@ done
 
 # Function to prompt for confirmation
 prompt_confirmation() {
+    local message="$1"
     if [ "$INTERACTIVE" == true ]; then
-        read -p "Proceed with this step? (default yes) [Y/n]: " CONFIRM
+        read -p "$message (default yes) [Y/n]: " CONFIRM
         case "$CONFIRM" in
             [nN][oO]|[nN])
                 return 1
@@ -89,47 +90,131 @@ mount_partition() {
     fi
 }
 
-# Function to list kernel components
-list_kernels() {
+# Function to extract kernel version from image
+extract_kernel_version() {
+    local image_path=$1
+    strings "$image_path" | grep -E "Linux version [0-9]+\.[0-9]+\.[0-9]+" | head -n 1 | awk '{print $3}'
+}
+
+# Function to list kernel components and identify orphans
+list_and_identify_components() {
     echo "Scanning for kernel components..."
+
+    # Use associative arrays to keep track of components and their versions
+    declare -A kernel_images
+    declare -A initrd_files
+    declare -A dtb_files
+    declare -A modules_dirs
+    declare -A complete_kernels
+
+    # Collect kernel images and extract kernel version
     KERNEL_IMAGES=$(find "$MOUNT_POINT/boot" -name "Image*" 2>/dev/null)
     for IMAGE in $KERNEL_IMAGES; do
         IMAGE_NAME=$(basename "$IMAGE")
-        echo "Kernel Image: $IMAGE_NAME"
+        LOCALVERSION="${IMAGE_NAME#Image.}"
+        if [ "$LOCALVERSION" == "$IMAGE_NAME" ]; then
+            LOCALVERSION=""
+        fi
+        KERNELVERSION=$(extract_kernel_version "$IMAGE")
+
+        if [ -n "$KERNELVERSION" ]; then
+            kernel_images["$KERNELVERSION:$LOCALVERSION"]=$IMAGE
+            echo "Found Kernel Image: $IMAGE_NAME with Kernel Version: $KERNELVERSION"
+        fi
+    done
+
+    # Collect initrd files
+    INITRD_FILES=$(find "$MOUNT_POINT/boot" -name "initrd.img-*")
+    for INITRD in $INITRD_FILES; do
+        INITRD_NAME=$(basename "$INITRD")
+        KERNELVERSION="${INITRD_NAME#initrd.img-}"
+        initrd_files["$KERNELVERSION"]=$INITRD
+    done
+
+    # Collect dtb files
+    DTB_FILES=$(find "$MOUNT_POINT/boot/dtb" -name "tegra234-p3701-0000-p3737-0000*.dtb")
+    for DTB in $DTB_FILES; do
+        DTB_NAME=$(basename "$DTB")
+        LOCALVERSION="${DTB_NAME#tegra234-p3701-0000-p3737-0000}"
+        LOCALVERSION="${LOCALVERSION%.dtb}"
+        dtb_files["$LOCALVERSION"]=$DTB
+    done
+
+    # Collect modules directories
+    MODULES_DIRS=$(find "$MOUNT_POINT/lib/modules" -mindepth 1 -maxdepth 1 -type d)
+    for MODULE_DIR in $MODULES_DIRS; do
+        MODULE_DIR_NAME=$(basename "$MODULE_DIR")
+        modules_dirs["$MODULE_DIR_NAME"]=$MODULE_DIR
+    done
+
+    # Check for complete kernels and track associated components
+    for KEY in "${!kernel_images[@]}"; do
+        IFS=":" read -r KERNELVERSION LOCALVERSION <<< "$KEY"
+
+        MODULES_DIR="${modules_dirs[$KERNELVERSION]}"
+        INITRD_FILE="${initrd_files[$KERNELVERSION]}"
+        DTB_FILE="${dtb_files[$LOCALVERSION]}"
+
+        if [ -z "$MODULES_DIR" ] || [ -z "$INITRD_FILE" ] || ([ -n "$LOCALVERSION" ] && [ -z "$DTB_FILE" ]); then
+            echo "Incomplete Kernel Components for Image: $(basename "${kernel_images[$KEY]}")"
+            [ -z "$MODULES_DIR" ] && echo "  - Missing Modules Directory: /lib/modules/$KERNELVERSION"
+            [ -z "$INITRD_FILE" ] && echo "  - Missing Initrd File: initrd.img-$KERNELVERSION"
+            if [ -n "$LOCALVERSION" ] && [ -z "$DTB_FILE" ]; then
+                echo "  - Missing DTB File: tegra234-p3701-0000-p3737-0000$LOCALVERSION.dtb"
+            fi
+            # Mark incomplete kernel components for deletion
+            incomplete_kernel_image="${kernel_images[$KEY]}"
+            prompt_confirmation "Do you want to delete the incomplete kernel image $incomplete_kernel_image?" && delete_component "$incomplete_kernel_image"
+            [ -n "$MODULES_DIR" ] && prompt_confirmation "Do you want to delete the incomplete modules directory $MODULES_DIR?" && delete_component "$MODULES_DIR"
+            [ -n "$INITRD_FILE" ] && prompt_confirmation "Do you want to delete the incomplete initrd file $INITRD_FILE?" && delete_component "$INITRD_FILE"
+            [ -n "$DTB_FILE" ] && prompt_confirmation "Do you want to delete the incomplete dtb file $DTB_FILE?" && delete_component "$DTB_FILE"
+        else
+            echo "Complete Kernel Found: $(basename "${kernel_images[$KEY]}")"
+            echo "  - Modules Directory: $MODULES_DIR"
+            echo "  - Initrd File: $INITRD_FILE"
+            echo "  - DTB File: ${DTB_FILE:-Generic DTB (none)}"
+
+            # Mark components as part of a complete kernel
+            complete_kernels["$KERNELVERSION"]="$KERNELVERSION"
+            complete_kernels["$LOCALVERSION"]="$LOCALVERSION"
+        fi
+    done
+
+    # Identify orphaned components
+    for KERNELVERSION in "${!initrd_files[@]}"; do
+        if [ -z "${complete_kernels[$KERNELVERSION]}" ]; then
+            ORPHAN_INITRD="${initrd_files[$KERNELVERSION]}"
+            echo "Orphan Initrd File: $ORPHAN_INITRD"
+            prompt_confirmation "Do you want to delete the orphan initrd file $ORPHAN_INITRD?" && delete_component "$ORPHAN_INITRD"
+        fi
+    done
+
+    for LOCALVERSION in "${!dtb_files[@]}"; do
+        if [ -z "${complete_kernels[$LOCALVERSION]}" ]; then
+            ORPHAN_DTB="${dtb_files[$LOCALVERSION]}"
+            echo "Orphan DTB File: $ORPHAN_DTB"
+            prompt_confirmation "Do you want to delete the orphan DTB file $ORPHAN_DTB?" && delete_component "$ORPHAN_DTB"
+        fi
+    done
+
+    for KERNELVERSION in "${!modules_dirs[@]}"; do
+        if [ -z "${complete_kernels[$KERNELVERSION]}" ]; then
+            ORPHAN_MODULES="${modules_dirs[$KERNELVERSION]}"
+            echo "Orphan Modules Directory: $ORPHAN_MODULES"
+            prompt_confirmation "Do you want to delete the orphan modules directory $ORPHAN_MODULES?" && delete_component "$ORPHAN_MODULES"
+        fi
     done
 }
 
-# Function to delete kernel components
-delete_kernel_components() {
-    for IMAGE in $KERNEL_IMAGES; do
-        IMAGE_NAME=$(basename "$IMAGE")
-        echo -e "\nKernel Image: $IMAGE_NAME"
-
-        # Find related components
-        LOCALVERSION=$(echo "$IMAGE_NAME" | sed 's/Image\.//')
-        MODULES_DIR="$MOUNT_POINT/lib/modules/5.10.120${LOCALVERSION}"
-        INITRD_FILE="$MOUNT_POINT/boot/initrd.img-${LOCALVERSION}"
-        DTB_FILE="$MOUNT_POINT/boot/dtb/tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb"
-
-        echo "Modules Directory: $MODULES_DIR"
-        echo "Initrd File: $INITRD_FILE"
-        echo "DTB File: $DTB_FILE"
-
-        if [ "$INTERACTIVE" == true ]; then
-            read -p "Delete this kernel and its components? (default yes) [Y/n]: " CONFIRM
-            if [[ "$CONFIRM" =~ ^[nN]$ ]]; then
-                continue
-            fi
-        fi
-
-        # Delete components
-        if [ "$DRY_RUN" == true ]; then
-            echo "[Dry-run] Would delete: $IMAGE, $MODULES_DIR, $INITRD_FILE, $DTB_FILE"
-        else
-            rm -f "$IMAGE" "$INITRD_FILE" "$DTB_FILE"
-            [ -d "$MODULES_DIR" ] && rm -rf "$MODULES_DIR"
-        fi
-    done
+# Function to delete component
+delete_component() {
+    COMPONENT=$1
+    if [ "$DRY_RUN" == true ]; then
+        echo "[Dry-run] Would delete: $COMPONENT"
+    else
+        rm -rf "$COMPONENT"
+        echo "Deleted: $COMPONENT"
+    fi
 }
 
 # Function to unmount the partition
@@ -151,8 +236,7 @@ unmount_partition() {
 # Main script
 select_partition
 mount_partition
-list_kernels
-delete_kernel_components
+list_and_identify_components
 unmount_partition
 
 echo -e "\nKernel cleanup on USB device completed."
