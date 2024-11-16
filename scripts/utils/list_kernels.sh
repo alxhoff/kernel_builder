@@ -11,69 +11,85 @@ if [ ! -d "$KERNELS_DIR" ]; then
 fi
 
 # Iterate through all kernel names in the kernels directory
-for KERNEL_NAME in "$KERNELS_DIR"/*; do
-    if [ -d "$KERNEL_NAME" ]; then
-        MODULES_DIR="$KERNEL_NAME/modules/lib/modules"
-        BOOT_DIR="$KERNEL_NAME/modules/boot"
+for KERNEL_PATH in "$KERNELS_DIR"/*; do
+    if [ -d "$KERNEL_PATH" ]; then
+        KERNEL_NAME=$(basename "$KERNEL_PATH")
+        MODULES_DIR="$KERNEL_PATH/modules/lib/modules"
+        BOOT_DIR="$KERNEL_PATH/modules/boot"
 
-        # Check for compiled kernel version modules in the modules directory
-        echo "Kernel Name: $(basename "$KERNEL_NAME")"
+        echo "========================================================================="
+        echo "Kernel Name: $KERNEL_NAME"
+        echo "========================================================================="
 
-        # List compiled kernel version modules
-        BUILT_VERSIONS=()
+        # Reset the map to store kernel versions and their components for each kernel
+        declare -A KERNEL_COMPONENTS=()
+
+        # Gather Modules for the current kernel
         if [ -d "$MODULES_DIR" ]; then
-            echo "Compiled Kernel Version Modules:"
             for VERSION in "$MODULES_DIR"/*; do
                 if [ -d "$VERSION" ]; then
                     BUILT_VERSION=$(basename "$VERSION")
-                    BUILT_VERSIONS+=("$BUILT_VERSION")
-
-                    # Extract LOCALVERSION (everything after the first occurrence of a digit or period sequence)
-                    LOCALVERSION=$(echo "$BUILT_VERSION" | sed -E 's/^[0-9.]+//')
-                    echo "  - Version: $BUILT_VERSION (LOCALVERSION: $LOCALVERSION)"
+                    LOCALVERSION="${BUILT_VERSION#5.10.120}"
+                    KERNEL_COMPONENTS[$LOCALVERSION]="Modules: $BUILT_VERSION"
                 fi
             done
-        else
-            echo "  No compiled kernel version modules found."
         fi
 
-        # List kernel images in boot directory
+        # Gather Kernel Images for the current kernel
         if [ -d "$BOOT_DIR" ]; then
-            echo "Kernel Images in Boot Directory:"
-            for IMAGE in "$BOOT_DIR"/*; do
+            for IMAGE in "$BOOT_DIR"/Image*; do
                 if [ -f "$IMAGE" ]; then
                     IMAGE_NAME=$(basename "$IMAGE")
-                    echo "  - $IMAGE_NAME"
+                    # Extract kernel version using "strings" and "grep"
+                    KERNEL_VERSION=$(strings "$IMAGE" | grep -oP "Linux version \K[0-9\.]+[^\s]*")
+                    LOCALVERSION="${KERNEL_VERSION#5.10.120}"
 
-                    # Extract LOCALVERSION from the image name if available
-                    LOCALVERSION=$(echo "$IMAGE_NAME" | sed -n 's/^Image\.\(.*\)$/\1/p')
+                    [ -z "$LOCALVERSION" ] && LOCALVERSION="default"
 
-                    if [ -n "$LOCALVERSION" ]; then
-                        echo "    -> LOCALVERSION: $LOCALVERSION"
+                    if [ -n "${KERNEL_COMPONENTS[$LOCALVERSION]}" ]; then
+                        KERNEL_COMPONENTS[$LOCALVERSION]+=", Image: $IMAGE_NAME"
                     else
-                        echo "    -> LOCALVERSION: <none>"
-                    fi
-
-                    # Attempt to match the image to a kernel version if possible
-                    MATCHED_VERSION=""
-                    for BUILT_VERSION in "${BUILT_VERSIONS[@]}"; do
-                        if [[ "$BUILT_VERSION" == *"$LOCALVERSION" ]]; then
-                            MATCHED_VERSION="$BUILT_VERSION"
-                            break
-                        fi
-                    done
-
-                    if [ -n "$MATCHED_VERSION" ]; then
-                        echo "    -> Matches Kernel Version: $MATCHED_VERSION"
-                    else
-                        echo "    -> No matching kernel version found in modules directory"
+                        KERNEL_COMPONENTS[$LOCALVERSION]="Image: $IMAGE_NAME"
                     fi
                 fi
             done
-        else
-            echo "  No kernel images found in boot directory."
+
+            # Gather DTB files for the current kernel
+            for DTB in "$BOOT_DIR"/tegra234-p3701-0000-p3737-0000*.dtb; do
+                if [ -f "$DTB" ]; then
+                    DTB_NAME=$(basename "$DTB")
+                    LOCALVERSION=$(echo "$DTB_NAME" | sed -n 's/^tegra234-p3701-0000-p3737-0000\(.*\)\.dtb$/\1/p')
+                    [ -z "$LOCALVERSION" ] && LOCALVERSION="default"
+
+                    if [ -n "${KERNEL_COMPONENTS[$LOCALVERSION]}" ]; then
+                        KERNEL_COMPONENTS[$LOCALVERSION]+=", DTB: $DTB_NAME"
+                    else
+                        KERNEL_COMPONENTS[$LOCALVERSION]="DTB: $DTB_NAME"
+                    fi
+                fi
+            done
         fi
+
+        # Display grouped output by kernel version for the current kernel
+        if [ ${#KERNEL_COMPONENTS[@]} -eq 0 ]; then
+            echo "No components found for kernel $KERNEL_NAME."
+        else
+            for VERSION in "${!KERNEL_COMPONENTS[@]}"; do
+                echo -e "\nKernel Version: 5.10.120$VERSION"
+                COMPONENTS=${KERNEL_COMPONENTS[$VERSION]}
+
+                # Split the components and display each on a new line
+                IFS=',' read -ra COMPONENT_ARRAY <<< "$COMPONENTS"
+                for COMPONENT in "${COMPONENT_ARRAY[@]}"; do
+                    echo "  $COMPONENT"
+                done
+            done
+        fi
+
         echo ""
+
+        # Unset the associative array to ensure a clean slate for the next kernel
+        unset KERNEL_COMPONENTS
     fi
 done
 
