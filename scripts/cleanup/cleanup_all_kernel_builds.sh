@@ -90,14 +90,18 @@ for KERNEL in "$KERNELS_DIR"/*; do
                 if [ -f "$IMAGE" ]; then
                     IMAGE_FILES+=("$IMAGE")
                     IMAGE_NAME=$(basename "$IMAGE")
-                    # Extract the LOCALVERSION if available (e.g., Image.cartken_2024_11_12__11_05)
-                    if [[ $IMAGE_NAME =~ Image\.(.*) ]]; then
-                        LOCALVERSION="${BASH_REMATCH[1]}"
-                        KERNEL_IMAGE_MAP["$LOCALVERSION"]="$IMAGE"
-                    else
-                        # Handle Image without a localversion
-                        KERNEL_IMAGE_MAP["default"]="$IMAGE"
+
+                    # Extract kernel version using "strings" and "grep"
+                    KERNEL_VERSION=$(strings "$IMAGE" | grep -oP "Linux version \K[0-9\.]+[^\s]*")
+                    LOCALVERSION="${KERNEL_VERSION#5.10.120}"
+
+                    # Check if LOCALVERSION is empty, then assign it as default
+                    if [ -z "$LOCALVERSION" ]; then
+                        LOCALVERSION="default"
                     fi
+
+                    # Add to the map
+                    KERNEL_IMAGE_MAP["$LOCALVERSION"]="$IMAGE"
                 fi
             done
 
