@@ -173,6 +173,7 @@ copy_kernel_files() {
     BOOT_DIR="$SELECTED_KERNEL/modules/boot"
     MODULES_DIR="$SELECTED_KERNEL/modules/lib/modules"
     echo "Copying kernel files to USB boot drive..."
+
     if [ "$DRY_RUN" == true ]; then
         echo "[Dry-run] Would copy kernel Image, DTB, and modules to USB boot drive."
     else
@@ -181,15 +182,30 @@ copy_kernel_files() {
             echo "  - Copying $(basename "$IMAGE")"
             cp "$IMAGE" "$MOUNT_POINT/boot/"
         done
+
         echo "Copying DTB files..."
         for DTB in "$BOOT_DIR"/tegra234-p3701-0000-p3737-0000*.dtb; do
             echo "  - Copying $(basename "$DTB")"
             cp "$DTB" "$MOUNT_POINT/boot/dtb/"
         done
-        echo "Copying module files..."
-        for MODULE in "$MODULES_DIR"/*; do
-            echo "  - Copying $(basename "$MODULE")"
-            cp -r "$MODULE" "$MOUNT_POINT/lib/modules/"
+
+        echo "Copying module files (detailed view)..."
+        for MODULE_DIR in "$MODULES_DIR"/*; do
+            MODULE_NAME=$(basename "$MODULE_DIR")
+            echo "Processing module directory: $MODULE_NAME"
+
+            TARGET_DIR="$MOUNT_POINT/lib/modules/$MODULE_NAME"
+            mkdir -p "$TARGET_DIR"
+
+            find "$MODULE_DIR" -type f | while read -r FILE; do
+                RELATIVE_PATH=${FILE#$MODULE_DIR/}
+                DEST_PATH="$TARGET_DIR/$RELATIVE_PATH"
+                DEST_DIR=$(dirname "$DEST_PATH")
+
+                echo "  - Copying $(basename "$FILE") to $DEST_PATH"
+                mkdir -p "$DEST_DIR"
+                cp "$FILE" "$DEST_PATH"
+            done
         done
     fi
 }
