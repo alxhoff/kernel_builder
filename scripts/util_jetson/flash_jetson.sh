@@ -261,6 +261,7 @@ if [ ! -f "$BOOTLOADER_PARTITION_XML" ] && [ $DRY_RUN -eq 0 ]; then
 fi
 
 # Step 4: Flash USB device in the background
+echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
 cmd="sudo \"$L4T_DIRtools/kernel_flash/l4t_initrd_flash.sh\" -c \"$ROOTDISK_PARTITION_XML\" --flash-only --external-device \"$EXTERNAL_DEVICE\" --direct \"$DISK_NAME\" jetson-agx-orin-devkit external"
 if confirm_command "$cmd"; then
   if [ $DRY_RUN -eq 0 ]; then
@@ -270,14 +271,17 @@ if confirm_command "$cmd"; then
     echo "[Dry-run] Would run: $cmd"
   fi
 else
-  exit 1
+  echo "Skipping rootfs flashing as per user choice."
 fi
 
 # Step 5: Flash the Jetson bootloader
-cmd="sudo \"$L4T_DIRflash.sh\" -r -c \"$BOOTLOADER_PARTITION_XML\" --no-systemimg jetson-agx-orin-devkit \"$SELECTED_PARTITION\""
+echo "Using flash.sh to flash the bootloader on to the jetson"
+# cmd="sudo \"$L4T_DIRflash.sh\" -r -c \"$BOOTLOADER_PARTITION_XML\" --no-systemimg jetson-agx-orin-devkit \"$SELECTED_PARTITION\""
+cmd="sudo \"$L4T_DIRflash.sh\" -r -c \"$BOOTLOADER_PARTITION_XML\" jetson-agx-orin-devkit \"$SELECTED_PARTITION\""
 if confirm_command "$cmd"; then
   if [ $DRY_RUN -eq 0 ]; then
-    sudo "$L4T_DIRflash.sh" -r -c "$BOOTLOADER_PARTITION_XML" --no-systemimg jetson-agx-orin-devkit "$SELECTED_PARTITION" || {
+    # sudo "$L4T_DIRflash.sh" -r -c "$BOOTLOADER_PARTITION_XML" --no-systemimg jetson-agx-orin-devkit "$SELECTED_PARTITION" || {
+    sudo "$L4T_DIRflash.sh" -r -c "$BOOTLOADER_PARTITION_XML" jetson-agx-orin-devkit "$SELECTED_PARTITION" || {
       echo "Bootloader flash failed. Exiting."
       exit 1
     }
@@ -285,7 +289,7 @@ if confirm_command "$cmd"; then
     echo "[Dry-run] Would run: $cmd"
   fi
 else
-  exit 1
+  echo "Skipping bootloader flashing as per user choice"
 fi
 
 # Wait for USB flashing to complete if not in dry-run mode
