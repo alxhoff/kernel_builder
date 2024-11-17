@@ -2,9 +2,14 @@ FROM ubuntu:20.04
 
 # Set environment variables to prevent interaction
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 # Update the base image and install dependencies
 RUN apt-get update && apt-get install -y \
+    apt-utils \
+    locales \
     build-essential \
     bc \
     ccache \
@@ -20,8 +25,13 @@ RUN apt-get update && apt-get install -y \
     xxd \
     kmod \
     libyaml-dev \
+    binutils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Generate and configure locale
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # Create the working directory
 RUN mkdir -p /builder
