@@ -256,7 +256,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
     total_cpus = os.cpu_count()
 
     # Construct the Docker command
-    docker_command = [
+    docker_command_base = [
         "docker", "run", "--rm", "-it", "--init", "-u", f"{user_id}:{group_id}",
         "--cpus=" + str(total_cpus)
     ] + volume_args + [
@@ -285,63 +285,68 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
             subprocess.run(zcat_command, shell=True, check=True)
 
     # Combine mrproper (if enabled), configuration, and kernel compilation into a single Docker run command
-    combined_command = ""
+    combined_command_phase_1 = ""
     if clean:
-        combined_command += f"{base_command} mrproper && "
+        combined_command_phase_1 += f"{base_command} mrproper && "
     if config or use_current_config:
-        combined_command += f"{base_command} {config or 'oldconfig'} && "
+        combined_command_phase_1 += f"{base_command} {config or 'oldconfig'} && "
 
+    # Add the kernel and module build targets to the first Docker invocation
     if build_target:
         targets = build_target.split(',')
         for target in targets:
             if target == "kernel":
-                combined_command += f"{base_command} && "
-                combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
-                combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-                combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/Image.{localversion} && "
-                # Copy the DTB file with modified filename to include localversion
-                if dtb_name:
-                    dtb_path = locate_dtb_file(f"/builder/kernels/{kernel_name}/kernel/kernel", dtb_name)
-                    if dtb_path:
-                        new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
-                        combined_command += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name} && "
-                    else:
-                        print(f"Warning: DTB file {dtb_name} not found in the kernel directory.")
+                combined_command_phase_1 += f"{base_command} && "
+                combined_command_phase_1 += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
             elif target == "modules":
-                combined_command += f"{base_command} modules && "
-                combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
+                combined_command_phase_1 += f"{base_command} modules && "
+                combined_command_phase_1 += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
             else:
                 # General case for any target, including menuconfig
-                combined_command += f"{base_command} {target} && "
+                combined_command_phase_1 += f"{base_command} {target} && "
     else:
-        # If no specific target is provided, build the kernel and copy the Image
-        combined_command += f"{base_command} && "
-        combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
-        combined_command += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-        image_filename = f"Image.{localversion}" if localversion else "Image"
-        combined_command += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/{image_filename} && "
-
-        # Copy the DTB file with modified filename to include localversion
-        if dtb_name:
-            dtb_path = locate_dtb_file(f"kernels/{kernel_name}/kernel/kernel", dtb_name)
-            if dtb_path:
-                new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
-                combined_command += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}"
+        # If no specific target is provided, build the kernel and modules
+        combined_command_phase_1 += f"{base_command} && "
+        combined_command_phase_1 += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
 
     # Remove any trailing '&&'
-    combined_command = combined_command.rstrip(' &&')
+    combined_command_phase_1 = combined_command_phase_1.rstrip(' &&')
 
     # Adjust permissions before running ctags to avoid permission issues
     if generate_ctags:
-        combined_command += f" && chmod -R u+w /builder/kernels/{kernel_name}/kernel && ctags -R -f /builder/tags /builder/kernels/{kernel_name}/kernel"
+        combined_command_phase_1 += f" && chmod -R u+w /builder/kernels/{kernel_name}/kernel && ctags -R -f /builder/tags /builder/kernels/{kernel_name}/kernel"
 
-    # Run the combined command in a single Docker container session to ensure files are preserved
+    # Run the first Docker container session for kernel build and module installation
     if dry_run:
-        print(f"[Dry-run] Would run combined command: {' '.join(docker_command + [combined_command])}")
+        print(f"[Dry-run] Would run combined command (Phase 1): {' '.join(docker_command_base + [combined_command_phase_1])}")
     else:
-        full_command = docker_command + [combined_command]
-        print(f"Running Docker command: {' '.join(full_command)}")
-        subprocess.Popen(full_command, env=env).wait()
+        full_command_phase_1 = docker_command_base + [combined_command_phase_1]
+        print(f"Running Docker command (Phase 1): {' '.join(full_command_phase_1)}")
+        subprocess.Popen(full_command_phase_1, env=env).wait()
+
+    # Phase 2: Copy Image and DTB after kernel build
+    combined_command_phase_2 = ""
+    # Conditional logic for the kernel image filename
+    image_filename = f"Image.{localversion}" if localversion else "Image"
+    combined_command_phase_2 += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
+    combined_command_phase_2 += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/{image_filename} && "
+
+    # Copy the DTB file with modified filename to include localversion
+    if dtb_name:
+        dtb_path = locate_dtb_file(f"kernels/{kernel_name}/kernel/kernel", dtb_name)
+        if dtb_path:
+            new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
+            combined_command_phase_2 += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}"
+        else:
+            print(f"Warning: DTB file {dtb_name} not found in the kernel directory.")
+
+    # Run the second Docker container session to copy the kernel Image and DTB
+    if dry_run:
+        print(f"[Dry-run] Would run combined command (Phase 2): {' '.join(docker_command_base + [combined_command_phase_2])}")
+    else:
+        full_command_phase_2 = docker_command_base + [combined_command_phase_2]
+        print(f"Running Docker command (Phase 2): {' '.join(full_command_phase_2)}")
+        subprocess.Popen(full_command_phase_2, env=env).wait()
 
 def main():
     parser = argparse.ArgumentParser(description="Kernel Builder Script")
