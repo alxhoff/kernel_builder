@@ -9,17 +9,22 @@ fi
 # Default values for arguments
 DRY_RUN=false
 INTERACTIVE=false
+PARTITION_PROVIDED=false
+PARTITION_PATH=""
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --help)
-            echo "Usage: ./set_default_kernel_usb.sh [OPTIONS]"
+            echo "Usage: ./set_default_kernel_usb.sh [OPTIONS] [PARTITION]"
             echo
             echo "Options:"
             echo "  --help          Display this help message and exit."
             echo "  --dry-run       Simulate the process without making changes."
             echo "  --interactive   Prompt for confirmation before making changes."
+            echo
+            echo "Arguments:"
+            echo "  PARTITION       Optional argument specifying the partition to use (e.g., /dev/sdb1)."
             echo
             exit 0
             ;;
@@ -28,6 +33,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --interactive)
             INTERACTIVE=true
+            ;;
+        /dev/*)
+            PARTITION_PROVIDED=true
+            PARTITION_PATH=$1
             ;;
         *)
             echo "Unknown parameter: $1"
@@ -63,14 +72,22 @@ list_unmounted_drives() {
 
 # Function to select a partition
 select_partition() {
-    list_unmounted_drives
-    echo -e "\nPlease enter the partition name (e.g., sdb1):"
-    read -p "Partition: /dev/" PARTITION_NAME
-    PARTITION_PATH="/dev/$PARTITION_NAME"
+    if [ "$PARTITION_PROVIDED" == true ]; then
+        if [ ! -b "$PARTITION_PATH" ]; then
+            echo "Invalid partition: $PARTITION_PATH. Exiting."
+            exit 1
+        fi
+        echo "Using provided partition: $PARTITION_PATH"
+    else
+        list_unmounted_drives
+        echo -e "\nPlease enter the partition name (e.g., sdb1):"
+        read -p "Partition: /dev/" PARTITION_NAME
+        PARTITION_PATH="/dev/$PARTITION_NAME"
 
-    if [ ! -b "$PARTITION_PATH" ]; then
-        echo "Invalid partition. Exiting."
-        exit 1
+        if [ ! -b "$PARTITION_PATH" ]; then
+            echo "Invalid partition. Exiting."
+            exit 1
+        fi
     fi
 }
 
