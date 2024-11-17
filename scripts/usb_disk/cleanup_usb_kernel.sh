@@ -2,8 +2,8 @@
 
 # Ensure the script is being run with root permissions
 if [ "$EUID" -ne 0 ]; then
-  echo "This script must be run as root."
-  exit 1
+    echo "This script must be run as root."
+    exit 1
 fi
 
 # Default values for arguments
@@ -100,12 +100,13 @@ extract_kernel_version() {
 list_and_identify_components() {
     echo "Scanning for kernel components..."
 
-    # Use associative arrays to keep track of components and their versions
+    # Use associative arrays to track components and their usage
     declare -A kernel_images
     declare -A initrd_files
     declare -A dtb_files
     declare -A modules_dirs
     declare -A complete_kernels
+    used_components=()
 
     # Collect kernel images and extract kernel version
     KERNEL_IMAGES=$(find "$MOUNT_POINT/boot" -name "Image*" 2>/dev/null)
@@ -124,7 +125,7 @@ list_and_identify_components() {
     done
 
     # Collect initrd files
-    INITRD_FILES=$(find "$MOUNT_POINT/boot" -name "initrd.img-*")
+    INITRD_FILES=$(find "$MOUNT_POINT/boot" -name "initrd.img-*" 2>/dev/null)
     for INITRD in $INITRD_FILES; do
         INITRD_NAME=$(basename "$INITRD")
         KERNELVERSION="${INITRD_NAME#initrd.img-}"
@@ -132,7 +133,7 @@ list_and_identify_components() {
     done
 
     # Collect dtb files
-    DTB_FILES=$(find "$MOUNT_POINT/boot/dtb" -name "tegra234-p3701-0000-p3737-0000*.dtb")
+    DTB_FILES=$(find "$MOUNT_POINT/boot/dtb" -name "tegra234-p3701-0000-p3737-0000*.dtb" 2>/dev/null)
     for DTB in $DTB_FILES; do
         DTB_NAME=$(basename "$DTB")
         LOCALVERSION="${DTB_NAME#tegra234-p3701-0000-p3737-0000}"
@@ -147,7 +148,7 @@ list_and_identify_components() {
         modules_dirs["$MODULE_DIR_NAME"]=$MODULE_DIR
     done
 
-    # Check for complete kernels and track associated components
+    # Identify complete kernels and mark their components as used
     for KEY in "${!kernel_images[@]}"; do
         IFS=":" read -r KERNELVERSION LOCALVERSION <<< "$KEY"
 
@@ -155,34 +156,37 @@ list_and_identify_components() {
         INITRD_FILE="${initrd_files[$KERNELVERSION]}"
         DTB_FILE="${dtb_files[$LOCALVERSION]}"
 
-        if [ -z "$MODULES_DIR" ] || [ -z "$INITRD_FILE" ] || ([ -n "$LOCALVERSION" ] && [ -z "$DTB_FILE" ]); then
+        if [ -f "$INITRD_FILE" ] && [ -f "$DTB_FILE" ] && [ -d "$MODULES_DIR" ]; then
+            echo "Complete Kernel Found: $(basename "${kernel_images[$KEY]}")"
+            echo "  - Modules Directory: $MODULES_DIR"
+            echo "  - Initrd File: $INITRD_FILE"
+            echo "  - DTB File: $DTB_FILE"
+
+            complete_kernels["$KERNELVERSION"]="$KERNELVERSION"
+            complete_kernels["$LOCALVERSION"]="$LOCALVERSION"
+
+            # Mark these components as used
+            used_components+=("${kernel_images[$KEY]}" "$INITRD_FILE" "$DTB_FILE" "$MODULES_DIR")
+
+            prompt_confirmation "Do you want to delete the complete kernel $KERNELVERSION?" && {
+                delete_component "${kernel_images[$KEY]}"
+                delete_component "$MODULES_DIR"
+                delete_component "$INITRD_FILE"
+                delete_component "$DTB_FILE"
+            }
+        else
             echo "Incomplete Kernel Components for Image: $(basename "${kernel_images[$KEY]}")"
             [ -z "$MODULES_DIR" ] && echo "  - Missing Modules Directory: /lib/modules/$KERNELVERSION"
             [ -z "$INITRD_FILE" ] && echo "  - Missing Initrd File: initrd.img-$KERNELVERSION"
             if [ -n "$LOCALVERSION" ] && [ -z "$DTB_FILE" ]; then
                 echo "  - Missing DTB File: tegra234-p3701-0000-p3737-0000$LOCALVERSION.dtb"
             fi
-            # Mark incomplete kernel components for deletion
-            incomplete_kernel_image="${kernel_images[$KEY]}"
-            prompt_confirmation "Do you want to delete the incomplete kernel image $incomplete_kernel_image?" && delete_component "$incomplete_kernel_image"
-            [ -n "$MODULES_DIR" ] && prompt_confirmation "Do you want to delete the incomplete modules directory $MODULES_DIR?" && delete_component "$MODULES_DIR"
-            [ -n "$INITRD_FILE" ] && prompt_confirmation "Do you want to delete the incomplete initrd file $INITRD_FILE?" && delete_component "$INITRD_FILE"
-            [ -n "$DTB_FILE" ] && prompt_confirmation "Do you want to delete the incomplete dtb file $DTB_FILE?" && delete_component "$DTB_FILE"
-        else
-            echo "Complete Kernel Found: $(basename "${kernel_images[$KEY]}")"
-            echo "  - Modules Directory: $MODULES_DIR"
-            echo "  - Initrd File: $INITRD_FILE"
-            echo "  - DTB File: ${DTB_FILE:-Generic DTB (none)}"
-
-            # Mark components as part of a complete kernel
-            complete_kernels["$KERNELVERSION"]="$KERNELVERSION"
-            complete_kernels["$LOCALVERSION"]="$LOCALVERSION"
         fi
     done
 
-    # Identify orphaned components
+    # Identify orphaned components by excluding used ones
     for KERNELVERSION in "${!initrd_files[@]}"; do
-        if [ -z "${complete_kernels[$KERNELVERSION]}" ]; then
+        if [[ ! " ${used_components[@]} " =~ " ${initrd_files[$KERNELVERSION]} " ]]; then
             ORPHAN_INITRD="${initrd_files[$KERNELVERSION]}"
             echo "Orphan Initrd File: $ORPHAN_INITRD"
             prompt_confirmation "Do you want to delete the orphan initrd file $ORPHAN_INITRD?" && delete_component "$ORPHAN_INITRD"
@@ -190,16 +194,16 @@ list_and_identify_components() {
     done
 
     for LOCALVERSION in "${!dtb_files[@]}"; do
-        if [ -z "${complete_kernels[$LOCALVERSION]}" ]; then
+        if [[ ! " ${used_components[@]} " =~ " ${dtb_files[$LOCALVERSION]} " ]]; then
             ORPHAN_DTB="${dtb_files[$LOCALVERSION]}"
             echo "Orphan DTB File: $ORPHAN_DTB"
             prompt_confirmation "Do you want to delete the orphan DTB file $ORPHAN_DTB?" && delete_component "$ORPHAN_DTB"
         fi
     done
 
-    for KERNELVERSION in "${!modules_dirs[@]}"; do
-        if [ -z "${complete_kernels[$KERNELVERSION]}" ]; then
-            ORPHAN_MODULES="${modules_dirs[$KERNELVERSION]}"
+    for MODULE_DIR in "${!modules_dirs[@]}"; do
+        if [[ ! " ${used_components[@]} " =~ " ${modules_dirs[$MODULE_DIR]} " ]]; then
+            ORPHAN_MODULES="${modules_dirs[$MODULE_DIR]}"
             echo "Orphan Modules Directory: $ORPHAN_MODULES"
             prompt_confirmation "Do you want to delete the orphan modules directory $ORPHAN_MODULES?" && delete_component "$ORPHAN_MODULES"
         fi
