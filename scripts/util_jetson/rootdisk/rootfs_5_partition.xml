@@ -1,7 +1,6 @@
 <partition_layout version="01.00.0000">
     <device type="external" instance="0" sector_size="512" num_sectors="NUM_SECTORS">
         
-        <!-- IMPORTANT!!! -->
         <partition name="master_boot_record" type="protective_master_boot_record">
             <allocation_policy> sequential </allocation_policy>
             <filesystem_type> basic </filesystem_type>
@@ -18,7 +17,9 @@
             <file_system_attribute> 0 </file_system_attribute>
             <allocation_attribute> 8 </allocation_attribute>
             <percent_reserved> 0 </percent_reserved>
-            <description> **Required.** Contains primary GPT of the `external` device. All partitions defined after this entry are configured in the kernel, and are accessible by standard partition tools such as gdisk and parted. </description>
+            <description> **Required.** Contains primary GPT of the `external` device. All
+              partitions defined after this entry are configured in the kernel, and are
+              accessible by standard partition tools such as gdisk and parted. </description>
       </partition>
 
        <partition name="kernel" id="2" type="kernel">
@@ -43,9 +44,28 @@
             <filename> DTB_FILE </filename>
             <description> **Required.** Chain A; contains kernel device tree blob. </description>
         </partition>
+        
+        <partition name="RECNAME" type="kernel">
+            <allocation_policy> sequential </allocation_policy>
+            <filesystem_type> basic </filesystem_type>
+            <size> RECSIZE </size>
+            <file_system_attribute> 0 </file_system_attribute>
+            <allocation_attribute> 8 </allocation_attribute>
+            <percent_reserved> 0 </percent_reserved>
+            <filename> RECFILE </filename>
+        </partition>
+        <partition name="RECDTB-NAME" type="kernel_dtb">
+            <allocation_policy> sequential </allocation_policy>
+            <filesystem_type> basic </filesystem_type>
+            <size> 524288 </size>
+            <file_system_attribute> 0 </file_system_attribute>
+            <allocation_attribute> 8 </allocation_attribute>
+            <percent_reserved> 0 </percent_reserved>
+            <filename> RECDTB-FILE </filename>
+        </partition>
 
         <!-- Root Filesystem Partition (APP) -->
-        <partition name="APP" id="1" type="data">
+        <partition name="APP" type="data">
             <allocation_policy> sequential </allocation_policy>
             <filesystem_type> basic </filesystem_type>
             <size> APPSIZE </size>

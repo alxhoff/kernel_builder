@@ -14,6 +14,7 @@ L4T_DIR=""
 BOOTLOADER_PARTITION_XML=""
 ROOTDISK_PARTITION_XML=""
 DRY_RUN=0
+SKIP_ROOTFS_FLASH=0
 
 # Functions
 to_absolute_path() {
@@ -208,41 +209,48 @@ if [ ! -d "$L4T_DIR" ] && [ $DRY_RUN -eq 0 ]; then
   exit 1
 fi
 
+# Prompt to skip l4t_initrd_flash.sh early
+echo "Do you want to skip flashing the root filesystem using l4t_initrd_flash.sh?"
+read -p "Skip root filesystem flashing? [y/N]: " skip_rootfs
+skip_rootfs=${skip_rootfs,,} # Convert to lowercase
+if [[ "$skip_rootfs" == "y" || "$skip_rootfs" == "yes" ]]; then
+  SKIP_ROOTFS_FLASH=1
+fi
+
 # Step 2: Select USB partition
-echo "Step 2: Select a partition from the available disks and partitions"
-echo "Available partitions:"
+if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
+  # Step 2: Select USB partition
+  echo "Step 2: Select a partition from the available disks and partitions"
+  echo "Available partitions:"
 
-PARTITIONS=($(lsblk -lno NAME,SIZE,TYPE | awk '$3 == "part" {print $1}'))
+  PARTITIONS=($(lsblk -lno NAME,SIZE,TYPE | awk '$3 == "part" {print $1}'))
 
-if [ ${#PARTITIONS[@]} -eq 0 ]; then
-  echo "No partitions available."
-  exit 1
+  if [ ${#PARTITIONS[@]} -eq 0 ]; then
+    echo "No partitions available."
+    exit 1
+  fi
+
+  for i in "${!PARTITIONS[@]}"; do
+    PARTITION_NAME="${PARTITIONS[i]}"
+    PARTITION_SIZE=$(lsblk -lno SIZE "/dev/$PARTITION_NAME")
+    DISK_NAME=$(lsblk -lno PKNAME "/dev/$PARTITION_NAME" | head -n1)
+    echo "$((i + 1)): /dev/$PARTITION_NAME - Size: $PARTITION_SIZE (Disk: $DISK_NAME)"
+  done
+
+  read -p "Enter the number of the partition to use (e.g., 1): " PARTITION_INDEX
+  PARTITION_INDEX=$((PARTITION_INDEX - 1))
+
+  SELECTED_PARTITION="${PARTITIONS[$PARTITION_INDEX]}"
+
+  if [ -z "$SELECTED_PARTITION" ]; then
+    echo "Invalid selection."
+    exit 1
+  fi
+
+  DISK_NAME=$(lsblk -lno PKNAME "/dev/$SELECTED_PARTITION" | head -n1)
+
+  echo "Selected disk: $DISK_NAME"
 fi
-
-for i in "${!PARTITIONS[@]}"; do
-  PARTITION_NAME="${PARTITIONS[i]}"
-  PARTITION_SIZE=$(lsblk -lno SIZE "/dev/$PARTITION_NAME")
-  DISK_NAME=$(lsblk -lno PKNAME "/dev/$PARTITION_NAME" | head -n1)
-  echo "$((i + 1)): /dev/$PARTITION_NAME - Size: $PARTITION_SIZE (Disk: $DISK_NAME)"
-done
-
-read -p "Enter the number of the partition to use (e.g., 1): " PARTITION_INDEX
-PARTITION_INDEX=$((PARTITION_INDEX - 1))
-
-SELECTED_PARTITION="${PARTITIONS[$PARTITION_INDEX]}"
-
-if [ -z "$SELECTED_PARTITION" ]; then
-  echo "Invalid selection."
-  exit 1
-fi
-
-DISK_NAME=$(lsblk -lno PKNAME "/dev/$SELECTED_PARTITION" | head -n1)
-PARTITION_NUMBER="${SELECTED_PARTITION:${#DISK_NAME}}"
-EXTERNAL_DEVICE="sda${PARTITION_NUMBER}"
-
-echo "Selected disk: $DISK_NAME"
-echo "Selected partition: $SELECTED_PARTITION"
-echo "External device: $EXTERNAL_DEVICE"
 
 # Step 3: Validate partition XML files
 if [ -z "$ROOTDISK_PARTITION_XML" ] || [ -z "$BOOTLOADER_PARTITION_XML" ]; then
@@ -261,32 +269,41 @@ if [ ! -f "$BOOTLOADER_PARTITION_XML" ] && [ $DRY_RUN -eq 0 ]; then
 fi
 
 # Step 4: Flash USB device in the background
-echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
-cmd="sudo \"$L4T_DIRtools/kernel_flash/l4t_initrd_flash.sh\" -c \"$ROOTDISK_PARTITION_XML\" --flash-only --external-device \"$EXTERNAL_DEVICE\" --direct \"$DISK_NAME\" jetson-agx-orin-devkit external"
-if confirm_command "$cmd"; then
-  if [ $DRY_RUN -eq 0 ]; then
-    sudo "$L4T_DIRtools/kernel_flash/l4t_initrd_flash.sh" -c "$ROOTDISK_PARTITION_XML" --flash-only --external-device "$EXTERNAL_DEVICE" --direct "$DISK_NAME" jetson-agx-orin-devkit external &
-    FLASH_PID=$!
+if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
+  echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
+  cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./tools/kernel_flash/l4t_initrd_flash.sh --external-only -c $ROOTDISK_PARTITION_XML --external-device sda1 --direct $DISK_NAME jetson-agx-orin-devkit external"
+  if confirm_command "$cmd"; then
+    if [ $DRY_RUN -eq 0 ]; then
+      pushd "${L4T_DIR%/}" > /dev/null
+      eval "$cmd" || {
+        echo "Rootfs flashing failed. Exiting."
+        popd > /dev/null
+        exit 1
+      }
+      popd > /dev/null
+    else
+      echo "[Dry-run] Would run: (cd ${L4T_DIR%/}/tools/kernel_flash && $cmd)"
+    fi
   else
-    echo "[Dry-run] Would run: $cmd"
+    echo "Skipping rootfs flashing as per user choice."
   fi
 else
-  echo "Skipping rootfs flashing as per user choice."
+  echo "Rootfs flashing skipped."
 fi
 
 # Step 5: Flash the Jetson bootloader
 echo "Using flash.sh to flash the bootloader on to the jetson"
-# cmd="sudo \"$L4T_DIRflash.sh\" -r -c \"$BOOTLOADER_PARTITION_XML\" --no-systemimg jetson-agx-orin-devkit \"$SELECTED_PARTITION\""
-cmd="sudo \"$L4T_DIRflash.sh\" -r -c \"$BOOTLOADER_PARTITION_XML\" jetson-agx-orin-devkit \"$SELECTED_PARTITION\""
+cmd="./flash.sh -r -c $BOOTLOADER_PARTITION_XML --no-systemimg jetson-agx-orin-devkit sda1"
 if confirm_command "$cmd"; then
   if [ $DRY_RUN -eq 0 ]; then
-    # sudo "$L4T_DIRflash.sh" -r -c "$BOOTLOADER_PARTITION_XML" --no-systemimg jetson-agx-orin-devkit "$SELECTED_PARTITION" || {
-    sudo "$L4T_DIRflash.sh" -r -c "$BOOTLOADER_PARTITION_XML" jetson-agx-orin-devkit "$SELECTED_PARTITION" || {
+    pushd "${L4T_DIR%/}" > /dev/null
+    eval "$cmd" || {
       echo "Bootloader flash failed. Exiting."
       exit 1
     }
+    popd > /dev/null
   else
-    echo "[Dry-run] Would run: $cmd"
+    echo "[Dry-run] Would run: (cd ${L4T_DIR%/} && $cmd)"
   fi
 else
   echo "Skipping bootloader flashing as per user choice"
@@ -294,10 +311,7 @@ fi
 
 # Wait for USB flashing to complete if not in dry-run mode
 if [ $DRY_RUN -eq 0 ]; then
-  wait $FLASH_PID
   echo "USB flashing completed."
-else
-  echo "[Dry-run] Skipping USB flashing."
 fi
 
 # Step 6: Finish
