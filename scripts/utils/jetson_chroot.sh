@@ -101,7 +101,7 @@ cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
-chroot "$ROOTFS_DIR" /bin/bash
+chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; exec /bin/bash"
 
 # Cleanup after exiting chroot
 cleanup "$ROOTFS_DIR"
