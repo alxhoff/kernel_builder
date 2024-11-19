@@ -86,8 +86,49 @@ def stop_tracing_system(device_ip, user, dry_run=False):
     if not dry_run:
         subprocess.run(stop_command, shell=True, check=True)
 
+def enable_persistent_logging(device_ip, user, dry_run=False):
+    commands = [
+        f"ssh {user}@{device_ip} 'mkdir -p /var/log/journal'",
+        f"ssh {user}@{device_ip} 'systemctl restart systemd-journald'"
+    ]
+    for command in commands:
+        print(f"Executing: {command}")
+        if not dry_run:
+            subprocess.run(command, shell=True, check=True)
+
+def retrieve_boot_logs(device_ip, user, destination_path, dry_run=False):
+    # Export logs in plain text format using journalctl
+    export_command = f"ssh {user}@{device_ip} 'journalctl --boot --no-pager > /tmp/boot_logs.txt'"
+    print(f"Exporting boot logs on the target device: {export_command}")
+    if not dry_run:
+        subprocess.run(export_command, shell=True, check=True)
+
+    # Copy the exported log file to the destination
+    remote_logs = f"{user}@{device_ip}:/tmp/boot_logs.txt"
+    print(f"Copying exported boot logs to {destination_path}")
+    if not dry_run:
+        subprocess.run(["scp", remote_logs, destination_path], check=True)
+
+    # Clean up the remote temporary log file
+    cleanup_command = f"ssh {user}@{device_ip} 'rm /tmp/boot_logs.txt'"
+    print(f"Cleaning up remote temporary log file: {cleanup_command}")
+    if not dry_run:
+        subprocess.run(cleanup_command, shell=True, check=True)
+
 def main():
-    parser = argparse.ArgumentParser(description="Kernel Debugger Script for managing Jetson device debugging")
+    parser = argparse.ArgumentParser(
+        description="Kernel Debugger Script for managing Jetson device debugging and logging",
+        epilog="""Examples of usage:
+        Enable persistent logging on the target device:
+          python3 kernel_debugger.py enable-persistent-logging --ip 192.168.1.10 --user root
+
+        Retrieve boot logs from the target device:
+          python3 kernel_debugger.py retrieve-boot-logs --ip 192.168.1.10 --user root --destination-path /tmp/boot_logs
+
+        Use --dry-run to print commands without executing:
+          python3 kernel_debugger.py enable-persistent-logging --ip 192.168.1.10 --user root --dry-run
+        """
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     # Install trace-cmd command
@@ -161,6 +202,20 @@ def main():
     stop_system_parser.add_argument("--user", required=True, help="Username for accessing the target device")
     stop_system_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
 
+    # Enable persistent logging command
+    enable_logging_parser = subparsers.add_parser("enable-persistent-logging")
+    enable_logging_parser.add_argument("--ip", required=True, help="IP address of the target device")
+    enable_logging_parser.add_argument("--user", required=True, help="Username for accessing the target device")
+    enable_logging_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+
+    # Retrieve boot logs command
+    retrieve_boot_logs_parser = subparsers.add_parser("retrieve-boot-logs")
+    retrieve_boot_logs_parser.add_argument("--ip", required=True, help="IP address of the target device")
+    retrieve_boot_logs_parser.add_argument("--user", required=True, help="Username for accessing the target device")
+    retrieve_boot_logs_parser.add_argument("--destination-path", required=True, help="Local path to save the boot logs")
+    retrieve_boot_logs_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
+
+
     args = parser.parse_args()
 
     # Print help if no command is provided
@@ -190,6 +245,11 @@ def main():
         start_tracing_system(device_ip=args.ip, user=args.user, dry_run=args.dry_run)
     elif args.command == "stop-system-tracing":
         stop_tracing_system(device_ip=args.ip, user=args.user, dry_run=args.dry_run)
+    elif args.command == "enable-persistent-logging":
+        enable_persistent_logging(device_ip=args.ip, user=args.user, dry_run=args.dry_run)
+    elif args.command == "retrieve-boot-logs":
+        retrieve_boot_logs(device_ip=args.ip, user=args.user, destination_path=args.destination_path, dry_run=args.dry_run)
+
 
 if __name__ == "__main__":
     main()
