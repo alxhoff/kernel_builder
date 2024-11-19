@@ -223,14 +223,29 @@ regenerate_initrd() {
         mount --bind /sys "$MOUNT_POINT/sys"
         mount --bind /run "$MOUNT_POINT/run"
 
-        # Write a temporary resolv.conf to enable internet access inside chroot
-        echo "nameserver 8.8.8.8" > "$MOUNT_POINT/etc/resolv.conf"
+        # Ensure /etc exists in the chroot environment
+        echo "Ensuring /etc directory exists in chroot environment..."
+        mkdir -p "$MOUNT_POINT/etc"
 
-        # Set up environment variables to ensure the chroot has the right PATH
-        chroot "$MOUNT_POINT" /bin/bash -c "export PATH=/usr/sbin:/usr/bin:/sbin:/bin && apt-get update && apt-get install -y initramfs-tools && update-initramfs -c -k $KERNEL_VERSION"
+        # Bind the host resolv.conf into the chroot environment
+        echo "Binding host's resolv.conf into chroot environment..."
+        mount --bind /etc/resolv.conf "$MOUNT_POINT/etc/resolv.conf"
+
+        # Set up environment variables and check for update-initramfs
+        echo "Checking for update-initramfs inside chroot..."
+        chroot "$MOUNT_POINT" /bin/bash -c "export PATH=/usr/sbin:/usr/bin:/sbin:/bin && command -v update-initramfs >/dev/null 2>&1"
+        if [ $? -ne 0 ]; then
+            echo "update-initramfs not found inside chroot. Installing initramfs-tools..."
+            chroot "$MOUNT_POINT" /bin/bash -c "export PATH=/usr/sbin:/usr/bin:/sbin:/bin && apt-get update && apt-get install -y initramfs-tools"
+        else
+            echo "update-initramfs is available inside chroot. Skipping installation of initramfs-tools."
+        fi
+
+        # Regenerate the initrd
+        chroot "$MOUNT_POINT" /bin/bash -c "export PATH=/usr/sbin:/usr/bin:/sbin:/bin && update-initramfs -c -k $KERNEL_VERSION"
 
         # Clean up chroot environment
-        rm "$MOUNT_POINT/etc/resolv.conf"
+        umount "$MOUNT_POINT/etc/resolv.conf"
         umount "$MOUNT_POINT/dev"
         umount "$MOUNT_POINT/proc"
         umount "$MOUNT_POINT/sys"
