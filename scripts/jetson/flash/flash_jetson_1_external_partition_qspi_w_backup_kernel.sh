@@ -2,8 +2,8 @@
 
 # Default values
 DEFAULT_L4T_DIR="Cartken_Jetson_Image_35.4.1-standalone-20240516-1/Linux_for_Tegra/"
-ROOTDISK_PARTITION_XML="rootdisk/rootfs_3_partition.xml"
-BOOTLOADER_PARTITION_XML="bootloader/no_APP_no_kernel.xml"
+ROOTDISK_PARTITION_XML="rootdisk/flash_l4t_external_no_kernel.xml"
+BOOTLOADER_PARTITION_XML="bootloader/flash_t234_qspi.xml"
 
 # Functions
 show_help() {

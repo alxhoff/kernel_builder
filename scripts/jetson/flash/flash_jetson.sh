@@ -13,6 +13,7 @@ DEFAULT_L4T_DIR="Linux_for_Tegra"
 L4T_DIR=""
 BOOTLOADER_PARTITION_XML=""
 ROOTDISK_PARTITION_XML=""
+BOOT_ORDER_OVERLAY=""
 DRY_RUN=0
 SKIP_ROOTFS_FLASH=0
 
@@ -47,7 +48,9 @@ Options:
                                     the device's bootloader-related partitions.
   --rootdisk-partition-xml FILE    Root disk partition XML configuration file. This file specifies the layout
                                     of the root disk, including essential partitions like the root filesystem.
-  --dry-run                        Perform a dry run without executing commands. Commands will be displayed and
+  --boot-order-overlay FILE        Path to the boot order overlay DTB file. If provided, it is passed as the
+                                    ADDITIONAL_DTB_OVERLAY environment variable during the flash.sh call.
+  "--dry-run                        Perform a dry run without executing commands. Commands will be displayed and
                                     confirmed interactively.
   --help                           Show this help message and exit.
 
@@ -151,6 +154,10 @@ while [[ $# -gt 0 ]]; do
       ROOTDISK_PARTITION_XML="$2"
       shift 2
       ;;
+    --boot-order-overlay)
+      BOOT_ORDER_OVERLAY="$2"
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN=1
       shift
@@ -166,7 +173,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
 # Convert relative paths to absolute paths
 if [ -n "$ROOTDISK_PARTITION_XML" ]; then
   ROOTDISK_PARTITION_XML=$(to_absolute_path "$ROOTDISK_PARTITION_XML")
@@ -174,6 +180,10 @@ fi
 
 if [ -n "$BOOTLOADER_PARTITION_XML" ]; then
   BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
+fi
+
+if [ -n "$BOOT_ORDER_OVERLAY" ]; then
+  BOOT_ORDER_OVERLAY=$(to_absolute_path "$BOOT_ORDER_OVERLAY")
 fi
 
 # Step 1: Check or extract L4T folder
@@ -253,12 +263,12 @@ if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
 fi
 
 # Step 3: Validate partition XML files
-if [ -z "$ROOTDISK_PARTITION_XML" ] || [ -z "$BOOTLOADER_PARTITION_XML" ]; then
-  echo "Both --rootdisk-partition-xml and --bootloader-partition-xml arguments are required."
+if [ -z "$BOOTLOADER_PARTITION_XML" ]; then
+  echo "The --bootloader-partition-xml argument is required."
   exit 1
 fi
 
-if [ ! -f "$ROOTDISK_PARTITION_XML" ] && [ $DRY_RUN -eq 0 ]; then
+if [ -n "$ROOTDISK_PARTITION_XML" ] && [ ! -f "$ROOTDISK_PARTITION_XML" ] && [ $DRY_RUN -eq 0 ]; then
   echo "Rootdisk partition XML not found: $ROOTDISK_PARTITION_XML"
   exit 1
 fi
@@ -268,32 +278,40 @@ if [ ! -f "$BOOTLOADER_PARTITION_XML" ] && [ $DRY_RUN -eq 0 ]; then
   exit 1
 fi
 
-# Step 4: Flash USB device in the background
-if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
-  echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
-  cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./tools/kernel_flash/l4t_initrd_flash.sh --external-only -c $ROOTDISK_PARTITION_XML --external-device sda1 --direct $DISK_NAME jetson-agx-orin-devkit external"
-  if confirm_command "$cmd"; then
-    if [ $DRY_RUN -eq 0 ]; then
-      pushd "${L4T_DIR%/}" > /dev/null
-      eval "$cmd" || {
-        echo "Rootfs flashing failed. Exiting."
+# Step 4: Flash USB device
+if [ -n "$ROOTDISK_PARTITION_XML" ]; then
+  if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
+    echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
+    cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./tools/kernel_flash/l4t_initrd_flash.sh -c $ROOTDISK_PARTITION_XML --external-device sda1 --direct $DISK_NAME jetson-agx-orin-devkit external"
+    if confirm_command "$cmd"; then
+      if [ $DRY_RUN -eq 0 ]; then
+        pushd "${L4T_DIR%/}" > /dev/null
+        eval "$cmd" || {
+          echo "Rootfs flashing failed. Exiting."
+          popd > /dev/null
+          exit 1
+        }
         popd > /dev/null
-        exit 1
-      }
-      popd > /dev/null
+      else
+        echo "[Dry-run] Would run: (cd ${L4T_DIR%/}/tools/kernel_flash && $cmd)"
+      fi
     else
-      echo "[Dry-run] Would run: (cd ${L4T_DIR%/}/tools/kernel_flash && $cmd)"
+      echo "Skipping rootfs flashing as per user choice."
     fi
   else
-    echo "Skipping rootfs flashing as per user choice."
+    echo "Rootfs flashing skipped."
   fi
 else
-  echo "Rootfs flashing skipped."
+  echo "Rootdisk partition XML is not provided. Skipping rootfs flashing."
 fi
 
 # Step 5: Flash the Jetson bootloader
 echo "Using flash.sh to flash the bootloader on to the jetson"
-cmd="./flash.sh -r -c $BOOTLOADER_PARTITION_XML --no-systemimg jetson-agx-orin-devkit sda1"
+if [ -n "$BOOT_ORDER_OVERLAY" ]; then
+  cmd="ADDITIONAL_DTB_OVERLAY=$BOOT_ORDER_OVERLAY ./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit sda1"
+else
+  cmd="./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit sda1"
+fi
 if confirm_command "$cmd"; then
   if [ $DRY_RUN -eq 0 ]; then
     pushd "${L4T_DIR%/}" > /dev/null
