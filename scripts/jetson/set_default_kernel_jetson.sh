@@ -6,6 +6,7 @@
 # Arguments:
 #   --help       Show this help message and exit.
 #   --dry-run    Optional argument to simulate the changes without updating extlinux.conf.
+#   --dtb        If provided, update the FDT line in extlinux.conf with the selected DTB file.
 #
 # Description:
 # This script connects to a Jetson device via SSH, lists all kernel versions and their components
@@ -25,6 +26,7 @@ DEVICE_IP=$(<"$DEVICE_IP_FILE")
 
 # Default values for script arguments
 DRY_RUN=false
+USE_DTB=false
 
 # Parse script arguments
 while [[ "$#" -gt 0 ]]; do
@@ -35,6 +37,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "Arguments:"
             echo "  --help       Show this help message and exit."
             echo "  --dry-run    Optional argument to simulate the changes without updating extlinux.conf."
+            echo "  --dtb        If provided, update the FDT line in extlinux.conf with the selected DTB file."
             echo
             echo "Description:"
             echo "  This script connects to a Jetson device via SSH, lists all kernel versions and their components"
@@ -44,6 +47,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            ;;
+        --dtb)
+            USE_DTB=true
             ;;
         *)
             echo "Unknown parameter: $1"
@@ -203,11 +209,15 @@ SELECTED_DTB="/boot/dtb/tegra234-p3701-0000-p3737-0000${SELECTED_VERSION}.dtb"
 
 # Update extlinux.conf to set the selected kernel as default
 EXTLINUX_CONF_PATH="/boot/extlinux/extlinux.conf"
-UPDATE_COMMAND="sed -i.bak '
-  s|^\s*LINUX .*|      LINUX ${SELECTED_IMAGE}|;
-  s|^\s*INITRD .*|      INITRD ${SELECTED_INITRD}|;
-  s|^\s*FDT .*|      FDT ${SELECTED_DTB}|;
-' $EXTLINUX_CONF_PATH"
+# Build the sed script dynamically
+SED_SCRIPT="s|^\s*LINUX .*|      LINUX ${SELECTED_IMAGE}|;"
+SED_SCRIPT+=" s|^\s*INITRD .*|      INITRD ${SELECTED_INITRD}|;"
+
+if [ "$USE_DTB" == true ]; then
+    SED_SCRIPT+=" s|^\s*FDT .*|      FDT ${SELECTED_DTB}|;"
+fi
+
+UPDATE_COMMAND="sed -i.bak '$SED_SCRIPT' $EXTLINUX_CONF_PATH"
 
 echo -e "\nUpdating extlinux.conf to set the selected kernel as default..."
 if [ "$DRY_RUN" == true ]; then

@@ -62,7 +62,7 @@ def deploy_device(device_ip, user, dry_run=False, localversion=None):
     if not dry_run:
         subprocess.run(["scp", "-r", modules_dir, remote_modules_dir], check=True)
 
-def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None):
+def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None, dtb=False):
     # Deploys the compiled kernel to a remote Jetson device via SCP.
     modules_base_dir = os.path.join("kernels", kernel_name, "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
@@ -180,13 +180,14 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         subprocess.run(update_initrd_command, shell=True, check=True)
 
     # Update extlinux.conf to use the new FDT (Flattened Device Tree)
-    new_fdt_entry = f"      FDT /boot/dtb/{os.path.basename(dtb_file)}"
-    update_fdt_command = (
-        f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*FDT .*|{new_fdt_entry}|' {extlinux_conf_path}\""
-    )
-    print(f"Updating {extlinux_conf_path} on remote device to use new FDT: {new_fdt_entry}")
-    if not dry_run:
-        subprocess.run(update_fdt_command, shell=True, check=True)
+    if dtb:
+        new_fdt_entry = f"      FDT /boot/dtb/{os.path.basename(dtb_file)}"
+        update_fdt_command = (
+            f"ssh root@{device_ip} \"sed -i.bak 's|^[[:space:]]*FDT .*|{new_fdt_entry}|' {extlinux_conf_path}\""
+        )
+        print(f"Updating {extlinux_conf_path} on remote device to use new FDT: {new_fdt_entry}")
+        if not dry_run:
+            subprocess.run(update_fdt_command, shell=True, check=True)
 
 def locate_compiled_modules(kernel_name, target_modules):
     """
@@ -289,6 +290,7 @@ def main():
     deploy_jetson_parser.add_argument("--user", required=True, help="Username for accessing the Jetson device")
     deploy_jetson_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
     deploy_jetson_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
+    deploy_jetson_parser.add_argument('--dtb', help='Specify a custom Device Tree Blob (DTB) file to use for deployment')
 
     # Deploy targeted modules command
     deploy_targeted_modules_parser = subparsers.add_parser("deploy-targeted-modules")
@@ -309,7 +311,7 @@ def main():
     elif args.command == "deploy-device":
         deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
     elif args.command == "deploy-jetson":
-        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
+        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, dtb=args.dtb)
     elif args.command == "deploy-targeted-modules":
         deploy_targeted_modules(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
 
