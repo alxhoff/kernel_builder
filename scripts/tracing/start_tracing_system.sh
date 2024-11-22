@@ -1,3 +1,47 @@
+
+if [[ "$1" == "--help" ]]; then
+    echo "start_tracing_system.sh Usage:"
+    case "start_tracing_system.sh" in
+        "install_trace_cmd.sh")
+            echo "Install trace-cmd tool for tracing kernel functionality."
+            echo "Usage: ./start_tracing_system.sh"
+            ;;
+        "list_tracepoints.sh")
+            echo "List all available tracepoints in the kernel."
+            echo "Usage: ./start_tracing_system.sh"
+            ;;
+        "record_trace.sh")
+            echo "Record a trace of kernel events."
+            echo "Usage: ./start_tracing_system.sh [duration_in_seconds]"
+            echo "Example: ./start_tracing_system.sh 10"
+            ;;
+        "report_trace.sh")
+            echo "Generate a report from the recorded trace data."
+            echo "Usage: ./start_tracing_system.sh <trace_file>"
+            echo "Example: ./start_tracing_system.sh trace.dat"
+            ;;
+        "start_tracing.sh")
+            echo "Start tracing kernel events."
+            echo "Usage: ./start_tracing_system.sh [duration_in_seconds]"
+            echo "Example: ./start_tracing_system.sh 10"
+            ;;
+        "start_tracing_system.sh")
+            echo "Start system-wide tracing of kernel events."
+            echo "Usage: ./start_tracing_system.sh [duration_in_seconds]"
+            echo "Example: ./start_tracing_system.sh 10"
+            ;;
+        "stop_tracing.sh")
+            echo "Stop the current kernel event tracing."
+            echo "Usage: ./start_tracing_system.sh"
+            ;;
+        "trace_workflow.sh")
+            echo "Automate a full tracing workflow including start, record, stop, and report."
+            echo "Usage: ./start_tracing_system.sh [duration_in_seconds]"
+            echo "Example: ./start_tracing_system.sh 20"
+            ;;
+    esac
+    exit 0
+fi
 #!/bin/bash
 
 # Script to start tracing all events from a specified system on a Jetson device
