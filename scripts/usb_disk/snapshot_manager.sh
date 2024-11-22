@@ -121,7 +121,14 @@ select_partition() {
 # Function to create a snapshot
 create_snapshot() {
     mkdir -p "$SNAPSHOT_DIR"
-    snapshot_file="$SNAPSHOT_DIR/snapshot_$(date +%Y%m%d_%H%M%S).img"
+
+    # Prompt for a version or description
+    read -p "Enter a version or description for the snapshot (e.g., 'v1', 'backup', 'post-update'): " version
+    version=${version// /_}  # Replace spaces with underscores for compatibility
+
+    # Construct the snapshot filename with the provided version
+    snapshot_file="$SNAPSHOT_DIR/snapshot_$(date +%Y%m%d_%H%M%S)_${version}.img"
+
     echo "Creating snapshot: $snapshot_file"
     if $DRY_RUN; then
         echo "[DRY-RUN] Would run: partclone.ext4 -c -s $selected_partition -o $snapshot_file -L snapshot_create.log"
