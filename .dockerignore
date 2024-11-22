@@ -1,4 +1,5 @@
-kernels
-toolchains
-scripts
-utils
+kernels/*
+toolchains/*
+scripts/*
+utils/*
+__pychache__

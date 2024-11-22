@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     kmod \
     libyaml-dev \
     binutils \
+    pkg-config \
+    qt5-default \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
