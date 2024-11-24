@@ -9,7 +9,7 @@ show_help() {
 Usage: $(basename "$0") [OPTION]
 
 This script helps you manage snapshots of partitions using partclone.
-It allows you to create or restore snapshots.
+It allows you to create, repair, or restore snapshots.
 
 OPTIONS:
   --help                Show this help message and exit.
@@ -17,12 +17,12 @@ OPTIONS:
 
 HOW IT WORKS:
   1. The script lists all partitions and prompts you to select one.
-  2. You can choose to create a new snapshot or restore an existing one.
+  2. You can choose to create a new snapshot, repair a partition, or restore a snapshot.
   3. Snapshots are stored in a folder named '$SNAPSHOT_DIR' in the current directory.
 
 REQUIREMENTS:
   - Bash 4.0+.
-  - partclone installed.
+  - partclone and fsck installed.
 
 EXAMPLES:
   Dry-run to check actions:
@@ -36,6 +36,10 @@ EXAMPLES:
   Restore a snapshot:
     ./$(basename "$0")
       - Select a snapshot and target partition for restoring.
+
+  Repair a partition:
+    ./$(basename "$0")
+      - Select a partition to run fsck and repair if needed.
 
 EOF
 }
@@ -118,15 +122,32 @@ select_partition() {
     fi
 }
 
+# Function to repair a partition
+repair_partition() {
+    echo "Checking and repairing partition: $selected_partition"
+    echo "Unmounting $selected_partition (if mounted)..."
+    sudo umount "$selected_partition" 2>/dev/null || true
+
+    # Run fsck to repair the partition
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Would run: fsck.ext4 -y $selected_partition"
+    else
+        sudo fsck.ext4 -y "$selected_partition"
+        if [ $? -ne 0 ]; then
+            echo "Repair failed or additional issues found."
+            exit 1
+        fi
+        echo "Repair complete for $selected_partition."
+    fi
+}
+
 # Function to create a snapshot
 create_snapshot() {
-    mkdir -p "$SNAPSHOT_DIR"
+    repair_partition  # Ensure the partition is repaired before snapshotting
 
-    # Prompt for a version or description
+    mkdir -p "$SNAPSHOT_DIR"
     read -p "Enter a version or description for the snapshot (e.g., 'v1', 'backup', 'post-update'): " version
     version=${version// /_}  # Replace spaces with underscores for compatibility
-
-    # Construct the snapshot filename with the provided version
     snapshot_file="$SNAPSHOT_DIR/snapshot_$(date +%Y%m%d_%H%M%S)_${version}.img"
 
     echo "Creating snapshot: $snapshot_file"
@@ -166,6 +187,8 @@ restore_snapshot() {
 
     echo "Select the target partition for restoring:"
     select_partition  # Prompt user to select target partition
+
+    repair_partition  # Ensure the target partition is repaired before restoring
 
     echo "Restoring snapshot: $snapshot_path to $selected_partition"
     echo "Unmounting $selected_partition (if mounted)..."
@@ -219,6 +242,7 @@ fi
 echo "What would you like to do?"
 echo "[1] Create a snapshot"
 echo "[2] Restore a snapshot"
+echo "[3] Repair a partition"
 read -p "Enter your choice: " action
 
 case $action in
@@ -229,6 +253,11 @@ case $action in
     ;;
 2)
     restore_snapshot
+    ;;
+3)
+    echo "Select a partition to repair:"
+    select_partition
+    repair_partition
     ;;
 *)
     echo "Invalid choice. Exiting."
