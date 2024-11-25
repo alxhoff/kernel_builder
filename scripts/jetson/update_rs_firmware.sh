@@ -49,6 +49,17 @@ select_firmware() {
     echo "You selected: $SELECTED_BINARY"
 }
 
+# Reload the kernel module for d4xx devices
+reload_d4xx_module() {
+    echo "Reloading d4xx kernel module..."
+    if run_ssh "rmmod d4xx && modprobe d4xx"; then
+        echo "Kernel module reloaded successfully."
+    else
+        echo "Error: Failed to reload d4xx kernel module. Exiting."
+        exit 1
+    fi
+}
+
 # Function to update a single device
 update_device() {
     local DEVICE="$1"
@@ -57,10 +68,15 @@ update_device() {
     echo "Updating device $DEVICE with binary $BINARY..."
     local COMMAND="cat $FIRMWARE_DIR/$BINARY > $DEVICE"
     echo "[Running command on target]: $COMMAND"
-    run_ssh "$COMMAND" || {
-        echo "Error: Failed to update device $DEVICE."
-        return 1
-    }
+    if ! run_ssh "$COMMAND"; then
+        echo "Error: Initial attempt to update device $DEVICE failed."
+        reload_d4xx_module
+        echo "Retrying update for device $DEVICE..."
+        if ! run_ssh "$COMMAND"; then
+            echo "Error: Failed to update device $DEVICE after reloading kernel module."
+            return 1
+        fi
+    fi
     echo "Successfully updated device $DEVICE."
 }
 
@@ -105,8 +121,9 @@ Options:
 Description:
   This script updates up to four DFU devices (a, b, c, d) with a firmware
   binary chosen by the user from the directory $FIRMWARE_DIR on the target
-  device. By default, devices are updated sequentially. Use the --multithreaded
-  option to update devices in parallel.
+  device. If a device update fails initially, the script will unload and
+  reload the d4xx kernel module and retry. By default, devices are updated
+  sequentially. Use the --multithreaded option to update devices in parallel.
 EOF
 }
 
