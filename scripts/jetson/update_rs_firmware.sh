@@ -2,18 +2,21 @@
 
 # Variables
 FIRMWARE_DIR="/xavier_ssd/rs_firmware"
-DEVICE_PREFIX="/dev/d4xx-dfu-30-001" # Ensure it points to the /dev path
+DEVICE_PREFIX_A_B="/dev/d4xx-dfu-30-001" # Prefix for devices a and b
+DEVICE_PREFIX_C_D="/dev/d4xx-dfu-31-001" # Prefix for devices c and d
+RELEASE_CONTAINER="release"             # Docker container to list firmwares
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 
 # Default mode: Sequential
 MULTITHREADED=false
+UPDATE_ALL=false
 
 # Get the device IP
 if [ -f "$SCRIPT_DIR/device_ip" ]; then
   DEVICE_IP=$(cat "$SCRIPT_DIR/device_ip" | tr -d '\r')
 else
   if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 [--multithreaded] [--help] [<device-ip>]"
+    echo "Usage: $0 [--list | --all | --multithreaded | --help] [<device-ip>]"
     exit 1
   fi
   DEVICE_IP=$1
@@ -23,6 +26,34 @@ fi
 run_ssh() {
     local COMMAND="$1"
     ssh -t root@"$DEVICE_IP" "$COMMAND"
+}
+
+# Check and start the Docker container if needed
+ensure_release_container_running() {
+    echo "Checking if Docker container '$RELEASE_CONTAINER' is running on target device..."
+    if ! run_ssh "docker ps --format '{{.Names}}' | grep -q '^${RELEASE_CONTAINER}\$'"; then
+        echo "Docker container '$RELEASE_CONTAINER' is not running. Attempting to start..."
+        if ! run_ssh "docker ps -a --format '{{.Names}}' | grep -q '^${RELEASE_CONTAINER}\$'"; then
+            echo "Error: Docker container '$RELEASE_CONTAINER' does not exist on the target device."
+            exit 1
+        fi
+        run_ssh "docker start $RELEASE_CONTAINER" || {
+            echo "Error: Failed to start Docker container '$RELEASE_CONTAINER'."
+            exit 1
+        }
+    else
+        echo "Docker container '$RELEASE_CONTAINER' is already running."
+    fi
+}
+
+# List current firmware information
+list_firmware_info() {
+    ensure_release_container_running
+    echo "Fetching firmware information using 'rs-fw-update'..."
+    run_ssh "docker exec $RELEASE_CONTAINER rs-fw-update" || {
+        echo "Error: Failed to fetch firmware information."
+        exit 1
+    }
 }
 
 # Show available firmware binaries and prompt user to select one
@@ -40,13 +71,13 @@ select_firmware() {
 
     echo
     read -p "Enter the index of the binary you want to use: " INDEX
-    if [[ ! "$INDEX" =~ ^[0-9]+$ ]] || [ "$INDEX" -lt 0 ] || [ "$INDEX" -ge "${#BINARY_LIST[@]}" ]]; then
+    if [[ "$INDEX" =~ ^[0-9]+$ && "$INDEX" -ge 0 && "$INDEX" -lt "${#BINARY_LIST[@]}" ]]; then
+        SELECTED_BINARY="${BINARY_LIST[$INDEX]}"
+        echo "You selected: $SELECTED_BINARY"
+    else
         echo "Invalid selection. Exiting."
         exit 1
     fi
-
-    SELECTED_BINARY="${BINARY_LIST[$INDEX]}"
-    echo "You selected: $SELECTED_BINARY"
 }
 
 # Reload the kernel module for d4xx devices
@@ -80,10 +111,15 @@ update_device() {
     echo "Successfully updated device $DEVICE."
 }
 
-# Update devices sequentially
-update_devices_sequential() {
+# Update all devices sequentially
+update_devices_all() {
     for DEVICE_SUFFIX in a b c d; do
-        DEVICE="$DEVICE_PREFIX$DEVICE_SUFFIX"
+        if [[ "$DEVICE_SUFFIX" == "a" || "$DEVICE_SUFFIX" == "b" ]]; then
+            DEVICE="$DEVICE_PREFIX_A_B$DEVICE_SUFFIX"
+        else
+            DEVICE="$DEVICE_PREFIX_C_D$DEVICE_SUFFIX"
+        fi
+
         if run_ssh "[ -e $DEVICE ]"; then
             update_device "$DEVICE" "$SELECTED_BINARY"
         else
@@ -92,44 +128,62 @@ update_devices_sequential() {
     done
 }
 
-# Update devices in parallel
-update_devices_parallel() {
+# Update devices one by one with user confirmation
+update_devices_prompt() {
     for DEVICE_SUFFIX in a b c d; do
-        DEVICE="$DEVICE_PREFIX$DEVICE_SUFFIX"
+        if [[ "$DEVICE_SUFFIX" == "a" || "$DEVICE_SUFFIX" == "b" ]]; then
+            DEVICE="$DEVICE_PREFIX_A_B$DEVICE_SUFFIX"
+        else
+            DEVICE="$DEVICE_PREFIX_C_D$DEVICE_SUFFIX"
+        fi
+
         if run_ssh "[ -e $DEVICE ]"; then
-            update_device "$DEVICE" "$SELECTED_BINARY" &
+            read -p "Do you want to update device $DEVICE? [Y/n]: " RESPONSE
+            RESPONSE=${RESPONSE:-Y}
+            if [[ "$RESPONSE" =~ ^[Yy]$ ]]; then
+                update_device "$DEVICE" "$SELECTED_BINARY"
+            else
+                echo "Skipping device $DEVICE."
+            fi
         else
             echo "Device $DEVICE not found. Skipping."
         fi
     done
-
-    # Wait for all background tasks to complete
-    wait
 }
 
 # Show help message
 show_help() {
     cat <<EOF
-Usage: $0 [--multithreaded] [--help] [<device-ip>]
+Usage: $0 [--list | --all | --multithreaded | --help] [<device-ip>]
 
 Options:
-  --multithreaded  Update devices in parallel. Default is sequential.
-  --help           Show this help message.
-  <device-ip>      Specify the target device's IP address. If not provided,
-                   the script will attempt to read the IP from device_ip.
+  --list          Fetch the current firmware information of attached devices.
+  --all           Update all devices sequentially without prompting.
+  --multithreaded Update devices in parallel.
+  --help          Show this help message.
+  <device-ip>     Specify the target device's IP address. If not provided,
+                  the script will attempt to read the IP from device_ip.
 
 Description:
   This script updates up to four DFU devices (a, b, c, d) with a firmware
   binary chosen by the user from the directory $FIRMWARE_DIR on the target
-  device. If a device update fails initially, the script will unload and
-  reload the d4xx kernel module and retry. By default, devices are updated
-  sequentially. Use the --multithreaded option to update devices in parallel.
+  device. Devices a and b use prefix $DEVICE_PREFIX_A_B, while devices c and d
+  use prefix $DEVICE_PREFIX_C_D. The --list option retrieves the current
+  firmware information from the release Docker container.
 EOF
 }
 
-# Main script
+# Parse options
 while [[ "$1" == --* ]]; do
     case "$1" in
+        --list)
+            list_firmware_info
+            exit 0
+            ;;
+        --all)
+            UPDATE_ALL=true
+            shift
+            ;;
         --multithreaded)
             MULTITHREADED=true
             shift
@@ -150,11 +204,14 @@ done
 select_firmware
 
 # Perform the update
-if $MULTITHREADED; then
+if $UPDATE_ALL; then
+    echo "Updating all devices sequentially..."
+    update_devices_all
+elif $MULTITHREADED; then
     echo "Updating devices in multithreaded mode..."
     update_devices_parallel
 else
-    echo "Updating devices sequentially..."
-    update_devices_sequential
+    echo "Updating devices sequentially with prompts..."
+    update_devices_prompt
 fi
 
