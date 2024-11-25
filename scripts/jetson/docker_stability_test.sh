@@ -26,6 +26,20 @@ run_ssh() {
     ssh -t "${SSH_USER}@${DEVICE_IP}" "$@"
 }
 
+# Cleanup function
+cleanup() {
+    echo "Cleaning up..."
+    echo "Force stopping container '$CONTAINER_NAME' on target device..."
+    run_ssh "docker stop '$CONTAINER_NAME' && docker rm '$CONTAINER_NAME'" || {
+        echo "Warning: Failed to stop or remove the container."
+    }
+    echo "Cleanup complete. Exiting."
+    exit
+}
+
+# Trap SIGINT and SIGTERM to handle cleanup
+trap cleanup SIGINT SIGTERM
+
 # Functions
 show_help() {
     cat <<EOF
@@ -131,6 +145,7 @@ run_container() {
         echo "Running stability tests with the serial numbers..."
         run_ssh "$STABILITY_TEST_CMD" || {
             echo "Error: Stability test execution failed."
+            cleanup  # Ensure cleanup is called even on script failure
             exit 1
         }
         echo "Stability tests completed successfully."
