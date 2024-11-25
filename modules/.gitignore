@@ -1,0 +1,52 @@
+build
+# Ignore object files and linked files
+*.o
+*.ko
+*.mod.*
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+
+# Ignore kernel-specific generated files
+.config
+.vmlinuz
+System.map
+.btf.*
+*.order
+*.bin
+*.lst
+*.hex
+
+# Ignore patch files
+*.patch
+
+# Ignore editor or IDE specific files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# Ignore backup files and build artifacts
+*.orig
+*.rej
+*.d
+
+# Ignore logs and dumps
+*.log
+*.dump
+
+# Ignore compiled binaries (if building user space tools)
+*.out
+*.elf
+*.bin
+
+# Ignore cscope and tags files
+cscope.*
+tags
+TAGS
+
+# Ignore test result directories
+test-results/
+
