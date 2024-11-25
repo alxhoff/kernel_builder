@@ -4,6 +4,7 @@
 DEFAULT_KERNEL_SRC="../kernels/sw_base_panic_logging/kernel/kernel"
 DEFAULT_CROSS_COMPILE="../toolchains/aarch64-buildroot-linux-gnu/bin/aarch64-buildroot-linux-gnu-"
 MODULE_SOURCE="panic_logger.c"
+MODULE_SOURCE_TEST="panic_logger_test.c"
 BUILD_DIR="build"
 
 resolve_absolute_path() {
@@ -59,6 +60,7 @@ CROSS_COMPILE="${2:-$DEFAULT_CROSS_COMPILE}"
 KERNEL_SRC=$(resolve_absolute_path "$KERNEL_SRC")
 CROSS_COMPILE=$(resolve_absolute_path "$CROSS_COMPILE")
 MODULE_SOURCE=$(resolve_absolute_path "$MODULE_SOURCE")
+MODULE_SOURCE_TEST=$(resolve_absolute_path "$MODULE_SOURCE_TEST")
 BUILD_DIR=$(resolve_absolute_path "$BUILD_DIR")
 
 if [ ! -d "$KERNEL_SRC" ]; then
@@ -67,6 +69,10 @@ if [ ! -d "$KERNEL_SRC" ]; then
 fi
 if [ ! -f "$MODULE_SOURCE" ]; then
     echo "Error: Module source file '$MODULE_SOURCE' not found."
+    exit 1
+fi
+if [ ! -f "$MODULE_SOURCE_TEST" ]; then
+    echo "Error: Module source test file '$MODULE_SOURCE_TEST' not found."
     exit 1
 fi
 
@@ -119,7 +125,8 @@ MODULE_DIR="$(dirname "$MODULE_SOURCE")"
 TEMP_MAKEFILE="$MODULE_DIR/Makefile"
 if [ ! -f "$TEMP_MAKEFILE" ]; then
     echo "Creating temporary Makefile for module build..."
-    echo "obj-m := $(basename "$MODULE_SOURCE" .c).o" > "$TEMP_MAKEFILE"
+    echo "obj-m := $(basename "$MODULE_SOURCE" .c).o $(basename "$MODULE_SOURCE_TEST" .c).o" > "$TEMP_MAKEFILE"
+    cat "$TEMP_MAKEFILE"
     TEMP_MAKEFILE_CREATED=true
 else
     TEMP_MAKEFILE_CREATED=false
@@ -143,4 +150,5 @@ fi
 
 echo "Module built successfully. Output:"
 echo "  Module: $MODULE_DIR/$(basename "$MODULE_SOURCE" .c).ko"
+echo "  Module: $MODULE_DIR/$(basename "$MODULE_SOURCE_TEST" .c).ko"
 

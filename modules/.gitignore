@@ -3,6 +3,7 @@ build
 *.o
 *.ko
 *.mod.*
+*.mod
 *.cmd
 .tmp_versions/
 modules.order

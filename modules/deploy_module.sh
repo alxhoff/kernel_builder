@@ -2,7 +2,6 @@
 
 # Default values
 MODULE="panic_logger.ko"
-TARGET_DIR="/lib/modules/$(uname -r)/extra"
 SSH_USER="root"
 
 function show_help {
@@ -54,6 +53,15 @@ if [[ ! -f "$MODULE" ]]; then
     echo "Error: Kernel module file '$MODULE' not found."
     exit 1
 fi
+
+# Get kernel version on the target device
+TARGET_KERNEL_VERSION=$(ssh "$SSH_USER@$DEVICE_IP" "uname -r")
+if [[ $? -ne 0 || -z "$TARGET_KERNEL_VERSION" ]]; then
+    echo "Error: Failed to retrieve kernel version from the target device."
+    exit 1
+fi
+
+TARGET_DIR="/lib/modules/$TARGET_KERNEL_VERSION/extra"
 
 # Deploy the module
 echo "Deploying kernel module '$MODULE' to device $DEVICE_IP..."
