@@ -2,14 +2,14 @@
 
 static int __init pstore_logger_test_init(void)
 {
-    pr_info("Testing pstore logging by directly invoking the callback.\n");
+    pr_info("[panic_logger_test] testing pstore logging by directly invoking the callback.\n");
     printk(KERN_INFO "panic logger init'd, a copy of /sys/fs/pstore/* should now be in /var/log/panic.log");
     return write_panic_log_to_file();
 }
 
 static void __exit pstore_logger_test_exit(void)
 {
-    pr_info("Pstore logger test module unloaded.\n");
+    pr_info("[panic_logger_test] module unloaded.\n");
     printk(KERN_INFO "removing panic logger, hope it went well :)");
 }
 

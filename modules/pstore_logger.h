@@ -75,7 +75,7 @@ static inline int process_pstore_entry(struct dir_context *ctx, const char *name
         goto free_file_path;
     }
 
-    pr_info("Processing pstore file: %s\n", file_path);
+    pr_info("[panic_logger] Processing pstore file: %s\n", file_path);
 
     ret = write_file_to_log(src_file, pctx->dest_file, pctx->buffer);
 

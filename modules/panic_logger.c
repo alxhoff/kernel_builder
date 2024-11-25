@@ -1,9 +1,13 @@
 #include "pstore_logger.h"
 
+#define PANIC_MSG "CARTKEN_KERNEL_HAS_PANICKED"
+
 static int panic_handler(struct notifier_block *nb, unsigned long event, void *data)
 {
-    pr_alert("Kernel panic occurred. Writing logs to persistent storage.\n");
-    return write_panic_log_to_file();
+    pr_alert("[panic_logger] kernel panic occurred\n");
+    pr_emerg("%s\n", PANIC_MSG);
+
+    return NOTIFY_OK;
 }
 
 static struct notifier_block panic_notifier = {
@@ -13,13 +17,20 @@ static struct notifier_block panic_notifier = {
 
 static int __init pstore_logger_init(void)
 {
-    pr_info("Registering panic log handler.\n");
-    return atomic_notifier_chain_register(&panic_notifier_list, &panic_notifier);
+    int ret = 0;
+    pr_info("[panic_logger] registering panic log handler\n");
+    ret = atomic_notifier_chain_register(&panic_notifier_list, &panic_notifier);
+    if(ret != 0){
+        printk(KERN_ERR "[panic_logger] failed to register panic log handler");
+        return ret;
+    }
+    pr_info("[panic logger] panic log handler registered");
+    return 0;
 }
 
 static void __exit pstore_logger_exit(void)
 {
-    pr_info("Unregistering panic log handler.\n");
+    pr_info("[panic_logger] unregistering panic log handler\n");
     atomic_notifier_chain_unregister(&panic_notifier_list, &panic_notifier);
 }
 

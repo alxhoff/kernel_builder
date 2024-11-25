@@ -81,6 +81,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # Update module dependencies
+echo "Running depmod"
 ssh "$SSH_USER@$DEVICE_IP" "depmod -a"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to update module dependencies on the target device."
