@@ -1,67 +1,90 @@
 #!/bin/bash
 
-# Updated Trace Workflow Script for Jetson Devices
-# This script uses the newly consolidated and updated scripts to automate the tracing workflow.
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 
-function show_help() {
-    echo "Usage: $0 <duration_in_seconds>"
-    echo
-    echo "Automates the complete tracing workflow including starting the trace, recording data, stopping the trace,"
-    echo "and generating a report."
-    echo
-    echo "Steps Involved:"
-    echo "  1. Start System-wide Tracing: Initiates a system-wide trace for the specified duration using 'trace_entire_system.sh'."
-    echo "     This step allows capturing a broad set of kernel events across the entire system."
-    echo "  2. Record Trace Data: Uses 'trace.sh' to record the trace data into a file for further analysis."
-    echo "     This step ensures that all relevant kernel events are saved to a file named 'trace.dat'."
-    echo "  3. Stop Tracing: After recording, tracing is stopped using 'stop_tracing.sh' to ensure that no further events are logged."
-    echo "  4. Generate Trace Report: Finally, the recorded trace data is processed using 'report_trace.sh' to generate a detailed report."
-    echo
-    echo "Example:"
-    echo "  $0 20  # Automates the tracing workflow for 20 seconds"
+# Retrieve or parse device IP
+if [ -f "$SCRIPT_DIR/device_ip" ]; then
+  DEVICE_IP=$(cat "$SCRIPT_DIR/device_ip")
+  echo "Using device IP from file: $DEVICE_IP"
+else
+  if [[ "$1" == "--device-ip" && -n "$2" ]]; then
+    DEVICE_IP=$2
+    shift 2
+    echo "Using provided device IP: $DEVICE_IP"
+  else
+    echo "Error: --device-ip <ip-address> is required if 'device_ip' file does not exist."
+    exit 1
+  fi
+fi
+
+if [[ "$1" == "--help" || "$#" -lt 2 ]]; then
+  cat << EOF
+Usage: $0 <duration_in_seconds> <tracepoint>
+
+Description:
+  Automates a tracing workflow on the target device by enabling a tracepoint, recording function calls for a specified duration, and processing logs into a human-readable report.
+
+Arguments:
+  <duration_in_seconds>  Duration of the tracing session.
+  <tracepoint>           The tracepoint to enable and monitor during the session.
+
+Examples:
+  Trace for 10 seconds using the sched:sched_switch tracepoint:
+    $0 10 sched:sched_switch --device-ip 192.168.1.100
+
+  Trace for 20 seconds using a custom tracepoint:
+    $0 20 alex_trigger --device-ip 192.168.1.100
+EOF
+  exit 0
+fi
+
+DURATION="$1"
+TRACEPOINT="$2"
+TRACE_FILE="/tmp/trace_${TRACEPOINT}.dat"
+REPORT_FILE="/tmp/report_${TRACEPOINT}.txt"
+
+TRACEPOINT_PATH="/sys/kernel/debug/tracing/events/$TRACEPOINT/$TRACEPOINT"
+
+# Verify tracepoint existence
+if ! ssh root@"$DEVICE_IP" "[ -d $TRACEPOINT_PATH ]"; then
+  echo "Error: Tracepoint '$TRACEPOINT' does not exist on target $DEVICE_IP. Use list_tracepoints.sh to verify."
+  exit 1
+fi
+
+# Clear previous logs
+echo "Clearing previous logs on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "trace-cmd reset"
+
+# Enable the tracepoint
+echo "Enabling tracepoint: $TRACEPOINT on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo 1 > $TRACEPOINT_PATH/enable"
+
+# Add a trigger to start tracing when the tracepoint is hit
+echo "Adding 'traceon' trigger to $TRACEPOINT on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo traceon > $TRACEPOINT_PATH/trigger" || {
+  echo "Warning: Could not add traceon trigger to $TRACEPOINT. Continuing without trigger."
 }
 
-# Check if help is requested
-if [[ "$1" == "--help" ]]; then
-    show_help
-    exit 0
-fi
+# Start tracing using trace-cmd
+echo "Recording trace data for $DURATION seconds on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "trace-cmd record -p function_graph -o $TRACE_FILE sleep $DURATION"
 
-# Validate arguments
-if [[ "$#" -ne 1 ]]; then
-    echo "Error: Invalid number of arguments."
-    show_help
-    exit 1
-fi
+# Generate human-readable report
+echo "Generating human-readable report on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "trace-cmd report -i $TRACE_FILE > $REPORT_FILE"
 
-# Validate duration
-duration="$1"
-if ! [[ "$duration" =~ ^[0-9]+$ ]]; then
-    echo "Error: Duration must be a positive integer."
-    exit 1
-fi
+# Retrieve the report to the host
+echo "Fetching human-readable report from target $DEVICE_IP..."
+scp root@"$DEVICE_IP":"$REPORT_FILE" . || {
+  echo "Error: Failed to fetch the report file from target $DEVICE_IP."
+  exit 1
+}
 
-# Start system-wide tracing
-echo "Starting system-wide trace for $duration seconds..."
-./trace_entire_system.sh "$duration"
+# Disable the tracepoint and cleanup
+echo "Disabling tracepoint $TRACEPOINT on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo 0 > $TRACEPOINT_PATH/enable"
+ssh root@"$DEVICE_IP" "echo '' > $TRACEPOINT_PATH/trigger"
+ssh root@"$DEVICE_IP" "trace-cmd reset"
 
-# Record trace data for further analysis
-echo "Recording kernel trace data..."
-./trace.sh --record "$duration"
-
-# Stop tracing
-echo "Stopping tracing..."
-./stop_tracing.sh
-
-# Generate a trace report
-trace_file="trace.dat"
-if [[ -f "$trace_file" ]]; then
-    echo "Generating trace report from $trace_file..."
-    ./report_trace.sh "$trace_file"
-else
-    echo "Error: Trace file $trace_file not found."
-    exit 1
-fi
-
-echo "Tracing workflow completed successfully."
+echo "Tracing workflow completed. Report saved as report_${TRACEPOINT}.txt."
 

@@ -1,62 +1,69 @@
 #!/bin/bash
 
-# Consolidated script for tracing kernel events on NVIDIA Jetson devices
-# This script can either record traces to a file for analysis or start a tracing session for real-time observation.
+SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 
-function show_help() {
-    echo "Usage: $0 [--record <duration_in_seconds> | --start <duration_in_seconds>]"
-    echo
-    echo "Options:"
-    echo "  --record <duration>   Record a trace of kernel events for the specified duration."
-    echo "                        The trace data is saved for further analysis."
-    echo "  --start <duration>    Start tracing kernel events for the specified duration without saving the trace."
-    echo "                        Use this for real-time monitoring."
-    echo
-    echo "Examples:"
-    echo "  $0 --record 10        Record trace data for 10 seconds and save to a file."
-    echo "  $0 --start 10         Start tracing for 10 seconds for real-time observation (no saved output)."
-}
-
-# Check if help is requested
-if [[ "$1" == "--help" ]]; then
-    show_help
-    exit 0
-fi
-
-# Validate arguments
-if [[ "$#" -ne 2 ]]; then
-    echo "Error: Invalid number of arguments."
-    show_help
+# Retrieve or parse device IP
+if [ -f "$SCRIPT_DIR/device_ip" ]; then
+  DEVICE_IP=$(cat "$SCRIPT_DIR/device_ip")
+  echo "Using device IP from file: $DEVICE_IP"
+else
+  if [[ "$1" == "--device-ip" && -n "$2" ]]; then
+    DEVICE_IP=$2
+    shift 2
+    echo "Using provided device IP: $DEVICE_IP"
+  else
+    echo "Error: --device-ip <ip-address> is required if 'device_ip' file does not exist."
     exit 1
+  fi
 fi
 
-# Parameters
-option="$1"
-duration="$2"
+# Consolidated script for recording traces or starting real-time tracing
+if [[ "$1" == "--help" || "$#" -lt 1 ]]; then
+  cat << EOF
+Usage: $0 [--record <duration_in_seconds> | --start <duration_in_seconds>]
 
-# Validate duration
-if ! [[ "$duration" =~ ^[0-9]+$ ]]; then
-    echo "Error: Duration must be a positive integer."
+Description:
+  Manages kernel event tracing by recording trace data or starting real-time tracing sessions.
+
+Options:
+  --record <duration>   Record kernel events for the specified duration and save to a trace file.
+  --start <duration>    Start real-time tracing for the specified duration without saving the data.
+
+Examples:
+  Record trace data for 15 seconds:
+    $0 --device-ip 192.168.1.100 --record 15
+
+  Start real-time tracing for 10 seconds:
+    $0 --device-ip 192.168.1.100 --start 10
+EOF
+  exit 0
+fi
+
+TRACE_DIR="/sys/kernel/debug/tracing"
+LOG_FILE="trace_record.dat"
+
+case $1 in
+  --record)
+    if [[ -z "$2" ]]; then
+      echo "Error: Duration must be specified for --record."
+      exit 1
+    fi
+    echo "Recording trace data for $2 seconds on target $DEVICE_IP..."
+    ssh root@"$DEVICE_IP" "trace-cmd record -p function_graph -o $LOG_FILE sleep $2"
+    echo "Trace recorded to $LOG_FILE on target $DEVICE_IP"
+    ;;
+  --start)
+    if [[ -z "$2" ]]; then
+      echo "Error: Duration must be specified for --start."
+      exit 1
+    fi
+    echo "Starting real-time tracing for $2 seconds on target $DEVICE_IP..."
+    ssh root@"$DEVICE_IP" "trace-cmd start -p function_graph; sleep $2; trace-cmd stop"
+    echo "Real-time tracing completed on target $DEVICE_IP. No data saved."
+    ;;
+  *)
+    echo "Invalid option. Use --help for usage instructions."
     exit 1
-fi
-
-# Consolidated functionality for recording or starting a trace
-case "$option" in
-    --record)
-        echo "Recording kernel trace for $duration seconds..."
-        trace-cmd record -e all -o trace.dat sleep "$duration"
-        echo "Trace data saved to trace.dat"
-        ;;
-    --start)
-        echo "Starting kernel trace for $duration seconds..."
-        echo 1 > /sys/kernel/debug/tracing/tracing_on
-        sleep "$duration"
-        echo 0 > /sys/kernel/debug/tracing/tracing_on
-        echo "Tracing complete."
-        ;;
-    *)
-        echo "Error: Unknown option '$option'"
-        show_help
-        exit 1
-        ;;
+    ;;
 esac
+
