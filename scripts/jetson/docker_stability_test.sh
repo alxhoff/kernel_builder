@@ -107,6 +107,18 @@ create_container() {
 }
 
 run_container() {
+    for container in roscore release; do
+        echo "Checking if '$container' container is running on target device..."
+        if run_ssh "docker ps --format '{{.Names}}' | grep -q '^${container}\$'"; then
+            echo "'$container' container is running. Stopping it to avoid conflicts..."
+            run_ssh "docker stop $container" || {
+                echo "Error: Failed to stop '$container' container. Check Docker logs on the target device."
+                exit 1
+            }
+            echo "'$container' container stopped successfully."
+        fi
+    done
+
     echo "Checking if container '$CONTAINER_NAME' exists on target device..."
     if ! run_ssh "docker ps -a --format '{{.Names}}' | grep -q '^${CONTAINER_NAME}\$'"; then
         echo "Container not found. Creating container..."
