@@ -19,21 +19,22 @@ fi
 
 if [[ "$1" == "--help" || "$#" -lt 2 ]]; then
   cat << EOF
-Usage: $0 <duration_in_seconds> <tracepoint>
+Usage: $0 <duration_in_seconds> <tracepoint> [<functions_to_trace>...]
 
 Description:
-  Automates a tracing workflow on the target device by enabling a tracepoint, recording function calls for a specified duration, and processing logs into a human-readable report.
+  Traces only the function call stack associated with a specific tracepoint.
 
 Arguments:
   <duration_in_seconds>  Duration of the tracing session.
   <tracepoint>           The tracepoint to enable and monitor during the session.
+  <functions_to_trace>   (Optional) Space-separated list of functions to add to set_ftrace_filter.
 
 Examples:
-  Trace for 10 seconds using the sched:sched_switch tracepoint:
-    $0 10 sched:sched_switch --device-ip 192.168.1.100
+  Trace for 10 seconds using the alex_trigger tracepoint:
+    $0 10 alex_trigger --device-ip 192.168.1.100
 
-  Trace for 20 seconds using a custom tracepoint:
-    $0 20 alex_trigger --device-ip 192.168.1.100
+  Trace specific functions for 10 seconds:
+    $0 10 alex_trigger func1 func2 --device-ip 192.168.1.100
 EOF
   exit 0
 fi
@@ -41,50 +42,70 @@ fi
 DURATION="$1"
 TRACEPOINT="$2"
 TRACE_FILE="/tmp/trace_${TRACEPOINT}.dat"
-REPORT_FILE="/tmp/report_${TRACEPOINT}.txt"
-
+REPORT_FILE="./trace_${TRACEPOINT}_callstack.txt"
 TRACEPOINT_PATH="/sys/kernel/debug/tracing/events/$TRACEPOINT/$TRACEPOINT"
 
+# Additional functions to trace
+shift 2
+FUNCTIONS_TO_TRACE=("$@")
+
 # Verify tracepoint existence
-if ! ssh root@"$DEVICE_IP" "[ -d $TRACEPOINT_PATH ]"; then
+echo "Checking existence of tracepoint '$TRACEPOINT' on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "[ -d $TRACEPOINT_PATH ]" || {
   echo "Error: Tracepoint '$TRACEPOINT' does not exist on target $DEVICE_IP. Use list_tracepoints.sh to verify."
   exit 1
-fi
-
-# Clear previous logs
-echo "Clearing previous logs on target $DEVICE_IP..."
-ssh root@"$DEVICE_IP" "trace-cmd reset"
-
-# Enable the tracepoint
-echo "Enabling tracepoint: $TRACEPOINT on target $DEVICE_IP..."
-ssh root@"$DEVICE_IP" "echo 1 > $TRACEPOINT_PATH/enable"
-
-# Add a trigger to start tracing when the tracepoint is hit
-echo "Adding 'traceon' trigger to $TRACEPOINT on target $DEVICE_IP..."
-ssh root@"$DEVICE_IP" "echo traceon > $TRACEPOINT_PATH/trigger" || {
-  echo "Warning: Could not add traceon trigger to $TRACEPOINT. Continuing without trigger."
 }
 
-# Start tracing using trace-cmd
+# Clear previous logs and filters
+echo "Clearing previous logs and filters on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo > /sys/kernel/debug/tracing/trace"
+ssh root@"$DEVICE_IP" "echo > /sys/kernel/debug/tracing/set_ftrace_filter"
+
+# Enable function graph tracer
+echo "Enabling function graph tracer on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo function_graph > /sys/kernel/debug/tracing/current_tracer"
+
+# Enable the tracepoint only if not already enabled
+echo "Checking if tracepoint $TRACEPOINT is already enabled..."
+if ssh root@"$DEVICE_IP" "grep -q '^1' $TRACEPOINT_PATH/enable"; then
+  echo "Tracepoint $TRACEPOINT is already enabled on target $DEVICE_IP."
+else
+  echo "Enabling tracepoint: $TRACEPOINT on target $DEVICE_IP..."
+  ssh root@"$DEVICE_IP" "echo 1 > $TRACEPOINT_PATH/enable" || {
+    echo "Error: Failed to enable tracepoint $TRACEPOINT on target $DEVICE_IP."
+    exit 1
+  }
+fi
+
+# Add a trigger to start function tracing only when the tracepoint is hit
+echo "Setting 'traceon' trigger for $TRACEPOINT on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "[ -e $TRACEPOINT_PATH/trigger ] && echo traceon > $TRACEPOINT_PATH/trigger" || {
+  echo "Warning: Could not add 'traceon' trigger to $TRACEPOINT. Continuing without trigger."
+}
+
+# Start tracing with trace-cmd
 echo "Recording trace data for $DURATION seconds on target $DEVICE_IP..."
-ssh root@"$DEVICE_IP" "trace-cmd record -p function_graph -o $TRACE_FILE sleep $DURATION"
+ssh root@"$DEVICE_IP" "trace-cmd record -p function_graph -e $TRACEPOINT -o $TRACE_FILE sleep $DURATION"
 
 # Generate human-readable report
-echo "Generating human-readable report on target $DEVICE_IP..."
-ssh root@"$DEVICE_IP" "trace-cmd report -i $TRACE_FILE > $REPORT_FILE"
-
-# Retrieve the report to the host
-echo "Fetching human-readable report from target $DEVICE_IP..."
-scp root@"$DEVICE_IP":"$REPORT_FILE" . || {
-  echo "Error: Failed to fetch the report file from target $DEVICE_IP."
+echo "Generating human-readable report using trace-cmd report..."
+ssh root@"$DEVICE_IP" "trace-cmd report -i $TRACE_FILE" > "$REPORT_FILE" || {
+  echo "Error: Failed to generate report from trace file."
   exit 1
 }
 
 # Disable the tracepoint and cleanup
 echo "Disabling tracepoint $TRACEPOINT on target $DEVICE_IP..."
 ssh root@"$DEVICE_IP" "echo 0 > $TRACEPOINT_PATH/enable"
-ssh root@"$DEVICE_IP" "echo '' > $TRACEPOINT_PATH/trigger"
-ssh root@"$DEVICE_IP" "trace-cmd reset"
 
-echo "Tracing workflow completed. Report saved as report_${TRACEPOINT}.txt."
+echo "Removing 'traceon' trigger for $TRACEPOINT on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "[ -e $TRACEPOINT_PATH/trigger ] && echo '' > $TRACEPOINT_PATH/trigger"
+
+echo "Disabling function graph tracer on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo nop > /sys/kernel/debug/tracing/current_tracer"
+
+echo "Clearing trace log on target $DEVICE_IP..."
+ssh root@"$DEVICE_IP" "echo > /sys/kernel/debug/tracing/trace"
+
+echo "Tracing completed. Human-readable report saved to $REPORT_FILE."
 

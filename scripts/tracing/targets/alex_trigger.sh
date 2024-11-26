@@ -37,21 +37,11 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-# Enable the tracepoint using select_tracepoints.sh
-"${SCRIPT_DIR}/select_tracepoints.sh" --enable "$TRACEPOINT" || {
-  echo "Error: Failed to enable tracepoint $TRACEPOINT."
-  exit 1
-}
-
 # Trace the workflow using trace_workflow.sh
+echo "${SCRIPT_DIR}/trace_workflow.sh" "$DURATION" "$TRACEPOINT"
 "${SCRIPT_DIR}/trace_workflow.sh" "$DURATION" "$TRACEPOINT" || {
   echo "Error: Tracing workflow failed for tracepoint $TRACEPOINT."
   exit 1
-}
-
-# Disable the tracepoint using select_tracepoints.sh
-"${SCRIPT_DIR}/select_tracepoints.sh" --disable "$TRACEPOINT" || {
-  echo "Warning: Failed to disable tracepoint $TRACEPOINT."
 }
 
 echo "Tracing for '$TRACEPOINT' completed successfully."
