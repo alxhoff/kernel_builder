@@ -2,7 +2,7 @@
 
 # Variables
 RELEASE_CONTAINER="release" # Docker container to list firmwares
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
 
 # Get the device IP
 if [ -f "$SCRIPT_DIR/device_ip" ]; then

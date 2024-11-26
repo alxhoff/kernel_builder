@@ -3,7 +3,7 @@
 # Script to clear all logs on a Jetson device
 # Usage: ./clear_all_logs.sh [<device-ip>] [<username>]
 
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
 
 if [ -f "$SCRIPT_DIR/device_ip" ]; then
   DEVICE_IP=$(cat "$SCRIPT_DIR/device_ip")

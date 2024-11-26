@@ -3,7 +3,7 @@
 # Script to enable persistent logging and retrieve human-readable boot logs
 # Usage: ./retrieve_boot_logs.sh <destination-file> [<device-ip>] [<username>]
 
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
 KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
 
 if [[ "$#" -lt 1 ]]; then

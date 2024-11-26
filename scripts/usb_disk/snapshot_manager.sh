@@ -154,7 +154,7 @@ create_snapshot() {
     if $DRY_RUN; then
         echo "[DRY-RUN] Would run: partclone.ext4 -c -s $selected_partition -o $snapshot_file -L snapshot_create.log"
     else
-        sudo partclone.ext4 -c -s "$selected_partition" -o "$snapshot_file" -L snapshot_create.log
+        sudo partclone.ext4 -c -s "$selected_partition" -o "$snapshot_file" -L snapshots/snapshot_create.log
         if [ $? -ne 0 ]; then
             echo "Snapshot creation failed. Check snapshot_create.log for details."
             exit 1
@@ -205,7 +205,7 @@ restore_snapshot() {
     if $DRY_RUN; then
         echo "[DRY-RUN] Would run: partclone.ext4 -r -s $snapshot_path -O $selected_partition -L snapshot_restore.log"
     else
-        sudo partclone.ext4 -r -s "$snapshot_path" -O "$selected_partition" -L snapshot_restore.log
+        sudo partclone.ext4 -r -s "$snapshot_path" -O "$selected_partition" -L snapshots/snapshot_restore.log
         if [ $? -ne 0 ]; then
             echo "Restore failed. Check snapshot_restore.log for details."
             exit 1

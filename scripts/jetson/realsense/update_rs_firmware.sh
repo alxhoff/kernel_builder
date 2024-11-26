@@ -5,7 +5,7 @@ FIRMWARE_DIR="/xavier_ssd/rs_firmware"
 DEVICE_PREFIX_A_B="/dev/d4xx-dfu-30-001" # Prefix for devices a and b
 DEVICE_PREFIX_C_D="/dev/d4xx-dfu-31-001" # Prefix for devices c and d
 RELEASE_CONTAINER="release"             # Docker container to list firmwares
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
 
 # Default mode: Sequential
 MULTITHREADED=false

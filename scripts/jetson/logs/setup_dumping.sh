@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Variables
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
 KDUMP_DIR="/xavier_ssd/data/kdump"
 KERNEL_IMAGE="/boot/Image"
 
