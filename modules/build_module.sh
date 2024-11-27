@@ -133,7 +133,8 @@ echo "Creating temporary Makefile for module build..."
 echo "obj-m := $MODULE_NAME.o" > "$TEMP_MAKEFILE"
 
 echo "Building module '$MODULE_SOURCE'..."
-make -C "$KERNEL_SRC" ARCH=arm64 O="$BUILD_DIR" CROSS_COMPILE="$CROSS_COMPILE" M="$MODULE_DIR" modules >>"$BUILD_LOG" 2>&1
+make -C "$KERNEL_SRC" ARCH=arm64 O="$BUILD_DIR" CROSS_COMPILE="$CROSS_COMPILE" M="$MODULE_DIR" modules
+# make -C "$KERNEL_SRC" ARCH=arm64 O="$BUILD_DIR" CROSS_COMPILE="$CROSS_COMPILE" M="$MODULE_DIR" modules >>"$BUILD_LOG" 2>&1
 if [ $? -ne 0 ]; then
     echo "Error: Failed to build module. Check $BUILD_LOG for details."
     rm -f "$TEMP_MAKEFILE"

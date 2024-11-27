@@ -1,0 +1,9 @@
+config STACK_TRACER
+    bool "Stack Dump Tracer"
+    select TRACEPOINTS
+    default n
+    help
+      This option enables the Stack Dump Tracer module, which provides
+      functionality to log stack traces on specific kernel events.
+      
+      If unsure, say N.
