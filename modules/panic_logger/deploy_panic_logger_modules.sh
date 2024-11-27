@@ -5,7 +5,7 @@ MODULE1="panic_logger.ko"
 MODULE2="panic_logger_test.ko"
 
 # Path to deploy_module.sh
-DEPLOY_SCRIPT="./deploy_module.sh"
+DEPLOY_SCRIPT="./../deploy_module.sh"
 
 function show_help {
     echo "Usage: $0 --device-ip <IP_ADDRESS>"
