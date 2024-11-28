@@ -3,6 +3,7 @@
 import argparse
 import os
 import subprocess
+from pathlib import Path
 
 def deploy_x86(dry_run=False, localversion=None):
     # Deploys the compiled kernel to an x86 host machine.
@@ -193,9 +194,7 @@ def locate_compiled_modules(kernel_name, target_modules):
     """
     Locate the compiled kernel module (.ko) files for the given list of target modules.
     """
-    # Search in the entire kernel source including any overlays
     kernels_dir = os.path.join("kernels", kernel_name)
-
     compiled_modules = []
 
     for module in target_modules:
@@ -227,39 +226,34 @@ def deploy_targeted_modules(kernel_name, device_ip, user, dry_run=False):
     if not target_modules:
         raise ValueError("Error: No target modules specified in target_modules.txt.")
 
-    # Locate the compiled .ko files for the specified modules
-    compiled_modules = locate_compiled_modules(kernel_name, target_modules)
+    print(f"Modules to deploy: {target_modules}")
 
-    if not compiled_modules:
-        print("No compiled modules found to deploy.")
-        return
-
-    # Create a temporary archive of the compiled .ko files
-    modules_archive = "/tmp/targeted_modules.tar.gz"
-    print(f"Compressing compiled modules into {modules_archive}")
-    if not dry_run:
-        with open("/tmp/compiled_modules.txt", "w") as f:
-            for module_path in compiled_modules:
-                f.write(module_path + "\n")
-        subprocess.run(["tar", "-czf", modules_archive, "-T", "/tmp/compiled_modules.txt"], check=True)
-
-    # Copy the compressed modules archive to /tmp on the remote device
-    print(f"Copying {modules_archive} to /tmp on remote device")
-    if not dry_run:
-        subprocess.run(["scp", modules_archive, f"{user}@{device_ip}:/tmp/"], check=True)
-
-    # Extract the modules archive on the remote device
+    # Determine the kernel version on the target device
     kernel_version = subprocess.check_output(f"ssh {user}@{device_ip} 'uname -r'", shell=True).strip().decode('utf-8')
-    extract_command = f"ssh root@{device_ip} 'mkdir -p /tmp/targeted_modules && tar -xzf /tmp/targeted_modules.tar.gz -C /tmp/targeted_modules'"
-    print(f"Extracting targeted modules on remote device: {extract_command}")
-    if not dry_run:
-        subprocess.run(extract_command, shell=True, check=True)
 
-    # Copy the extracted modules to the appropriate location under /lib/modules/<kernel_version>/
-    move_command = f"ssh root@{device_ip} 'cp /tmp/targeted_modules/*.ko /lib/modules/{kernel_version}/extra/'"
-    print(f"Moving compiled kernel modules to /lib/modules/{kernel_version}/extra on remote device: {move_command}")
-    if not dry_run:
-        subprocess.run(move_command, shell=True, check=True)
+    # Define base path for modules on the host
+    base_tmp_dir = f"/tmp/targeted_modules/kernels/{kernel_name}"
+
+    # Process each module in the target_modules file
+    for module_path in target_modules:
+        # Extract the relative module path from `kernel/OVERLAY/...`
+        if not module_path.startswith("kernel/"):
+            raise ValueError(f"Invalid module path '{module_path}'. Paths must start with 'kernel/'.")
+
+        # Split at the first `/` after `kernel/` to extract the overlay and relative path
+        overlay_and_path = module_path[len("kernel/"):]
+        relative_module_path = "/".join(overlay_and_path.split("/")[1:])  # Remove the overlay name (e.g., 'nvidia')
+
+        # Determine source and destination paths
+        source_path = os.path.join(base_tmp_dir, module_path)
+        target_dir = f"/lib/modules/{kernel_version}/kernel/{os.path.dirname(relative_module_path)}"
+        target_path = f"{target_dir}/{os.path.basename(module_path)}"
+
+        # Create target directory and move the module
+        move_command = f"ssh root@{device_ip} 'mkdir -p {target_dir} && mv {source_path} {target_path}'"
+        print(f"Moving {os.path.basename(module_path)} to {target_path}")
+        if not dry_run:
+            subprocess.run(move_command, shell=True, check=True)
 
     # Run depmod to refresh module dependencies
     depmod_command = f"ssh root@{device_ip} 'depmod -a'"
