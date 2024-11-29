@@ -22,6 +22,7 @@ shift # Shift arguments to parse the rest of the options
 USERNAME="cartken"
 DEVICE_IP=""
 DRY_RUN=false
+KERNEL_ONLY=false
 LOCALVERSION_ARG=""
 
 # Function to display help message
@@ -37,6 +38,7 @@ function display_help() {
     echo "  --ip <device-ip>           The IP address of the target device (optional if device_ip file is present)."
     echo "  --user <username>          The username to access the device (optional if device_username file is present)."
     echo "  --dry-run                  Simulate the deployment without copying anything to the target device."
+    echo "  --kernel-only              Only deploy the kernel, skipping module deployment."
     echo "  --localversion <version>   Specify the kernel version (localversion) for deployment."
     echo "  --help                     Display this help message."
     echo ""
@@ -69,6 +71,7 @@ while [[ "$#" -gt 0 ]]; do
         --ip) DEVICE_IP="$2"; shift ;;
         --user) USERNAME="$2"; shift ;;
         --dry-run) DRY_RUN=true ;;
+        --kernel-only) KERNEL_ONLY=true ;;
         --localversion) LOCALVERSION_ARG="--localversion $2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -91,6 +94,10 @@ fi
 
 if [ "$DRY_RUN" = true ]; then
     DEPLOY_COMMAND+=" --dry-run"
+fi
+
+if [ "$KERNEL_ONLY" = true ]; then
+    DEPLOY_COMMAND+=" --kernel-only"
 fi
 
 # Execute deployment command

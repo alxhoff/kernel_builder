@@ -34,12 +34,10 @@ def deploy_x86(dry_run=False, localversion=None):
     if not dry_run:
         subprocess.run(["sudo", "cp", "-r", modules_dir, target_modules_dir], check=True)
 
-def deploy_device(device_ip, user, dry_run=False, localversion=None):
-    # Deploys the compiled kernel to a remote device via SSH and SCP.
+def deploy_device(device_ip, user, dry_run=False, localversion=None, kernel_only=False):
     modules_base_dir = os.path.join("kernels", "compiled", "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
 
-    # Determine the kernel version to use, either from argument or default to the first
     kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
     kernel_image = os.path.join("kernels", "compiled", f"vmlinuz-{kernel_version}")
@@ -51,19 +49,18 @@ def deploy_device(device_ip, user, dry_run=False, localversion=None):
         print(f"Error: Modules directory {modules_dir} does not exist.")
         return
 
-    # Copy the kernel image to the remote device
     remote_boot_dir = f"{user}@{device_ip}:/boot"
     print(f"Copying {kernel_image} to {remote_boot_dir}")
     if not dry_run:
         subprocess.run(["scp", kernel_image, remote_boot_dir], check=True)
 
-    # Copy the modules to the remote device
-    remote_modules_dir = f"{user}@{device_ip}:/lib/modules/{kernel_version}"
-    print(f"Copying modules from {modules_dir} to {remote_modules_dir}")
-    if not dry_run:
-        subprocess.run(["scp", "-r", modules_dir, remote_modules_dir], check=True)
+    if not kernel_only:
+        remote_modules_dir = f"{user}@{device_ip}:/lib/modules/{kernel_version}"
+        print(f"Copying modules from {modules_dir} to {remote_modules_dir}")
+        if not dry_run:
+            subprocess.run(["scp", "-r", modules_dir, remote_modules_dir], check=True)
 
-def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None, dtb=False):
+def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None, dtb=False, kernel_only=False):
     # Deploys the compiled kernel to a remote Jetson device via SCP.
     modules_base_dir = os.path.join("kernels", kernel_name, "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
@@ -85,22 +82,23 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         print(f"Error: Modules directory {modules_dir} does not exist.")
         return
 
-    # Compress the modules directory before sending to the remote device
-    modules_archive = f"/tmp/{kernel_version}.tar.gz"
-    print(f"Compressing {modules_dir} into {modules_archive}")
-    if not dry_run:
-        subprocess.run(["tar", "-czf", modules_archive, "-C", os.path.dirname(modules_dir), os.path.basename(modules_dir)], check=True)
+    if not kernel_only:
+        # Compress the modules directory before sending to the remote device
+        modules_archive = f"/tmp/{kernel_version}.tar.gz"
+        print(f"Compressing {modules_dir} into {modules_archive}")
+        if not dry_run:
+            subprocess.run(["tar", "-czf", modules_archive, "-C", os.path.dirname(modules_dir), os.path.basename(modules_dir)], check=True)
 
-    # Copy the compressed modules archive to /tmp on the Jetson device
-    print(f"Copying {modules_archive} to /tmp on remote device")
-    if not dry_run:
-        subprocess.run(["scp", modules_archive, f"{user}@{device_ip}:/tmp/"], check=True)
+        # Copy the compressed modules archive to /tmp on the Jetson device
+        print(f"Copying {modules_archive} to /tmp on remote device")
+        if not dry_run:
+            subprocess.run(["scp", modules_archive, f"{user}@{device_ip}:/tmp/"], check=True)
 
-    # Extract the modules archive on the remote device
-    extract_command = f"ssh root@{device_ip} 'mkdir -p /tmp/modules && tar -xzf /tmp/{kernel_version}.tar.gz -C /tmp/modules'"
-    print(f"Extracting modules on remote device: {extract_command}")
-    if not dry_run:
-        subprocess.run(extract_command, shell=True, check=True)
+        # Extract the modules archive on the remote device
+        extract_command = f"ssh root@{device_ip} 'mkdir -p /tmp/modules && tar -xzf /tmp/{kernel_version}.tar.gz -C /tmp/modules'"
+        print(f"Extracting modules on remote device: {extract_command}")
+        if not dry_run:
+            subprocess.run(extract_command, shell=True, check=True)
 
     # Copy kernel image to /tmp
     print(f"Copying {kernel_image} to /tmp on remote device")
@@ -130,23 +128,24 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     if not dry_run:
         subprocess.run(move_command, shell=True, check=True)
 
-    # Rename existing kernel modules folder to _previous, if it exists
-    rename_modules_command = f"ssh root@{device_ip} 'if [ -d /lib/modules/{kernel_version} ]; then rm -rf /lib/modules/{kernel_version}_previous && mv /lib/modules/{kernel_version} /lib/modules/{kernel_version}_previous; fi'"
-    print(f"Renaming existing kernel modules to {kernel_version}_previous on remote device: {rename_modules_command}")
-    if not dry_run:
-        subprocess.run(rename_modules_command, shell=True, check=True)
+    if not kernel_only:
+        # Rename existing kernel modules folder to _previous, if it exists
+        rename_modules_command = f"ssh root@{device_ip} 'if [ -d /lib/modules/{kernel_version} ]; then rm -rf /lib/modules/{kernel_version}_previous && mv /lib/modules/{kernel_version} /lib/modules/{kernel_version}_previous; fi'"
+        print(f"Renaming existing kernel modules to {kernel_version}_previous on remote device: {rename_modules_command}")
+        if not dry_run:
+            subprocess.run(rename_modules_command, shell=True, check=True)
 
-    # Move modules to the final destination as root
-    move_command = f"ssh root@{device_ip} 'cp -r /tmp/modules/{kernel_version} /lib/modules/'"
-    print(f"Moving kernel modules to /lib/modules/{kernel_version} on remote device: {move_command}")
-    if not dry_run:
-        subprocess.run(move_command, shell=True, check=True)
+        # Move modules to the final destination as root
+        move_command = f"ssh root@{device_ip} 'cp -r /tmp/modules/{kernel_version} /lib/modules/'"
+        print(f"Moving kernel modules to /lib/modules/{kernel_version} on remote device: {move_command}")
+        if not dry_run:
+            subprocess.run(move_command, shell=True, check=True)
 
-    # Run depmod on the target device
-    depmod_command = f"ssh root@{device_ip} 'depmod {kernel_version}'"
-    print(f"Running depmod on the target device: {depmod_command}")
-    if not dry_run:
-        subprocess.run(depmod_command, shell=True, check=True)
+        # Run depmod on the target device
+        depmod_command = f"ssh root@{device_ip} 'depmod {kernel_version}'"
+        print(f"Running depmod on the target device: {depmod_command}")
+        if not dry_run:
+            subprocess.run(depmod_command, shell=True, check=True)
 
     # Backup extlinux.conf before updating
     extlinux_conf_path = "/boot/extlinux/extlinux.conf"
@@ -276,6 +275,7 @@ def main():
     deploy_device_parser.add_argument("--user", required=True, help="Username for accessing the target device")
     deploy_device_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
     deploy_device_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
+    deploy_device_parser.add_argument('--kernel-only', action='store_true', help='Only deploy the kernel, skipping modules')
 
     # Deploy to Jetson command
     deploy_jetson_parser = subparsers.add_parser("deploy-jetson")
@@ -285,6 +285,7 @@ def main():
     deploy_jetson_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
     deploy_jetson_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
     deploy_jetson_parser.add_argument('--dtb', help='Specify a custom Device Tree Blob (DTB) file to use for deployment')
+    deploy_jetson_parser.add_argument('--kernel-only', action='store_true', help='Only deploy the kernel, skipping modules')
 
     # Deploy targeted modules command
     deploy_targeted_modules_parser = subparsers.add_parser("deploy-targeted-modules")
@@ -303,9 +304,9 @@ def main():
     if args.command == "deploy-x86":
         deploy_x86(dry_run=args.dry_run, localversion=args.localversion)
     elif args.command == "deploy-device":
-        deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion)
+        deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, kernel_only=args.kernel_only)
     elif args.command == "deploy-jetson":
-        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, dtb=args.dtb)
+        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, dtb=args.dtb, kernel_only=args.kernel_only)
     elif args.command == "deploy-targeted-modules":
         deploy_targeted_modules(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
 

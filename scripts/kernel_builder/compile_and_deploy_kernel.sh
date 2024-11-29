@@ -4,7 +4,6 @@
 # Usage: ./compile_and_deploy_kernel.sh [KERNEL_NAME] [OPTIONS]
 # Description:
 # This script automates the process of compiling a custom kernel and optionally deploying it to a device.
-# It first compiles the kernel, and if deployment is enabled, it deploys the compiled kernel and associated modules to the specified device.
 
 # Ensure kernel name is provided
 if [ -z "$1" ]; then
@@ -28,6 +27,7 @@ CONFIG_ARG=""
 LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
+KERNEL_ONLY=false
 
 # Function to display help
 show_help() {
@@ -40,6 +40,7 @@ show_help() {
   Options:
     --help               Display this help message with examples.
     --no-deploy          Skip deploying the kernel to the device. Only compile the kernel.
+    --kernel-only        Only deploy the kernel image, skipping module deployment.
     --config <file>      Specify the kernel configuration file to use during the build.
     --localversion <str> Set a custom local version string during kernel compilation. If not provided, a default string is generated.
     --dry-run            Simulate the compilation and/or deployment processes without actually executing them. Useful for debugging.
@@ -83,6 +84,10 @@ while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --no-deploy)
       NO_DEPLOY=true
+      shift
+      ;;
+    --kernel-only)
+      KERNEL_ONLY=true
       shift
       ;;
     --config)
@@ -145,6 +150,7 @@ if [ "$NO_DEPLOY" == false ]; then
   DEPLOY_COMMAND="$DEPLOY_SCRIPT $KERNEL_NAME --ip $DEVICE_IP --user $USERNAME"
   [ "$DRY_RUN" == true ] && DEPLOY_COMMAND+=" --dry-run"
   DEPLOY_COMMAND+=" --localversion $LOCALVERSION_ARG"
+  [ "$KERNEL_ONLY" == true ] && DEPLOY_COMMAND+=" --kernel-only"
 
   # Execute deployment command
   echo "Deploying compiled kernel to the device at $DEVICE_IP..."
