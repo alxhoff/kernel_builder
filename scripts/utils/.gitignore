@@ -1,3 +1,4 @@
 rootfs
 check_results
+*.dts
 rootfs*.tar
