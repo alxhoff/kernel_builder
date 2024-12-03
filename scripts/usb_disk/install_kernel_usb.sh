@@ -121,97 +121,145 @@ mount_partition() {
     fi
 }
 
-# Function to list complete kernels available on the host
 list_complete_kernels() {
-    echo "Listing complete kernel versions..."
-    KERNELS_DIR="$(realpath $(dirname "$0"))/../../kernels"
-    COMPLETE_KERNELS=()
-    KERNEL_INFO=()
+    KERNELS_DIR="$(realpath "$(dirname "$0")")/../../kernels"
     INDEX=1
 
+    # Clear arrays
+    COMPLETE_KERNELS=()
+
+    # Iterate through each kernel name folder
     for KERNEL in "$KERNELS_DIR"/*; do
         if [ -d "$KERNEL" ]; then
+            KERNEL_NAME=$(basename "$KERNEL")
             MODULES_DIR="$KERNEL/modules/lib/modules"
             BOOT_DIR="$KERNEL/modules/boot"
-            KERNEL_NAME=$(basename "$KERNEL")
+
+            # Check if the required directories exist
             if [ -d "$MODULES_DIR" ] && [ -d "$BOOT_DIR" ]; then
-                IMAGE=$(ls "$BOOT_DIR"/Image* 2>/dev/null | head -n 1)
-                DTB=$(ls "$BOOT_DIR"/tegra234-p3701-0000-p3737-0000*.dtb 2>/dev/null | head -n 1)
-                MODULES=$(ls -d "$MODULES_DIR"/* 2>/dev/null | head -n 1)
-                if [ -f "$IMAGE" ] && [ -f "$DTB" ] && [ -d "$MODULES" ]; then
-                    echo "$INDEX) Kernel: $KERNEL_NAME"
-                    echo "   Image: $(basename "$IMAGE")"
-                    echo "   DTB: $(basename "$DTB")"
-                    echo "   Modules: $(basename "$MODULES")"
-                    COMPLETE_KERNELS+=("$KERNEL")
-                    KERNEL_INFO+=("$IMAGE|$DTB|$MODULES")
-                    ((INDEX++))
-                fi
+                # Iterate through each kernel version (directory under modules)
+                for MODULE_VERSION_DIR in "$MODULES_DIR"/*; do
+                    if [ -d "$MODULE_VERSION_DIR" ]; then
+                        FULL_VERSION=$(basename "$MODULE_VERSION_DIR")
+
+                        # Extract the base kernel version and localversion
+                        BASE_KERNEL_VERSION=$(echo "$FULL_VERSION" | grep -oP '^[0-9]+\.[0-9]+\.[0-9]+')
+                        LOCALVERSION=$(echo "$FULL_VERSION" | sed "s/^${BASE_KERNEL_VERSION}//")
+
+                        # Locate Image dynamically by matching the localversion
+                        IMAGE_FILE=$(find "$BOOT_DIR" -type f -name "Image.${LOCALVERSION}" -print -quit)
+                        # Locate DTB dynamically by matching the localversion
+                        DTB_FILE=$(find "$BOOT_DIR" -type f -name "tegra234-p3701-0000-p3737-0000${LOCALVERSION}.dtb" -print -quit)
+
+                        # Validate all components exist
+                        if [ -n "$IMAGE_FILE" ] && [ -n "$DTB_FILE" ] && [ -d "$MODULE_VERSION_DIR" ]; then
+                            echo "$INDEX) Kernel: $KERNEL_NAME"
+                            echo "   Base Kernel Version: $BASE_KERNEL_VERSION"
+                            echo "   Localversion: $LOCALVERSION"
+                            echo "   Image: $(basename "$IMAGE_FILE")"
+                            echo "   DTB: $(basename "$DTB_FILE")"
+                            echo "   Modules: $FULL_VERSION"
+                            COMPLETE_KERNELS+=("$KERNEL_NAME|$BASE_KERNEL_VERSION|$LOCALVERSION|$IMAGE_FILE|$DTB_FILE|$MODULE_VERSION_DIR")
+                            ((INDEX++))
+                        fi
+                    fi
+                done
             fi
         fi
     done
+
+    if [ ${#COMPLETE_KERNELS[@]} -eq 0 ]; then
+        echo "No complete kernels found."
+        exit 1
+    fi
 }
 
 # Function to prompt user to select a kernel
 select_kernel() {
     list_complete_kernels
-    echo -e "\nPlease enter the number corresponding to the kernel you wish to install:"
+    echo -e "\nPlease enter the number corresponding to the kernel configuration you wish to install:"
     read -p "Kernel Number: " KERNEL_INDEX
     if ! [[ "$KERNEL_INDEX" =~ ^[0-9]+$ ]] || [ "$KERNEL_INDEX" -lt 1 ] || [ "$KERNEL_INDEX" -gt ${#COMPLETE_KERNELS[@]} ]; then
         echo "Invalid selection. Exiting."
         exit 1
     fi
-    SELECTED_KERNEL=${COMPLETE_KERNELS[$KERNEL_INDEX-1]}
 
-    # Extract kernel information directly from the listing step
-    IFS='|' read -r SELECTED_IMAGE_PATH SELECTED_DTB_PATH SELECTED_MODULES_PATH <<< "${KERNEL_INFO[$KERNEL_INDEX-1]}"
-    KERNEL_VERSION=$(basename "$SELECTED_MODULES_PATH")
+    # Parse the selected kernel configuration
+    IFS='|' read -r KERNEL_NAME BASE_KERNEL_VERSION LOCALVERSION IMAGE_PATH DTB_PATH MODULES_PATH <<< "${COMPLETE_KERNELS[$KERNEL_INDEX-1]}"
+
+    echo "Selected configuration:"
+    echo "  Kernel: $KERNEL_NAME"
+    echo "  Base Kernel Version: $BASE_KERNEL_VERSION"
+    echo "  Localversion: $LOCALVERSION"
+    echo "  Image: $(basename "$IMAGE_PATH")"
+    echo "  DTB: $(basename "$DTB_PATH")"
+    echo "  Modules: $MODULES_PATH"
+
+    # Assign global variables for use in other functions
+    SELECTED_KERNEL_NAME="$KERNEL_NAME"
+    SELECTED_BASE_KERNEL_VERSION="$BASE_KERNEL_VERSION"
+    SELECTED_LOCALVERSION="$LOCALVERSION"
+    SELECTED_IMAGE_PATH="$IMAGE_PATH"
+    SELECTED_DTB_PATH="$DTB_PATH"
+    SELECTED_MODULES_PATH="$MODULES_PATH"
 }
 
 # Function to copy kernel files to USB boot drive
 copy_kernel_files() {
-    BOOT_DIR="$SELECTED_KERNEL/modules/boot"
-    MODULES_DIR="$SELECTED_KERNEL/modules/lib/modules"
     echo "Copying kernel files to USB boot drive..."
 
     if [ "$DRY_RUN" == true ]; then
         echo "[Dry-run] Would copy kernel Image, DTB, and modules to USB boot drive."
     else
-        echo "Copying Image files..."
-        for IMAGE in "$BOOT_DIR"/Image*; do
-            echo "  - Copying $(basename "$IMAGE")"
-            cp "$IMAGE" "$MOUNT_POINT/boot/"
-        done
+        # Copy Image file
+        echo "Copying Image file..."
+        if [ -f "$SELECTED_IMAGE_PATH" ]; then
+            echo "  - Copying $(basename "$SELECTED_IMAGE_PATH")"
+            cp "$SELECTED_IMAGE_PATH" "$MOUNT_POINT/boot/"
+        else
+            echo "Error: Image file $(basename "$SELECTED_IMAGE_PATH") not found."
+        fi
 
-        echo "Copying DTB files..."
-        for DTB in "$BOOT_DIR"/tegra234-p3701-0000-p3737-0000*.dtb; do
-            echo "  - Copying $(basename "$DTB")"
-            cp "$DTB" "$MOUNT_POINT/boot/dtb/"
-        done
+        # Copy DTB file
+        echo "Copying DTB file..."
+        if [ -f "$SELECTED_DTB_PATH" ]; then
+            echo "  - Copying $(basename "$SELECTED_DTB_PATH")"
+            cp "$SELECTED_DTB_PATH" "$MOUNT_POINT/boot/dtb/"
+        else
+            echo "Error: DTB file $(basename "$SELECTED_DTB_PATH") not found."
+        fi
 
-        echo "Copying module files (detailed view)..."
-        for MODULE_DIR in "$MODULES_DIR"/*; do
-            MODULE_NAME=$(basename "$MODULE_DIR")
-            echo "Processing module directory: $MODULE_NAME"
+        # Copy module files
+        echo "Copying module files..."
+        if [ -d "$SELECTED_MODULES_PATH" ]; then
+            MODULE_VERSION=$(basename "$SELECTED_MODULES_PATH")
+            TARGET_MODULE_DIR="$MOUNT_POINT/lib/modules/$MODULE_VERSION"
+            mkdir -p "$TARGET_MODULE_DIR"
 
-            TARGET_DIR="$MOUNT_POINT/lib/modules/$MODULE_NAME"
-            mkdir -p "$TARGET_DIR"
-
-            find "$MODULE_DIR" -type f | while read -r FILE; do
-                RELATIVE_PATH=${FILE#$MODULE_DIR/}
-                DEST_PATH="$TARGET_DIR/$RELATIVE_PATH"
+            find "$SELECTED_MODULES_PATH" -type f | while read -r FILE; do
+                RELATIVE_PATH=${FILE#$SELECTED_MODULES_PATH/}
+                DEST_PATH="$TARGET_MODULE_DIR/$RELATIVE_PATH"
                 DEST_DIR=$(dirname "$DEST_PATH")
-
-                echo "  - Copying $(basename "$FILE") to $DEST_PATH"
                 mkdir -p "$DEST_DIR"
                 cp "$FILE" "$DEST_PATH"
+                echo "  - Copied $(basename "$FILE") to $DEST_PATH"
             done
-        done
+        else
+            echo "Error: Modules directory $(basename "$SELECTED_MODULES_PATH") not found."
+        fi
     fi
 }
 
 # Function to regenerate initrd file
 regenerate_initrd() {
+    # Ensure KERNEL_VERSION is set
+    KERNEL_VERSION=$(basename "$SELECTED_MODULES_PATH")
+
+    if [ -z "$KERNEL_VERSION" ]; then
+        echo "Error: KERNEL_VERSION is not set. Cannot regenerate initrd."
+        exit 1
+    fi
+
     echo "Chrooting into USB rootfs and regenerating initrd for kernel version: $KERNEL_VERSION..."
     if [ "$DRY_RUN" == true ]; then
         echo "[Dry-run] Would chroot into USB rootfs, perform apt-get update, install tools, and regenerate initrd for kernel version: $KERNEL_VERSION."
@@ -224,11 +272,9 @@ regenerate_initrd() {
         mount --bind /run "$MOUNT_POINT/run"
 
         # Ensure /etc exists in the chroot environment
-        echo "Ensuring /etc directory exists in chroot environment..."
         mkdir -p "$MOUNT_POINT/etc"
 
         # Bind the host resolv.conf into the chroot environment
-        echo "Binding host's resolv.conf into chroot environment..."
         mount --bind /etc/resolv.conf "$MOUNT_POINT/etc/resolv.conf"
 
         # Set up environment variables and check for update-initramfs
