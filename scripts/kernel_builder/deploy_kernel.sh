@@ -23,6 +23,7 @@ USERNAME="cartken"
 DEVICE_IP=""
 DRY_RUN=false
 KERNEL_ONLY=false
+DTB_FLAG=false
 LOCALVERSION_ARG=""
 
 # Function to display help message
@@ -40,11 +41,12 @@ function display_help() {
     echo "  --dry-run                  Simulate the deployment without copying anything to the target device."
     echo "  --kernel-only              Only deploy the kernel, skipping module deployment."
     echo "  --localversion <version>   Specify the kernel version (localversion) for deployment."
+    echo "  --dtb                      Set the newly compiled DTB as the default in the boot configuration."
     echo "  --help                     Display this help message."
     echo ""
     echo "Examples:"
     echo "  ./deploy_kernel.sh jetson --ip 192.168.1.100 --user cartken --localversion my_kernel"
-    echo "  ./deploy_kernel.sh jetson --ip 192.168.1.100 --dry-run"
+    echo "  ./deploy_kernel.sh jetson --ip 192.168.1.100 --dtb"
     echo "  ./deploy_kernel.sh jetson --help"
     exit 0
 }
@@ -73,6 +75,7 @@ while [[ "$#" -gt 0 ]]; do
         --dry-run) DRY_RUN=true ;;
         --kernel-only) KERNEL_ONLY=true ;;
         --localversion) LOCALVERSION_ARG="--localversion $2"; shift ;;
+        --dtb) DTB_FLAG=true ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -90,6 +93,10 @@ DEPLOY_COMMAND="python3 \"$KERNEL_DEPLOYER_PATH\" deploy-jetson --kernel-name \"
 
 if [ -n "$LOCALVERSION_ARG" ]; then
     DEPLOY_COMMAND+=" $LOCALVERSION_ARG"
+fi
+
+if [ "$DTB_FLAG" = true ]; then
+    DEPLOY_COMMAND+=" --dtb"
 fi
 
 if [ "$DRY_RUN" = true ]; then

@@ -28,6 +28,7 @@ LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
 KERNEL_ONLY=false
+DTB_FLAG=false
 
 # Function to display help
 show_help() {
@@ -45,6 +46,7 @@ show_help() {
     --localversion <str> Set a custom local version string during kernel compilation. If not provided, a default string is generated.
     --dry-run            Simulate the compilation and/or deployment processes without actually executing them. Useful for debugging.
     --threads <number>   Specify the number of threads to use during kernel compilation for better performance.
+    --dtb                Set the newly compiled DTB as the default in the boot configuration.
 
   Examples:
     1. Compile and deploy the kernel to a device with a custom configuration file:
@@ -121,6 +123,10 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --dtb)
+      DTB_FLAG=true
+      shift
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -151,6 +157,7 @@ if [ "$NO_DEPLOY" == false ]; then
   [ "$DRY_RUN" == true ] && DEPLOY_COMMAND+=" --dry-run"
   DEPLOY_COMMAND+=" --localversion $LOCALVERSION_ARG"
   [ "$KERNEL_ONLY" == true ] && DEPLOY_COMMAND+=" --kernel-only"
+  [ "$DTB_FLAG" == true ] && DEPLOY_COMMAND+=" --dtb"
 
   # Execute deployment command
   echo "Deploying compiled kernel to the device at $DEVICE_IP..."

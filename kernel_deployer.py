@@ -230,32 +230,34 @@ def deploy_targeted_modules(kernel_name, device_ip, user, dry_run=False):
     # Determine the kernel version on the target device
     kernel_version = subprocess.check_output(f"ssh {user}@{device_ip} 'uname -r'", shell=True).strip().decode('utf-8')
 
-    # Define base path for modules on the host
-    base_tmp_dir = f"/tmp/targeted_modules/kernels/{kernel_name}"
+    # Base path for modules on the host
+    kernels_dir = os.path.join("kernels", kernel_name)
 
     # Process each module in the target_modules file
     for module_path in target_modules:
-        # Extract the relative module path from `kernel/OVERLAY/...`
-        if not module_path.startswith("kernel/"):
-            raise ValueError(f"Invalid module path '{module_path}'. Paths must start with 'kernel/'.")
+        # Full source path of the module on the host
+        source_path = os.path.join(kernels_dir, module_path)
+        if not os.path.exists(source_path):
+            print(f"Warning: Module {source_path} not found. Skipping.")
+            continue
 
-        # Split at the first `/` after `kernel/` to extract the overlay and relative path
-        overlay_and_path = module_path[len("kernel/"):]
-        relative_module_path = "/".join(overlay_and_path.split("/")[1:])  # Remove the overlay name (e.g., 'nvidia')
+        # Target directory on the remote device
+        target_dir = f"/lib/modules/{kernel_version}/{os.path.dirname(module_path)}"
+        remote_target_dir = f"{user}@{device_ip}:{target_dir}"
+        print(f"Deploying {source_path} to {remote_target_dir}")
 
-        # Determine source and destination paths
-        source_path = os.path.join(base_tmp_dir, module_path)
-        target_dir = f"/lib/modules/{kernel_version}/kernel/{os.path.dirname(relative_module_path)}"
-        target_path = f"{target_dir}/{os.path.basename(module_path)}"
-
-        # Create target directory and move the module
-        move_command = f"ssh root@{device_ip} 'mkdir -p {target_dir} && mv {source_path} {target_path}'"
-        print(f"Moving {os.path.basename(module_path)} to {target_path}")
+        # Ensure target directory exists on the remote device
+        mkdir_command = f"ssh {user}@{device_ip} 'sudo mkdir -p {target_dir}'"
         if not dry_run:
-            subprocess.run(move_command, shell=True, check=True)
+            subprocess.run(mkdir_command, shell=True, check=True)
+
+        # Copy the module to the remote device
+        scp_command = ["scp", source_path, f"{remote_target_dir}/"]
+        if not dry_run:
+            subprocess.run(scp_command, check=True)
 
     # Run depmod to refresh module dependencies
-    depmod_command = f"ssh root@{device_ip} 'depmod -a'"
+    depmod_command = f"ssh {user}@{device_ip} 'sudo depmod -a {kernel_version}'"
     print(f"Running depmod on the target device: {depmod_command}")
     if not dry_run:
         subprocess.run(depmod_command, shell=True, check=True)
@@ -284,7 +286,7 @@ def main():
     deploy_jetson_parser.add_argument("--user", required=True, help="Username for accessing the Jetson device")
     deploy_jetson_parser.add_argument('--dry-run', action='store_true', help='Print the commands without executing them')
     deploy_jetson_parser.add_argument('--localversion', help='Specify the LOCALVERSION string to choose the correct kernel to deploy')
-    deploy_jetson_parser.add_argument('--dtb', help='Specify a custom Device Tree Blob (DTB) file to use for deployment')
+    deploy_jetson_parser.add_argument('--dtb', action='store_true', help='Sets the DTB compiled with the kernel to be the default')
     deploy_jetson_parser.add_argument('--kernel-only', action='store_true', help='Only deploy the kernel, skipping modules')
 
     # Deploy targeted modules command
