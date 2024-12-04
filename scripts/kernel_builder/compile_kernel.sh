@@ -7,6 +7,8 @@
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
 
+set -e
+
 # Ensure kernel name is provided
 if [ -z "$1" ]; then
   echo "Error: Kernel name must be provided as the first argument."

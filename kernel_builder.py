@@ -348,7 +348,11 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
     else:
         full_command_phase_2 = docker_command_base + [combined_command_phase_2]
         print(f"Running Docker command (Phase 2): {' '.join(full_command_phase_2)}")
-        subprocess.Popen(full_command_phase_2, env=env).wait()
+        process = subprocess.Popen(full_command_phase_2, env=env)
+        process.wait()
+        if process.returncode != 0:
+            print("Error: Docker encountered an error during execution.")
+            exit(process.returncode)
 
 def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
     """

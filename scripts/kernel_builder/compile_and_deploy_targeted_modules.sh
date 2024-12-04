@@ -12,6 +12,8 @@
 #   --threads       Optional argument to specify the number of threads to use during kernel compilation
 #   --host-build    Optional argument to perform the build on the host machine instead of using Docker
 
+set -e
+
 if [[ "$1" == "--help" ]]; then
   echo "Usage: ./compile_and_deploy_targeted_modules.sh [OPTIONS]"
   echo ""

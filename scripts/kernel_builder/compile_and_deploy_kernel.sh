@@ -4,6 +4,7 @@
 # Usage: ./compile_and_deploy_kernel.sh [KERNEL_NAME] [OPTIONS]
 # Description:
 # This script automates the process of compiling a custom kernel and optionally deploying it to a device.
+set -e
 
 # Ensure kernel name is provided
 if [ -z "$1" ]; then
