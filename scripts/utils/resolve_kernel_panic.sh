@@ -77,7 +77,6 @@ if [[ ! -f "$VMLINUX_PATH" ]]; then
 fi
 
 # Parse the function and offset
-echo "Parsing function and offset from: $ADDRESS_LINE"
 FUNCTION=$(echo "$ADDRESS_LINE" | grep -oP '[a-zA-Z0-9_.]+(?=\+0x)')
 OFFSET=$(echo "$ADDRESS_LINE" | grep -oP '\+0x[0-9a-f]+')
 if [[ -z "$FUNCTION" || -z "$OFFSET" ]]; then
@@ -90,17 +89,14 @@ echo "Extracted function: $FUNCTION"
 echo "Extracted offset: $OFFSET"
 
 # Find the base address of the function
-echo "Looking up base address of function: $FUNCTION"
 BASE_ADDRESS=$("$NM_TOOL" "$VMLINUX_PATH" | grep " $FUNCTION" | awk '{print $1}')
 if [[ -z "$BASE_ADDRESS" ]]; then
     echo "Error: Failed to find base address for function: $FUNCTION"
     exit 1
 fi
 
-echo "Base address of function $FUNCTION: 0x$BASE_ADDRESS"
 
 # Calculate the absolute address using Python
-echo "Calculating the absolute address using Python..."
 ABSOLUTE_ADDRESS_HEX=$(python3 -c "
 base_address = int('$BASE_ADDRESS', 16)
 offset = int('$OFFSET', 16)
@@ -113,18 +109,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Base address (hexadecimal): $BASE_ADDRESS"
-echo "Offset (hexadecimal): $OFFSET"
-echo "Calculated absolute address (hexadecimal): $ABSOLUTE_ADDRESS_HEX"
-
 # Run addr2line
-echo "Running addr2line command:"
-echo "$ADDR2LINE -e $VMLINUX_PATH $ABSOLUTE_ADDRESS_HEX"
 SOURCE_INFO=$("$ADDR2LINE" -e "$VMLINUX_PATH" "$ABSOLUTE_ADDRESS_HEX" 2>&1)
 
 # Verbose: Show the raw output
 echo "addr2line output:"
-echo "$SOURCE_INFO"
 
 if [[ -z "$SOURCE_INFO" ]]; then
     echo "Error: Unable to resolve address 0x$(printf '%x' $ABSOLUTE_ADDRESS)."
