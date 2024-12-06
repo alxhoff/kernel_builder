@@ -1,0 +1,1284 @@
+diff --git a/hardware/nvidia/platform/t19x/galen/kernel-dts/tegra194-p2888-0001-p2822-0000.dts b/hardware/nvidia/platform/t19x/galen/kernel-dts/tegra194-p2888-0001-p2822-0000.dts
+index 7ae66c1..a46befc 100644
+--- a/hardware/nvidia/platform/t19x/galen/kernel-dts/tegra194-p2888-0001-p2822-0000.dts
++++ b/hardware/nvidia/platform/t19x/galen/kernel-dts/tegra194-p2888-0001-p2822-0000.dts
+@@ -18,8 +18,7 @@
+  * Top level DTS file for CVM:P2888-0001 and CVB:P2822-0000.
+  */
+ #include "common/tegra194-p2888-0001-p2822-0000-common.dtsi"
+-#include "common/tegra194-camera-d4xx.dtsi"
+-/*#include "common/tegra194-p2822-camera-modules.dtsi"*/
++#include "common/tegra194-p2822-camera-modules.dtsi"
+ #include "common/tegra194-audio-p2822-0000.dtsi"
+ 
+ #if defined(LINUX_VERSION) && LINUX_VERSION >= 419
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
+index 6b79962..9b17457 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
+@@ -161,7 +161,7 @@
+ 			regulator-name = "vdd_sys_en";
+ 			regulator-min-microvolt = <1200000>;
+ 			regulator-max-microvolt = <1200000>;
+-			gpio = <&tegra_main_gpio TEGRA234_MAIN_GPIO(AC, 7) 0>;
++			// gpio = <&tegra_main_gpio TEGRA234_MAIN_GPIO(AC, 7) 0>;
+ 			regulator-always-on;
+ 			enable-active-high;
+ 		};
+@@ -172,7 +172,7 @@
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			vin-supply = <&p3737_vdd_1v8_sys>;
+-			gpio = <&tegra_aon_gpio TEGRA234_AON_GPIO(CC, 2) 0>; //CAM_INT3, GPIO_ACTIVE_HIGH == 0
++			// gpio = <&tegra_aon_gpio TEGRA234_AON_GPIO(CC, 2) 0>; //CAM_INT3, GPIO_ACTIVE_HIGH == 0
+ 			enable-active-high;
+ 		};
+ 	};
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+index 4059d66..7ebad11 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+@@ -20,7 +20,8 @@
+ #include "tegra234-power-tree-p3701-0000-p3737-0000.dtsi"
+ #include "tegra234-dcb-p3701-0000-a02-p3737-0000-a01.dtsi"
+ #include <tegra234-soc/mods-simple-bus.dtsi>
+-#include "cvb/tegra234-p3737-camera-modules.dtsi"
++//#include "cvb/tegra234-p3737-camera-modules.dtsi"
++#include "cvb/tegra234-p3737-0000-camera-d4xx-qual.dtsi"
+ #include <t234-common-cvb/tegra234-pwm.dtsi>
+ #include <t234-common-cvm/tegra234-cpuidle.dtsi>
+ #include <t234-common-cvm/tegra234-thermal.dtsi>
+diff --git a/kernel/nvidia/drivers/media/i2c/Makefile b/kernel/nvidia/drivers/media/i2c/Makefile
+index e11e8ad..5e4c0bf 100644
+--- a/kernel/nvidia/drivers/media/i2c/Makefile
++++ b/kernel/nvidia/drivers/media/i2c/Makefile
+@@ -28,3 +28,6 @@ obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
+ obj-$(CONFIG_VIDEO_ECAM) += ar1335.o
+ ar1335-objs :=  ar1335_common.o
+ obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
++
++
++obj-y += isx031/
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 1a50166..0dcce1e 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -16,7 +16,7 @@
+  * You should have received a copy of the GNU General Public License
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-
++// #define DEBUG 1
+ #include <linux/delay.h>
+ #include <linux/gpio.h>
+ #include <linux/i2c.h>
+@@ -174,7 +174,7 @@ enum ds5_mux_pad {
+ 
+ #define DS5_N_CONTROLS			8
+ 
+-#define CSI2_MAX_VIRTUAL_CHANNELS	4
++#define CSI2_MAX_VIRTUAL_CHANNELS	16
+ 
+ #define DFU_WAIT_RET_LEN 6
+ 
+@@ -469,6 +469,7 @@ struct ds5 {
+ 	const struct ds5_variant *variant;
+ 	int is_depth, is_y8, is_rgb, is_imu;
+ 	int aggregated;
++	int device_id;
+ 	u16 fw_version;
+ 	u16 fw_build;
+ #ifdef CONFIG_VIDEO_D4XX_SERDES
+@@ -557,7 +558,7 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
+ 			dev_dbg(&state->client->dev,
+ 					"%s(): i2c raw write 0x%04x: %d bytes\n",
+ 					__func__, reg, (int)val_len);
+-
++	//usleep_range(100, 110);
+ 	return ret;
+ }
+ 
+@@ -572,7 +573,7 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
+ 			dev_dbg(&state->client->dev, "%s(): i2c read 0x%04x: 0x%x\n",
+ 					__func__, reg, *val);
+ 	}
+-
++	//usleep_range(100, 110);
+ 	return ret;
+ }
+ 
+@@ -1468,7 +1469,7 @@ static int ds5_configure(struct ds5 *state)
+ 		width_addr = DS5_DEPTH_RES_WIDTH;
+ 		height_addr = DS5_DEPTH_RES_HEIGHT;
+ 		md_fmt = GMSL_CSI_DT_EMBED;
+-		vc_id = 0;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_rgb) {
+ 		sensor = &state->rgb.sensor;
+ 		dt_addr = DS5_RGB_STREAM_DT;
+@@ -1478,7 +1479,7 @@ static int ds5_configure(struct ds5 *state)
+ 		width_addr = DS5_RGB_RES_WIDTH;
+ 		height_addr = DS5_RGB_RES_HEIGHT;
+ 		md_fmt = GMSL_CSI_DT_EMBED;
+-		vc_id = 1;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_y8) {
+ 		sensor = &state->ir.sensor;
+ 		dt_addr = DS5_IR_STREAM_DT;
+@@ -1488,7 +1489,7 @@ static int ds5_configure(struct ds5 *state)
+ 		width_addr = DS5_IR_RES_WIDTH;
+ 		height_addr = DS5_IR_RES_HEIGHT;
+ 		md_fmt = GMSL_CSI_DT_EMBED;
+-		vc_id = 2;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_imu) {
+ 		sensor = &state->imu.sensor;
+ 		dt_addr = DS5_IMU_STREAM_DT;
+@@ -1498,7 +1499,7 @@ static int ds5_configure(struct ds5 *state)
+ 		width_addr = DS5_IMU_RES_WIDTH;
+ 		height_addr = DS5_IMU_RES_HEIGHT;
+ 		md_fmt = 0x0;
+-		vc_id = 3;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else {
+ 		return -EINVAL;
+ 	}
+@@ -1507,10 +1508,10 @@ static int ds5_configure(struct ds5 *state)
+ 	data_type1 = sensor->config.format->data_type;
+ 	data_type2 = state->is_y8 ? 0x00 : md_fmt;
+ 
+-	vc_id = state->g_ctx.dst_vc;
++	//vc_id = state->g_ctx.dst_vc;
+ 
+ 	ret = ds5_setup_pipeline(state, data_type1, data_type2, sensor->pipe_id,
+-				 vc_id);
++				 state->g_ctx.dst_vc);
+ 	// reset data path when switching to Y12I
+ 	if (state->is_y8 && data_type1 == GMSL_CSI_DT_RGB_888)
+ 		max9296_reset_oneshot(state->dser_dev);
+@@ -1786,9 +1787,9 @@ static int ds5_get_hwmc_status(struct ds5 *state)
+ 	int errorCode;
+ 	do {
+ 		if (retries != 100)
+-			msleep_range(1);
++			msleep_range(20);
+ 		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
+-	} while (!ret && retries-- && status == DS5_HWMC_STATUS_WIP);
++	} while (retries-- && status == DS5_HWMC_STATUS_WIP);
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): ret: 0x%x, status: 0x%x\n",
+ 			__func__, ret, status);
+@@ -2112,7 +2113,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 					"requested size: %d, actual size: %d\n",
+ 					__func__, ret, erb_cmd->param2, size);
+ 				devm_kfree(&state->client->dev, erb_cmd);
+-				return -EAGAIN;
++				ret =  -EAGAIN;
++				break;
+ 			}
+ 
+ 			// Actual size returned from FW
+@@ -2171,7 +2173,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 					"requested size: %d, actual size: %d\n",
+ 					__func__, ret, ewb_cmd->param2, size);
+ 				devm_kfree(&state->client->dev, ewb_cmd);
+-				return -EAGAIN;
++				ret = -ENOMEM;
++				break;
+ 			}
+ 
+ 			devm_kfree(&state->client->dev, ewb_cmd);
+@@ -2371,17 +2374,23 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 	dev_dbg(&state->client->dev, "%s(): %s - ctrl: %s \n",
+ 		__func__, ds5_get_sensor_name(state), ctrl->name);
+ 
++	mutex_lock(&state->lock);
++	
+ 	switch (ctrl->id) {
+ 
+ 	case V4L2_CID_ANALOGUE_GAIN:
+-		if (state->is_imu)
+-			return -EINVAL;
++		if (state->is_imu){
++			ret = -EINVAL;
++			break;
++		}
+ 		ret = ds5_read(state, base | DS5_MANUAL_GAIN, ctrl->p_new.p_u16);
+ 		break;
+ 
+ 	case V4L2_CID_EXPOSURE_AUTO:
+-		if (state->is_imu)
+-			return -EINVAL;
++		if (state->is_imu){
++			ret = -EINVAL;
++			break;
++		}
+ 		ds5_read(state, base | DS5_AUTO_EXPOSURE_MODE, &reg);
+ 		*ctrl->p_new.p_u16 = reg;
+ 		/* see ds5_hw_set_auto_exposure */
+@@ -2398,8 +2407,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ 
+ 	case V4L2_CID_EXPOSURE_ABSOLUTE:
+-		if (state->is_imu)
+-			return -EINVAL;
++		if (state->is_imu){
++			ret = -EINVAL;
++			break;
++		}
+ 		/* see ds5_hw_set_exposure */
+ 		ds5_read(state, base | DS5_MANUAL_EXPOSURE_MSB, &reg);
+ 		data = ((u32)reg << 16) & 0xffff0000;
+@@ -2427,20 +2438,20 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = regmap_raw_write(state->regmap, 0x4900,
+ 				log_prepare, sizeof(log_prepare));
+ 		if (ret < 0)
+-			return ret;
++			break;
+ 
+ 		ret = regmap_raw_write(state->regmap, 0x490C,
+ 				&execute_cmd, sizeof(execute_cmd));
+ 		if (ret < 0)
+-			return ret;
+-
++			break;
++			
+ 		for (i = 0; i < DS5_MAX_LOG_POLL; i++) {
+ 			ret = regmap_raw_read(state->regmap, 0x4904,
+ 					&data, sizeof(data));
+ 			dev_dbg(&state->client->dev, "%s(): log ready 0x%x\n",
+ 				 __func__, data);
+ 			if (ret < 0)
+-				return ret;
++				break;
+ 			if (!data)
+ 				break;
+ 			msleep_range(5);
+@@ -2452,11 +2463,15 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = regmap_raw_read(state->regmap, 0x4908, &data, sizeof(data));
+ 		dev_dbg(&state->client->dev, "%s(): log size 0x%x\n", __func__, data);
+ 		if (ret < 0)
+-			return ret;
+-		if (!data)
+-			return 0;
+-		if (data > 1024)
+-			return -ENOBUFS;
++			break;
++		if (!data){
++			ret = 0;
++			break;
++		}
++		if (data > 1024){
++			ret = -ENOBUFS;
++			break;
++		}
+ 		ret = regmap_raw_read(state->regmap, 0x4900,
+ 				ctrl->p_new.p_u8, data);
+ 		break;
+@@ -2494,7 +2509,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_roi_cmd);
+ 			if (ret) {
+ 				devm_kfree(&state->client->dev, ae_roi_cmd);
+-				return ret;
++				break;
+ 			}
+ 			ret = ds5_get_hwmc(state, ae_roi_cmd->Data, len, &dataLen);
+ 			if (!ret && dataLen <= ctrl->dims[0])
+@@ -2519,7 +2534,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_setpoint_cmd);
+ 		if (ret) {		
+ 			devm_kfree(&state->client->dev, ae_setpoint_cmd);
+-			return ret;
++			break;
+ 		}
+ 		ret = ds5_get_hwmc(state, ae_setpoint_cmd->Data, len, &dataLen);
+ 		memcpy(ctrl->p_new.p_s32, ae_setpoint_cmd->Data + 4, 4);
+@@ -2571,6 +2586,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ #endif
+ 	}
++	mutex_unlock(&state->lock);
+ 	return ret;
+ }
+ 
+@@ -2871,7 +2887,7 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
+  * #jetson-agx-xavier-series
+  */
+ #define MAX_DEV_NUM 24
+-static struct ds5 *serdes_inited[MAX_DEV_NUM];
++//static struct ds5 *serdes_inited[MAX_DEV_NUM];
+ #ifdef CONFIG_OF
+ static int ds5_board_setup(struct ds5 *state)
+ {
+@@ -2885,13 +2901,13 @@ static int ds5_board_setup(struct ds5 *state)
+ 	int value = 0xFFFF;
+ 	const char *str_value;
+ 	int err;
+-	int i;
++	//int i;
+ 
+-	err = of_property_read_u32(node, "reg", &state->g_ctx.sdev_reg);
+-	if (err < 0) {
+-		dev_err(dev, "reg not found\n");
+-		goto error;
+-	}
++	// err = of_property_read_u32(node, "reg", &state->g_ctx.sdev_reg);
++	// if (err < 0) {
++	// 	dev_err(dev, "reg not found\n");
++	// 	goto error;
++	// }
+ 
+ 	err = of_property_read_u32(node, "def-addr",
+ 					&state->g_ctx.sdev_def);
+@@ -3027,17 +3043,17 @@ static int ds5_board_setup(struct ds5 *state)
+ 	state->g_ctx.num_csi_lanes = value;
+ 	state->g_ctx.s_dev = dev;
+ 
+-	for (i = 0; i < MAX_DEV_NUM; i++) {
+-		if (!serdes_inited[i]) {
+-			serdes_inited[i] = state;
+-			return 0;
+-		} else if (serdes_inited[i]->ser_dev == state->ser_dev) {
+-			return -ENOTSUPP;
+-		}
+-	}
+-	err = -EINVAL;
+-	dev_err(dev, "cannot handle more than %d D457 cameras\n", MAX_DEV_NUM);
+-
++	// for (i = 0; i < MAX_DEV_NUM; i++) {
++	// 	if (!serdes_inited[i]) {
++	// 		serdes_inited[i] = state;
++	// 		return 0;
++	// 	} else if (serdes_inited[i]->ser_dev == state->ser_dev) {
++	// 		return -ENOTSUPP;
++	// 	}
++	// }
++	// err = -EINVAL;
++	// dev_err(dev, "cannot handle more than %d D457 cameras\n", MAX_DEV_NUM);
++	return 0;
+ error:
+ 	return err;
+ }
+@@ -3190,6 +3206,7 @@ error:
+ static const struct regmap_config ds5_regmap_max9296 = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
++	.cache_type = REGCACHE_NONE,
+ 	.reg_format_endian = REGMAP_ENDIAN_BIG,
+ 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ };
+@@ -3197,6 +3214,7 @@ static const struct regmap_config ds5_regmap_max9296 = {
+ static const struct regmap_config ds5_regmap_max9295 = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
++	.cache_type = REGCACHE_NONE,
+ 	.reg_format_endian = REGMAP_ENDIAN_BIG,
+ 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ };
+@@ -3216,8 +3234,10 @@ static int ds5_gmsl_serdes_setup(struct ds5 *state)
+ 	mutex_lock(&serdes_lock__);
+ 
+ 	max9296_power_off(state->dser_dev);
++	msleep(200);
+ 	/* For now no separate power on required for serializer device */
+ 	max9296_power_on(state->dser_dev);
++	msleep(200);
+ 
+ 	dev_dbg(dev, "Setup SERDES addressing and control pipeline\n");
+ 	/* setup serdes addressing and control pipeline */
+@@ -3226,7 +3246,7 @@ static int ds5_gmsl_serdes_setup(struct ds5 *state)
+ 		dev_err(dev, "gmsl deserializer link config failed\n");
+ 		goto error;
+ 	}
+-	msleep(100);
++	//msleep(100);
+ 	err = max9295_setup_control(state->ser_dev);
+ 
+ 	/* proceed even if ser setup failed, to setup deser correctly */
+@@ -3255,11 +3275,11 @@ MODULE_PARM_DESC(sensor_vc, "VC set for sensors\n"
+ #ifdef PLATFORM_AXIOMTEK
+ static short serdes_bus[4] = {5, 5, 5, 5};
+ #else
+-static short serdes_bus[4] = {2, 2, 4, 4};
++static short serdes_bus[4] = {4, 4, 2, 2};
+ #endif
+ module_param_array(serdes_bus, ushort, NULL, 0444);
+ MODULE_PARM_DESC(serdes_bus, "max9295/6 deserializer i2c bus\n"
+-		"\t\tserdes_bus=2,2,4,4");
++		"\t\tserdes_bus=4,4,2,2");
+ 
+ // Deserializer addresses can be 0x40 0x48 0x4a
+ #ifdef PLATFORM_AXIOMTEK
+@@ -3291,6 +3311,9 @@ static int ds5_i2c_addr_setting(struct i2c_client *c, struct ds5 *state)
+ 	return 0;
+ }
+ #endif
++
++static int d4xx_gmsl_init_flag[4] = {0,0,0,0};
++
+ static int ds5_serdes_setup(struct ds5 *state)
+ {
+ 	int ret = 0;
+@@ -3323,46 +3346,58 @@ static int ds5_serdes_setup(struct ds5 *state)
+ #endif
+ 	ret = ds5_board_setup(state);
+ 	if (ret) {
+-		if (ret == -ENOTSUPP)
+-			return 0;
+ 		dev_err(&c->dev, "board setup failed\n");
+ 		return ret;
+ 	}
+ 
+-	/* Pair sensor to serializer dev */
+-	ret = max9295_sdev_pair(state->ser_dev, &state->g_ctx);
+-	if (ret) {
+-		dev_err(&c->dev, "gmsl ser pairing failed\n");
+-		return ret;
+-	}
++	if(d4xx_gmsl_init_flag[state->device_id] == 0){
++		/* Pair sensor to serializer dev */
++		ret = max9295_sdev_pair(state->ser_dev, &state->g_ctx);
++		if (ret) {
++			dev_err(&c->dev, "gmsl ser pairing failed\n");
++			return ret;
++		}
+ 
+-	/* Register sensor to deserializer dev */
+-	ret = max9296_sdev_register(state->dser_dev, &state->g_ctx);
+-	if (ret) {
+-		dev_err(&c->dev, "gmsl deserializer register failed\n");
+-		return ret;
++		/* Register sensor to deserializer dev */
++		ret = max9296_sdev_register(state->dser_dev, &state->g_ctx);
++		if (ret) {
++			dev_err(&c->dev, "gmsl deserializer register failed\n");
++			return ret;
++		}
++		d4xx_gmsl_init_flag[state->device_id] = 1;
+ 	}
+ 
+-	ret = ds5_gmsl_serdes_setup(state);
+-	if (ret) {
+-		dev_err(&c->dev, "%s gmsl serdes setup failed\n", __func__);
+-		return ret;
+-	}
++	
++	if(d4xx_gmsl_init_flag[state->device_id] == 1){
++		ret = ds5_gmsl_serdes_setup(state);
++		if (ret) {
++			dev_err(&c->dev, "%s gmsl serdes setup failed, ret=%d\n", __func__, ret);
++			d4xx_gmsl_init_flag[state->device_id] = 3;
++			return ret;
++		}
+ 
+-	ret = max9295_init_settings(state->ser_dev);
+-	if (ret) {
+-		dev_warn(&c->dev, "%s, failed to init max9295 settings\n",
+-			__func__);
+-		return ret;
+-	}
++		ret = max9295_init_settings(state->ser_dev);
++		if (ret) {
++			dev_warn(&c->dev, "%s, failed to init max9295 settings\n",
++				__func__);
++			d4xx_gmsl_init_flag[state->device_id] = 3;
++			return ret;
++		}
+ 
+-	ret = max9296_init_settings(state->dser_dev);
+-	if (ret) {
+-		dev_warn(&c->dev, "%s, failed to init max9296 settings\n",
+-			__func__);
+-		return ret;
++		ret = max9296_init_settings(state->dser_dev);
++		if (ret) {
++			dev_warn(&c->dev, "%s, failed to init max9296 settings\n",
++				__func__);
++			d4xx_gmsl_init_flag[state->device_id] = 4;
++			return ret;
++		}
++		d4xx_gmsl_init_flag[state->device_id] = 2;
++	}else if(d4xx_gmsl_init_flag[state->device_id] == 2){
++		return 0;
++	}else{
++		return -EINVAL;
+ 	}
+-
++	
+ 	return ret;
+ }
+ #endif
+@@ -4141,22 +4176,22 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+ 		config_status_base = DS5_DEPTH_CONFIG_STATUS;
+ 		stream_status_base = DS5_DEPTH_STREAM_STATUS;
+ 		stream_id = DS5_STREAM_DEPTH;
+-		vc_id = 0;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_rgb) {
+ 		config_status_base = DS5_RGB_CONFIG_STATUS;
+ 		stream_status_base = DS5_RGB_STREAM_STATUS;
+ 		stream_id = DS5_STREAM_RGB;
+-		vc_id = 1;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_y8) {
+ 		config_status_base = DS5_IR_CONFIG_STATUS;
+ 		stream_status_base = DS5_IR_STREAM_STATUS;
+ 		stream_id = DS5_STREAM_IR;
+-		vc_id = 2;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else if (state->is_imu) {
+ 		config_status_base = DS5_IMU_CONFIG_STATUS;
+ 		stream_status_base = DS5_IMU_STREAM_STATUS;
+ 		stream_id = DS5_STREAM_IMU;
+-		vc_id = 3;
++		vc_id = state->g_ctx.dst_vc;
+ 	} else {
+ 		return -EINVAL;
+ 	}
+@@ -4174,6 +4209,8 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+ 	restore_val = sensor->streaming;
+ 	sensor->streaming = on;
+ 
++	mutex_lock(&state->lock);
++
+ 	if (on) {
+ #ifdef CONFIG_VIDEO_D4XX_SERDES
+ #ifdef CONFIG_VIDEO_INTEL_IPU6
+@@ -4199,7 +4236,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+ 				DS5_STREAM_START | stream_id);
+ 		if (ret < 0)
+ 			goto restore_s_state;
+-
++		msleep_range(100);
+ 		// check streaming status from FW
+ 		for (i = 0; i < DS5_START_MAX_COUNT; i++) {
+ 			ds5_read(state, stream_status_base, &streaming);
+@@ -4268,7 +4305,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+ 			(on)?"START":"STOP",
+ 			stream_status_base, streaming,
+ 			config_status_base, status, ret);
+-
++	mutex_unlock(&state->lock);
+ 	return ret;
+ 
+ restore_s_state:
+@@ -4286,7 +4323,7 @@ restore_s_state:
+ 			ds5_get_sensor_name(state), restore_val, status);
+ 
+ 	sensor->streaming = restore_val;
+-
++	mutex_unlock(&state->lock);
+ 	return ret;
+ }
+ 
+@@ -4697,6 +4734,7 @@ static void ds5_mux_remove(struct ds5 *state)
+ static const struct regmap_config ds5_regmap_config = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
++	.cache_type = REGCACHE_NONE,
+ 	.reg_format_endian = REGMAP_ENDIAN_NATIVE,
+ 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ };
+@@ -5122,7 +5160,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	if (!atomic_read(&primary_chardev)) {
++	if (!atomic_cmpxchg(&primary_chardev, 0, MAJOR(*dev_num))) {
+ 		dev_dbg(&c->dev, "%s(): <Major, Minor>: <%d, %d>\n",
+ 				__func__, MAJOR(*dev_num), MINOR(*dev_num));
+ 		/* Create a class : appears at /sys/class */
+@@ -5160,7 +5198,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
+ 		return ret;
+ 	}
+ 	cdev_add(ds5_cdev, *dev_num, 1);
+-	atomic_inc(&primary_chardev);
++	
+ 	return 0;
+ };
+ 
+@@ -5174,10 +5212,8 @@ static int ds5_chrdev_remove(struct ds5 *state)
+ 	dev_dbg(&state->client->dev, "%s()\n", __func__);
+ 	unregister_chrdev_region(*dev_num, 1);
+ 	device_destroy(*ds5_class, *dev_num);
+-	if (atomic_dec_and_test(&primary_chardev)) {
+-		dev_warn(&state->client->dev, "%s() class_destroy\n", __func__);
++	if (atomic_cmpxchg(&primary_chardev, MAJOR(*dev_num), 0) == MAJOR(*dev_num))
+ 		class_destroy(*ds5_class);
+-	}
+ 	return 0;
+ }
+ 
+@@ -5380,10 +5416,10 @@ static ssize_t ds5_write_reg_store(struct device *dev,
+ static DEVICE_ATTR_WO(ds5_write_reg);
+ 
+ static struct attribute *ds5_attributes[] = {
+-		&dev_attr_ds5_fw_ver.attr,
+-		&dev_attr_ds5_read_reg.attr.attr,
+-		&dev_attr_ds5_write_reg.attr,
+-		NULL
++	&dev_attr_ds5_fw_ver.attr,
++	&dev_attr_ds5_read_reg.attr.attr,
++	&dev_attr_ds5_write_reg.attr,
++	NULL
+ };
+ 
+ static const struct attribute_group ds5_attr_group = {
+@@ -5394,11 +5430,12 @@ static const struct attribute_group ds5_attr_group = {
+ #ifdef CONFIG_VIDEO_INTEL_IPU6
+ #define NR_DESER 4
+ #endif //CONFIG_VIDEO_INTEL_IPU6
++struct regmap *cam_regmap[4];
+ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ {
+ 	struct ds5 *state = devm_kzalloc(&c->dev, sizeof(*state), GFP_KERNEL);
+ 	u16 rec_state;
+-	int ret, retry, err = 0;
++	int ret,  retry,err = 0;
+ #ifdef CONFIG_OF
+ 	const char *str;
+ #endif
+@@ -5408,9 +5445,9 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 	mutex_init(&state->lock);
+ 
+ 	state->client = c;
+-	dev_warn(&c->dev, "Probing driver for D45x\n");
+-
+-	state->variant = ds5_variants + id->driver_data;
++	dev_warn(&c->dev, "Probing driver for D45x, id = %ld, name = %s\n", id->driver_data, id->name);
++	state->device_id = id->driver_data;
++	state->variant = ds5_variants + 0;//id->driver_data;
+ #ifdef CONFIG_OF
+ 	state->vcc = devm_regulator_get(&c->dev, "vcc");
+ 	if (IS_ERR(state->vcc)) {
+@@ -5427,12 +5464,26 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 		}
+ 	}
+ #endif
+-	state->regmap = devm_regmap_init_i2c(c, &ds5_regmap_config);
+-	if (IS_ERR(state->regmap)) {
+-		ret = PTR_ERR(state->regmap);
+-		dev_err(&c->dev, "regmap init failed: %d\n", ret);
+-		goto e_regulator;
++	err = of_property_read_u32(c->dev.of_node, "def-d4m-addr", &state->g_ctx.sdev_reg);
++	if (err < 0)
++	{
++		dev_err(&c->dev, "def-d4m-addr not found, but continue\n");
++	}
++	else
++	{
++		state->client->addr = state->g_ctx.sdev_reg;
++	}
++
++	if(cam_regmap[id->driver_data] == NULL){
++		cam_regmap[id->driver_data] = devm_regmap_init_i2c(c, &ds5_regmap_config);
++		if (IS_ERR(cam_regmap[id->driver_data])) {
++			ret = PTR_ERR(cam_regmap[id->driver_data]);
++			dev_err(&c->dev, "regmap init failed: %d\n", ret);
++			goto e_regulator;
++		}
+ 	}
++	
++	state->regmap = cam_regmap[id->driver_data];
+ 
+ #ifdef CONFIG_VIDEO_D4XX_SERDES
+ 	ret = ds5_serdes_setup(state);
+@@ -5470,7 +5521,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 		state->is_imu = 1;
+ 	}
+ #else
+-	state->is_depth = 1;
++ 	state->is_depth = 1;
+ #endif
+ 	/* create DFU chardev once */
+ 	if (state->is_depth) {
+@@ -5544,10 +5595,11 @@ static int ds5_remove(struct i2c_client *c)
+ 	struct ds5 *state = container_of(i2c_get_clientdata(c), struct ds5, mux.sd.subdev);
+ 
+ #ifdef CONFIG_VIDEO_D4XX_SERDES
+-	int i, ret;
+-	for (i = 0; i < MAX_DEV_NUM; i++) {
+-		if (serdes_inited[i] && serdes_inited[i] == state) {
+-			serdes_inited[i] = NULL;
++	int ret;//i, 
++	// for (i = 0; i < MAX_DEV_NUM; i++) {
++	// 	if (serdes_inited[i] && serdes_inited[i] == state) {
++	// 		serdes_inited[i] = NULL;
++		if ((state->ser_dev != NULL) || (state->dser_dev != NULL)) {
+ 			mutex_lock(&serdes_lock__);
+ 
+ 			ret = max9295_reset_control(state->ser_dev);
+@@ -5562,7 +5614,7 @@ static int ds5_remove(struct i2c_client *c)
+ 
+ 			ret = max9295_sdev_unpair(state->ser_dev,
+ 				state->g_ctx.s_dev);
+-			if (ret)
++			if (ret) 
+ 				dev_warn(&c->dev, "failed to unpair sdev\n");
+ 			ret = max9296_sdev_unregister(state->dser_dev,
+ 				state->g_ctx.s_dev);
+@@ -5572,9 +5624,10 @@ static int ds5_remove(struct i2c_client *c)
+ 			max9296_power_off(state->dser_dev);
+ 
+ 			mutex_unlock(&serdes_lock__);
+-			break;
++			//break;
+ 		}
+-	}
++	//}
++	d4xx_gmsl_init_flag[state->device_id] = false;
+ 	if (state->ser_i2c)
+ 		i2c_unregister_device(state->ser_i2c);
+ 	if (state->dser_i2c)
+@@ -5603,9 +5656,13 @@ static int ds5_remove(struct i2c_client *c)
+ }
+ 
+ static const struct i2c_device_id ds5_id[] = {
+-	{ DS5_DRIVER_NAME, DS5_DS5U },
+-	{ DS5_DRIVER_NAME_ASR, DS5_ASR },
+-	{ DS5_DRIVER_NAME_AWG, DS5_AWG },
++	// { DS5_DRIVER_NAME, DS5_DS5U },
++	// { DS5_DRIVER_NAME_ASR, DS5_ASR },
++	// { DS5_DRIVER_NAME_AWG, DS5_AWG },
++	{ "d4xx_0", 0 },
++	{ "d4xx_1", 1 },
++	{ "d4xx_2", 2 },
++	{ "d4xx_3", 3 },
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(i2c, ds5_id);
+@@ -5636,7 +5693,8 @@ MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
+ 				Xin Zhang <xin.x.zhang@intel.com>,\n\
+ 				Qingwu Zhang <qingwu.zhang@intel.com>,\n\
+ 				Evgeni Raikhel <evgeni.raikhel@intel.com>,\n\
+-				Shikun Ding <shikun.ding@intel.com>");
++				Shikun Ding <shikun.ding@intel.com>,\n\
++ 				Ethan chen <chenxinhai@sensing-world.com>");
+ MODULE_AUTHOR("Dmitry Perchanov <dmitry.perchanov@intel.com>");
+ MODULE_LICENSE("GPL v2");
+ MODULE_VERSION("1.0.1.21");
+diff --git a/kernel/nvidia/drivers/media/i2c/max9295.c b/kernel/nvidia/drivers/media/i2c/max9295.c
+index 6311d97..0e6ff80 100644
+--- a/kernel/nvidia/drivers/media/i2c/max9295.c
++++ b/kernel/nvidia/drivers/media/i2c/max9295.c
+@@ -15,7 +15,7 @@
+  * You should have received a copy of the GNU General Public License
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-
++// #define DEBUG 1
+ #include <media/camera_common.h>
+ #include <linux/module.h>
+ #include <media/max9295.h>
+@@ -111,9 +111,10 @@ struct max9295 {
+ 	/* primary serializer properties */
+ 	__u32 def_addr;
+ 	__u32 pst2_ref;
++	u8 prim_id;
+ };
+ 
+-static struct max9295 *prim_priv__;
++static struct max9295 *prim_priv__[4];
+ 
+ struct map_ctx {
+ 	u8 dt;
+@@ -131,7 +132,9 @@ static int max9295_write_reg(struct device *dev, u16 addr, u8 val)
+ 	if (err)
+ 		dev_err(dev, "%s:i2c write failed, 0x%x = %x\n",
+ 			__func__, addr, val);
+-
++	else
++		dev_dbg(dev, "%s:i2c write, 0x%x = %x\n",
++			__func__, addr, val);
+ 	/* delay before next i2c command as required for SERDES link */
+ 	usleep_range(100, 110);
+ 
+@@ -311,9 +314,9 @@ int max9295_setup_control(struct device *dev)
+ 
+ 	g_ctx = priv->g_client.g_ctx;
+ 
+-	if (prim_priv__) {
++	if (prim_priv__[priv->prim_id]) {
+ 		/* update address reassingment */
+-		max9295_write_reg(&prim_priv__->i2c_client->dev,
++		max9295_write_reg(&prim_priv__[priv->prim_id]->i2c_client->dev,
+ 				MAX9295_DEV_ADDR, (g_ctx->ser_reg << 1));
+ 	}
+ 
+@@ -350,16 +353,16 @@ int max9295_setup_control(struct device *dev)
+ 		i2c_ovrd[i+1] += (i < 4) ? offset1 : offset2;
+ 
+ 		/* i2c passthrough2 must be configured once for all devices */
+-		if ((i2c_ovrd[i] == 0x8B) && prim_priv__ &&
+-				prim_priv__->pst2_ref)
++		if ((i2c_ovrd[i] == 0x8B) && prim_priv__[priv->prim_id] &&
++				prim_priv__[priv->prim_id]->pst2_ref)
+ 			continue;
+ 
+ 		max9295_write_reg(dev, i2c_ovrd[i], i2c_ovrd[i+1]);
+ 	}
+ 
+ 	/* dev addr pass-through2 ref */
+-	if (prim_priv__)
+-		prim_priv__->pst2_ref++;
++	if (prim_priv__[priv->prim_id])
++		prim_priv__[priv->prim_id]->pst2_ref++;
+ 
+ 	max9295_write_reg(dev, MAX9295_I2C4_ADDR, (g_ctx->sdev_reg << 1));
+ 	max9295_write_reg(dev, MAX9295_I2C5_ADDR, (g_ctx->sdev_def << 1));
+@@ -390,14 +393,15 @@ int max9295_reset_control(struct device *dev)
+ 
+ 	priv->g_client.st_done = false;
+ 
+-	if (prim_priv__) {
+-		prim_priv__->pst2_ref--;
++	if (prim_priv__[priv->prim_id]) {
++		prim_priv__[priv->prim_id]->pst2_ref--;
+ 
+ 		max9295_write_reg(dev, MAX9295_DEV_ADDR,
+-					(prim_priv__->def_addr << 1));
+-		if (prim_priv__->pst2_ref == 0)
+-			max9295_write_reg(&prim_priv__->i2c_client->dev,
++					(prim_priv__[priv->prim_id]->def_addr << 1));
++		if (prim_priv__[priv->prim_id]->pst2_ref == 0){
++			max9295_write_reg(&prim_priv__[priv->prim_id]->i2c_client->dev,
+ 						MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
++		}	
+ 	}
+ 
+ error:
+@@ -472,7 +476,7 @@ EXPORT_SYMBOL(max9295_sdev_unpair);
+ static  struct regmap_config max9295_regmap_config = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
+-	.cache_type = REGCACHE_RBTREE,
++	.cache_type = REGCACHE_NONE,
+ };
+ 
+ struct reg_pair {
+@@ -573,8 +577,23 @@ int max9295_init_settings(struct device *dev)
+ 		{MAX9295_START_PIPE_ADDR, 0xF0},
+ 	};
+ 
+-	mutex_lock(&priv->lock);
++	static struct reg_pair map_depth_trigger[] = {
++	//	{0x02D6, 0x84}, // #MFP8
++	//	{0x02D7, 0x60}, // #OUT_TYPE bit to 1
++	//	{0x02D8, 0x1F},
++		{0x02C1, 0x84}, // #MFP1
++		{0x02C2, 0x20}, // #OUT_TYPE bit to 1 (no pullup)
++		{0x02C3, 0x1F},
++	};
+ 
++	static struct reg_pair map_rgb_trigger[] = {
++		{0x02BE, 0x84}, // #MFP0
++		{0x02BF, 0x20}, // #OUT_TYPE bit to 1  (no pullup)
++		{0x02C0, 0x1B},
++	};
++
++	mutex_lock(&priv->lock);
++	
+ 	// Init control
+ 	err |= max9295_set_registers(dev, map_pipe_opt,
+ 				     ARRAY_SIZE(map_pipe_opt));
+@@ -583,6 +602,13 @@ int max9295_init_settings(struct device *dev)
+ 		err |= __max9295_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
+ 					  GMSL_CSI_DT_EMBED, i);
+ 
++	// Trigger Depth
++	err |= max9295_set_registers(dev, map_depth_trigger,
++				     ARRAY_SIZE(map_depth_trigger));
++	// Trigger RGB
++	err |= max9295_set_registers(dev, map_rgb_trigger,
++				     ARRAY_SIZE(map_rgb_trigger));
++
+ 	mutex_unlock(&priv->lock);
+ 
+ 	return err;
+@@ -634,9 +660,9 @@ static int max9295_probe(struct i2c_client *client,
+ 	}
+ 
+ 	mutex_init(&priv->lock);
+-
++	priv->prim_id = id->driver_data;
+ 	if (of_get_property(node, "is-prim-ser", NULL)) {
+-		if (prim_priv__) {
++		if (prim_priv__[priv->prim_id]) {
+ 			dev_err(&client->dev,
+ 				"prim-ser already exists\n");
+ 				return -EEXIST;
+@@ -648,7 +674,7 @@ static int max9295_probe(struct i2c_client *client,
+ 			return -EINVAL;
+ 		}
+ 
+-		prim_priv__ = priv;
++		prim_priv__[priv->prim_id] = priv;
+ 	}
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+@@ -674,7 +700,8 @@ static int max9295_remove(struct i2c_client *client)
+ }
+ 
+ static const struct i2c_device_id max9295_id[] = {
+-	{ "max9295", 0 },
++	{ "max9295_0", 0 },
++	{ "max9295_1", 1 },
+ 	{ },
+ };
+ 
+diff --git a/kernel/nvidia/drivers/media/i2c/max9296.c b/kernel/nvidia/drivers/media/i2c/max9296.c
+index 316e687..e0e1b86 100644
+--- a/kernel/nvidia/drivers/media/i2c/max9296.c
++++ b/kernel/nvidia/drivers/media/i2c/max9296.c
+@@ -15,7 +15,7 @@
+  * You should have received a copy of the GNU General Public License
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-
++// #define DEBUG 1
+ #include <linux/gpio.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -125,9 +125,25 @@ struct max9296 {
+ 	u8 lane_mp2;
+ 	int reset_gpio;
+ 	int pw_ref;
++	int init_flag;
+ 	struct regulator *vdd_cam_1v2;
+ };
+ 
++static inline int max9296_read_reg(struct device *dev,
++		u16 addr, u8 *val)
++{
++	struct max9296 *priv;
++	int err = 0;
++	u32 reg_val = 0;
++
++	priv = dev_get_drvdata(dev);
++
++	err = regmap_read(priv->regmap, addr, &reg_val);
++	*val = reg_val & 0xFF;
++
++	return err;
++}
++
+ static int max9296_write_reg(struct device *dev,
+ 	u16 addr, u8 val)
+ {
+@@ -141,6 +157,10 @@ static int max9296_write_reg(struct device *dev,
+ 		dev_err(dev,
+ 		"%s:i2c write failed, 0x%x = %x\n",
+ 		__func__, addr, val);
++	else
++		dev_dbg(dev,
++		"%s:i2c write, 0x%x = %x\n",
++		__func__, addr, val);
+ 
+ 	/* delay before next i2c command as required for SERDES link */
+ 	usleep_range(100, 110);
+@@ -208,6 +228,7 @@ static void max9296_reset_ctx(struct max9296 *priv)
+ 	priv->num_src_found = 0;
+ 	priv->src_link = 0;
+ 	priv->splitter_enabled = false;
++	priv->init_flag = false;
+ 	max9296_pipes_reset(priv);
+ 	for (i = 0; i < priv->num_src; i++)
+ 		priv->sources[i].st_enabled = false;
+@@ -351,7 +372,7 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
+ 
+ 	/* Enable splitter mode */
+ 	if ((priv->max_src > 1U) &&
+-		(priv->num_src_found > 0U) &&
++		(priv->num_src_found > 1U) &&
+ 		(priv->splitter_enabled == false)) {
+ 		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x03);
+ 		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x23);
+@@ -451,7 +472,7 @@ int max9296_sdev_register(struct device *dev, struct gmsl_link_ctx *g_ctx)
+ 			priv->sources[i].g_ctx->serdes_csi_link) {
+ 			dev_err(dev,
+ 				"%s: serdes csi link is in use\n", __func__);
+-			err = -EINVAL;
++			err = 0;
+ 			goto error;
+ 		}
+ 		/*
+@@ -848,7 +869,7 @@ void max9296_reset_oneshot(struct device *dev)
+ 		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x31);
+ 	}
+ 	/* delay to settle link */
+-	msleep(100);
++	msleep(500);
+ 	mutex_unlock(&priv->lock);
+ }
+ EXPORT_SYMBOL(max9296_reset_oneshot);
+@@ -932,11 +953,35 @@ int max9296_init_settings(struct device *dev)
+ 	int i;
+ 	struct max9296 *priv = dev_get_drvdata(dev);
+ 
++	static struct reg_pair map_depth_trigger[] = {
++		// For GMSL_10CH_first board (isx031 and d457 use one trig gpio)
++		{0x02C2, 0x82}, // #MFP6  
++		{0x02C3, 0x1F},
++		// For GMSL_10CH_SCH_V1.1 version (isx031 and d457 use diffrent trig gpio )
++		// {0x02C5, 0x82}, #MFP7
++		// {0x02C6, 0x1F},
++	};
++
++	static struct reg_pair map_rgb_trigger[] = {
++		{0x02CB, 0x82}, // #MFP9
++		{0x02CC, 0x1B},
++	};
++
+ 	mutex_lock(&priv->lock);
+ 
+-	for (i = 0; i < MAX9296_MAX_PIPES; i++)
+-		err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
+-					  GMSL_CSI_DT_EMBED, i);
++	if(priv->init_flag == false){
++		for (i = 0; i < MAX9296_MAX_PIPES; i++)
++			err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
++						GMSL_CSI_DT_EMBED, i);
++		priv->init_flag = true;
++	}
++
++	// Trigger Depth
++	err |= max9296_set_registers(dev, map_depth_trigger,
++				     ARRAY_SIZE(map_depth_trigger));
++	// Trigger RGB
++	err |= max9296_set_registers(dev, map_rgb_trigger,
++				     ARRAY_SIZE(map_rgb_trigger));
+ 
+ 	mutex_unlock(&priv->lock);
+ 
+@@ -1045,7 +1090,7 @@ static int max9296_parse_dt(struct max9296 *priv,
+ static struct regmap_config max9296_regmap_config = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
+-	.cache_type = REGCACHE_RBTREE,
++	.cache_type = REGCACHE_NONE,
+ };
+ 
+ static int max9296_probe(struct i2c_client *client,
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
+index c340a9c..a6e3eca 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
+@@ -271,7 +271,7 @@ int vi_channel_close_ex(
+ 
+ 	mutex_lock(&chan_drv->lock);
+ 
+-	WARN_ON(rcu_access_pointer(chan_drv->channels[channel]) != chan);
++	//WARN_ON(rcu_access_pointer(chan_drv->channels[channel]) != chan);
+ 	RCU_INIT_POINTER(chan_drv->channels[channel], NULL);
+ 
+ 	mutex_unlock(&chan_drv->lock);
+@@ -326,7 +326,8 @@ static int vi_channel_release(
+ 	struct tegra_vi_channel *chan = file->private_data;
+ 	unsigned int channel = iminor(inode);
+ 
+-	vi_channel_close_ex(channel, chan);
++	if(chan != NULL)
++		vi_channel_close_ex(channel, chan);
+ 
+ 	return 0;
+ }
+@@ -449,8 +450,10 @@ static long vi_channel_ioctl(
+ 		if (err < 0) {
+ 			dev_err(chan->dev,
+ 				"%s: memory setup failed\n", __func__);
+-			destroy_buffer_table(capture->buf_ctx);
+-			capture->buf_ctx = NULL;
++			if(capture->buf_ctx != NULL) {
++				destroy_buffer_table(capture->buf_ctx);
++				capture->buf_ctx = NULL;
++			}
+ 			return -EFAULT;
+ 		}
+ 
+@@ -461,8 +464,10 @@ static long vi_channel_ioctl(
+ 				"%s: descriptor buffer is too small for given queue depth\n",
+ 				__func__);
+ 			capture_common_unpin_memory(&capture->requests);
+-			destroy_buffer_table(capture->buf_ctx);
+-			capture->buf_ctx = NULL;
++			if(capture->buf_ctx != NULL) {
++				destroy_buffer_table(capture->buf_ctx);
++				capture->buf_ctx = NULL;
++			}
+ 			return -ENOMEM;
+ 		}
+ 
+@@ -471,8 +476,10 @@ static long vi_channel_ioctl(
+ 		if (err < 0) {
+ 			dev_err(chan->dev, "vi capture setup failed\n");
+ 			capture_common_unpin_memory(&capture->requests);
+-			destroy_buffer_table(capture->buf_ctx);
+-			capture->buf_ctx = NULL;
++			if(capture->buf_ctx != NULL) {
++				destroy_buffer_table(capture->buf_ctx);
++				capture->buf_ctx = NULL;
++			}
+ 			return err;
+ 		}
+ 		break;
+@@ -510,8 +517,10 @@ static long vi_channel_ioctl(
+ 			for (i = 0; i < capture->queue_depth; i++)
+ 				vi_capture_request_unpin(chan, i);
+ 			capture_common_unpin_memory(&capture->requests);
+-			destroy_buffer_table(capture->buf_ctx);
+-			capture->buf_ctx = NULL;
++			if(capture->buf_ctx != NULL) {
++				destroy_buffer_table(capture->buf_ctx);
++				capture->buf_ctx = NULL;
++			}
+ 			vfree(capture->unpins_list);
+ 			capture->unpins_list = NULL;
+ 		}
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 8ba911c..ee82a28 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -321,7 +321,7 @@ static int tegra_channel_capture_setup(struct tegra_channel *chan, unsigned int
+ 
+ 	setup.queue_depth = chan->capture_queue_depth;
+ 
+-	trace_tegra_channel_capture_setup(chan, 0);
++	trace_tegra_channel_capture_setup(chan, vi_port);
+ 
+ 	chan->request[vi_port] = dma_alloc_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
+ 					setup.queue_depth * setup.request_size,
+@@ -422,52 +422,49 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+ 	chan->capture_descr_sequence += 1;
+ }
+ 
+-static void vi5_release_metadata_buffer(struct tegra_channel *chan,
+-	struct vb2_v4l2_buffer *vbuf)
+-{
+-	struct vb2_buffer *evb = NULL;
+-	struct vb2_v4l2_buffer *evbuf;
+-	void* frm_buffer;
+-
+-	spin_lock(&chan->embedded.spin_lock);
+-	if (0 < chan->embedded.num_buffers) {
+-		evb = chan->embedded.buffers[chan->embedded.tail];
+-		chan->embedded.buffers[chan->embedded.tail] = NULL;
+-		chan->embedded.tail++;
+-		if (chan->embedded.tail > 15)
+-			chan->embedded.tail = chan->embedded.tail - 16;
+-		chan->embedded.num_buffers--;
+-	}
+-	spin_unlock(&chan->embedded.spin_lock);
+-
+-	if (!evb)
+-		return;
+-
+-	frm_buffer = vb2_plane_vaddr(evb, 0);
+-	if (!frm_buffer)
+-		return;
+-
+-	memcpy(frm_buffer, chan->emb_buf_addr, 255);
+-	evbuf = to_vb2_v4l2_buffer(evb);
+-	evbuf->sequence = vbuf->sequence;
+-	vb2_set_plane_payload(evb, 0, 68);
+-	evb->timestamp = vbuf->vb2_buf.timestamp;
+-	vb2_buffer_done(evb, VB2_BUF_STATE_DONE);
+-}
+-
+ static void vi5_release_buffer(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+ 	struct vb2_v4l2_buffer *vbuf = &buf->buf;
++	struct vb2_buffer *evb;
++	struct vb2_v4l2_buffer *evbuf;
+ 
+ 	vbuf->sequence = chan->sequence++;
+ 	vbuf->field = V4L2_FIELD_NONE;
+ 	vb2_set_plane_payload(&vbuf->vb2_buf, 0, chan->format.sizeimage);
+ 
++	evb = NULL;
++	if ((chan->embedded_data_height == 1)) {
++		void* frm_buffer;
++		spin_lock(&chan->embedded.spin_lock);
++		if (0 < chan->embedded.num_buffers ){
++			evb = chan->embedded.buffers[chan->embedded.tail];
++			chan->embedded.buffers[chan->embedded.tail] = NULL;
++			chan->embedded.tail++;
++			if (chan->embedded.tail > 15)
++					chan->embedded.tail = chan->embedded.tail - 16;
++			chan->embedded.num_buffers--;
++		}
++		spin_unlock(&chan->embedded.spin_lock);
++
++		if(evb) {
++			frm_buffer = vb2_plane_vaddr(evb, 0);
++			if (frm_buffer != NULL) {
++				memcpy(frm_buffer,chan->emb_buf_addr, 255);
++			}
++		}
++	}
++
+ 	vb2_buffer_done(&vbuf->vb2_buf, buf->vb2_state);
++	if (chan->embedded_data_height == 1 && evb) {
++		evbuf = to_vb2_v4l2_buffer(evb);
++		evbuf->sequence = vbuf->sequence;
++		/*FIXME: define 236 68 bytes metadata*/
++		vb2_set_plane_payload(evb, 0, 68);
++		evb->timestamp = vbuf->vb2_buf.timestamp;
++		vb2_buffer_done(evb, buf->vb2_state);
++	}
+ 
+-	if (chan->embedded_data_height == 1 && buf->vb2_state == VB2_BUF_STATE_DONE)
+-		vi5_release_metadata_buffer(chan, vbuf);
+ }
+ 
+ static void vi5_capture_enqueue(struct tegra_channel *chan,
+@@ -519,7 +516,7 @@ uncorr_err:
+ 	spin_unlock_irqrestore(&chan->capture_state_lock, flags);
+ }
+ 
+-static int vi5_channel_error_recover_internal(struct tegra_channel *chan)
++static inline int vi5_channel_error_recover_internal(struct tegra_channel *chan)
+ {
+ 	int err = 0;
+ 	int vi_port = 0;
+@@ -655,15 +652,13 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ #endif
+ 				/* D457: err_data 131072 (20000h) & 512 (200h) leading to channel
+ 				* timeout. This happens when first frame is corrupted - no md
+-				* and less lines than requested.
+-				* Error 262144 (40000h) cause high cpu usage.
+-				* Channel reset time is 6ms */
++				* and less lines than requested. Channel reset time is 6ms */
+ 				if (descr->status.err_data & 0x60200) {
+ 					spin_lock_irqsave(&chan->capture_state_lock, flags);
+ 					chan->capture_state = CAPTURE_ERROR;
+ 					spin_unlock_irqrestore(&chan->capture_state_lock, flags);
+ 					buf->vb2_state = VB2_BUF_STATE_ERROR;
+-					vi5_channel_error_recover_internal(chan);
++					// vi5_channel_error_recover_internal(chan);
+ 				}
+ 				/* REQUEUE */
+ 				buf->vb2_state = VB2_BUF_STATE_ACTIVE;
+@@ -817,6 +812,9 @@ static int tegra_channel_kthread_capture_enqueue(void *data)
+ 		wait_event_interruptible(chan->start_wait,
+ 			(kthread_should_stop() || !list_empty(&chan->capture)));
+ 
++		dev_dbg(chan->vi->dev, "reqs:%d depth:%d\n",
++				chan->capture_reqs_enqueued, chan->capture_queue_depth);
++
+ 		while (!(kthread_should_stop() || list_empty(&chan->capture))) {
+ 			spin_lock_irqsave(&chan->capture_state_lock, flags);
+ 			if ((chan->capture_state == CAPTURE_ERROR)
+diff --git a/kernel/nvidia/include/media/tegra_camera_core.h b/kernel/nvidia/include/media/tegra_camera_core.h
+index 421c224..1f57648 100644
+--- a/kernel/nvidia/include/media/tegra_camera_core.h
++++ b/kernel/nvidia/include/media/tegra_camera_core.h
+@@ -23,7 +23,7 @@
+ /* Width alignment */
+ #define TEGRA_WIDTH_ALIGNMENT	1
+ /* Stride alignment */
+-#define TEGRA_STRIDE_ALIGNMENT	1
++#define TEGRA_STRIDE_ALIGNMENT	64
+ /* Height alignment */
+ #define TEGRA_HEIGHT_ALIGNMENT	1
+ /* Size alignment */
