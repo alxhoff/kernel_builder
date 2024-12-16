@@ -1,0 +1,1537 @@
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+new file mode 100644
+index 000000000..5375712f0
+--- /dev/null
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+@@ -0,0 +1,1496 @@
++#include "dt-bindings/clock/tegra234-clock.h"
++
++#define CAM0_PWDN	TEGRA234_MAIN_GPIO(AC, 0)
++#define CAM1_PWDN	TEGRA234_MAIN_GPIO(H, 3)
++#define CAM2_PWDN	TEGRA234_MAIN_GPIO(H, 6)
++#define CAM3_PWDN	TEGRA234_MAIN_GPIO(AC, 1)
++
++#define ISX031_POC	TEGRA234_MAIN_GPIO(AC, 4)
++#define D457_POC	TEGRA234_MAIN_GPIO(AC, 7)
++
++//driver version 1.0
++
++//driver version 1.1
++//CAM_INT1 120 connector-117pin  
++#define ISX031_SYNC	TEGRA234_AON_GPIO(CC, 0)
++//CAM_INT3 120 connector-103pin  
++#define D457_SYNC	TEGRA234_AON_GPIO(CC, 2)
++
++#define CAMERA_I2C_MUX_BUS(x) (0x1E + x)
++
++/ {
++	gpio@2200000 {
++		cam-pwdn-high {
++			gpio-hog;
++			output-high;
++			gpios = <CAM0_PWDN 0 CAM1_PWDN 0
++				 CAM2_PWDN 0 CAM3_PWDN 0>;
++			label = "cam0-pwdn", "cam1-pwdn",
++				"cam2-pwdn", "cam3-pwdn";
++		};
++		cam-poc-high {
++			gpio-hog;
++			output-high;
++			gpios = <ISX031_POC 0 D457_POC 0>;
++			label = "isx031-poc", "d457-poc";
++		};
++	};
++
++	tegra-capture-vi {
++		num-channels = <14>;
++
++		ports {
++			#address-cells = <0x1>;
++			#size-cells = <0x0>;
++			//SG10A_ORIN_GMSL2 adapt board port J25/J26 for D457
++			port@0 {
++				reg = <0>;
++				status = "ok";
++
++				vi_in0: endpoint {
++					status = "ok";
++					port-index = <4>;
++					bus-width = <2>;
++					vc-id = <0>;
++					remote-endpoint = <&csi_out0>;
++				};
++			};
++			port@1 {
++				reg = <1>;
++				status = "ok";
++
++				vi_in1: endpoint {
++					status = "ok";
++					port-index = <4>;
++					bus-width = <2>;
++					vc-id = <1>;
++					remote-endpoint = <&csi_out1>;
++				};
++			};
++			port@2 {
++				reg = <2>;
++				status = "ok";
++
++				vi_in2: endpoint {
++					status = "ok";
++					port-index = <4>;
++					bus-width = <2>;
++					vc-id = <2>;
++					remote-endpoint = <&csi_out2>;
++				};
++			};
++			port@3 {
++				reg = <3>;
++				status = "ok";
++
++				vi_in3: endpoint {
++					status = "ok";
++					port-index = <4>;
++					bus-width = <2>;
++					vc-id = <3>;
++					remote-endpoint = <&csi_out3>;
++				};
++			};
++			//SG10A_ORIN_GMSL2 adapt board port J23/J24 for D457
++			port@4 {
++				reg = <4>;
++				status = "ok";
++
++				vi_in4: endpoint {
++					status = "ok";
++					port-index = <2>;
++					bus-width = <2>;
++					vc-id = <0>;
++					remote-endpoint = <&csi_out4>;
++				};
++			};
++			port@5 {
++				reg = <5>;
++				status = "ok";
++
++				vi_in5: endpoint {
++					status = "ok";
++					port-index = <2>;
++					bus-width = <2>;
++					vc-id = <1>;
++					remote-endpoint = <&csi_out5>;
++				};
++			};
++			port@6 {
++				reg = <6>;
++				status = "ok";
++
++				vi_in6: endpoint {
++					status = "ok";
++					port-index = <2>;
++					bus-width = <2>;
++					vc-id = <2>;
++					remote-endpoint = <&csi_out6>;
++				};
++			};
++			port@7 {
++				reg = <7>;
++				status = "ok";
++
++				vi_in7: endpoint {
++					status = "ok";
++					port-index = <2>;
++					bus-width = <2>;
++					vc-id = <3>;
++					remote-endpoint = <&csi_out7>;
++				};
++			};
++			//isx031 camera
++			port@8 {
++				reg = <8>;
++				fzcam_vi_in0: endpoint {
++					vc-id = <0>;
++					port-index = <0>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out0>;
++				};
++			};
++			port@9 {
++				reg = <9>;
++				fzcam_vi_in1: endpoint {
++					vc-id = <1>;
++					port-index = <0>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out1>;
++				};
++			};
++			port@10 {
++				reg = <10>;
++				fzcam_vi_in2: endpoint {
++					vc-id = <0>;
++					port-index = <5>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out2>;
++				};
++			};
++			port@11 {
++				reg = <11>;
++				fzcam_vi_in3: endpoint {
++					vc-id = <1>;
++					port-index = <5>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out3>;
++				};
++			};
++			port@12 {
++				reg = <12>;
++				fzcam_vi_in4: endpoint {
++					vc-id = <2>;
++					port-index = <5>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out4>;
++				};
++			};
++			port@13 {
++				reg = <13>;
++				fzcam_vi_in5: endpoint {
++					vc-id = <3>;
++					port-index = <5>;
++					bus-width = <4>;
++					remote-endpoint = <&fzcam_csi_out5>;
++				};
++			};
++		};
++	};
++
++	i2c@3180000 {
++		status = "ok";
++		clock-frequency = <100000>;
++		tca9546@70 {
++			status = "ok";
++			reg = <0x70>;
++			compatible = "nxp,pca9546";
++			#address-cells = <1>;
++			#size-cells = <0>;
++			skip_mux_detect = "yes";
++			vif-supply = <&p3737_vdd_1v8_sys>;
++			vcc-supply = <&p3737_vdd_1v8_sys>;
++			vcc-pullup-supply = <&battery_reg>;
++			force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
++			vcc_lp = "vcc";
++
++			i2c@0 {
++				reg = <0x0>;
++				#address-cells = <0x1>;
++				#size-cells = <0x0>;
++				i2c-mux,deselect-on-exit;
++				
++				dser0: max9296@48 {
++					status = "ok";
++					reg = <0x48>;
++					compatible = "maxim,max9296";
++					csi-mode = "2x4";
++					max-src = <2>;
++					reset-gpios = <&tegra_main_gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
++				};
++
++				ser0_prim: max9295_prim@40 {
++					status = "ok";
++					reg = <0x40>;
++					compatible = "maxim,max9295";
++					is-prim-ser;
++				};
++
++				ser0_a: max9295_a@42 {
++					compatible = "maxim,max9295";
++					reg = <0x42>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    prim-ser = <&ser0_prim>;
++				};
++
++				ser0_b: max9295_b@60 {
++					compatible = "maxim,max9295";
++					reg = <0x60>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    prim-ser = <&ser0_prim>;
++				};
++
++				d4m0_depth: d4m0_depth@0a {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1a>;
++					reg = <0x0a>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Depth";
++					maxim,gmsl-ser-device = <&ser0_a>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    is-prim-d4m;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m0_out: endpoint {
++								port-index = <4>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in0>;
++							};
++						};
++					};
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_e";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "1";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "a";
++						csi-mode = "1x4";
++						st-vc = <0>;
++						vc-id = <0>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m0_ir: d4m0_ir@0c {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1a>;
++					reg = <0x0c>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Y8";
++					maxim,gmsl-ser-device = <&ser0_a>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    prim-d4m = <&d4m0_depth>;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m1_out: endpoint {
++								port-index = <4>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in1>;
++							};
++						};
++					};
++					/* mode0: Y8, mode1: depth D16 */
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_e";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "0";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "a";
++						csi-mode = "1x4";
++						st-vc = <0>;
++						vc-id = <1>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m1_depth: d4m1_depth@2a {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1b>;
++					reg = <0x2a>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Depth";
++					maxim,gmsl-ser-device = <&ser0_b>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    is-prim-d4m;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m2_out: endpoint {
++								port-index = <4>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in2>;
++							};
++						};
++					};
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_e";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "1";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "b";
++						csi-mode = "1x4";
++						st-vc = <2>;
++						vc-id = <2>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m1_ir: d4m1_ir@2c {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1b>;
++					reg = <0x2c>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Y8";
++					maxim,gmsl-ser-device = <&ser0_b>;
++					maxim,gmsl-dser-device = <&dser0>;
++                    prim-d4m = <&d4m1_depth>;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m3_out: endpoint {
++								port-index = <4>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in3>;
++							};
++						};
++					};
++					/* mode0: Y8, mode1: depth D16 */
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_e";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "0";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "b";
++						csi-mode = "1x4";
++						st-vc = <2>;
++						vc-id = <3>;
++						num-lanes = <2>;
++					};
++				};
++			};
++
++			i2c@1 {
++				reg = <0x1>;
++				#address-cells = <0x1>;
++				#size-cells = <0x0>;
++				i2c-mux,deselect-on-exit;
++				
++				dser1: max9296@48 {
++					status = "ok";
++					reg = <0x48>;
++					compatible = "maxim,max9296";
++					csi-mode = "2x4";
++					max-src = <2>;
++					reset-gpios = <&tegra_main_gpio CAM1_PWDN GPIO_ACTIVE_HIGH>;
++				};
++
++				ser1_prim: max9295_prim@40 {
++					status = "ok";
++					reg = <0x40>;
++					compatible = "maxim,max9295";
++                    is-prim-ser;
++				};
++
++				ser1_a: max9295_a@42 {
++					compatible = "maxim,max9295";
++                    reg = <0x42>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    prim-ser = <&ser1_prim>;
++				};
++
++				ser1_b: max9295_b@60 {
++					compatible = "maxim,max9295";
++					reg = <0x60>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    prim-ser = <&ser1_prim>;
++				};
++
++				d4m2_depth: d4m2_depth@0a {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1c>;
++					reg = <0x0a>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Depth";
++					maxim,gmsl-ser-device = <&ser1_a>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    is-prim-d4m;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							d4m4_out: endpoint {
++								port-index = <2>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in4>;
++							};
++						};
++					};
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_c";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "1";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "a";
++						csi-mode = "1x4";
++						st-vc = <0>;
++						vc-id = <0>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m2_ir: d4m2_ir@0c {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1c>;
++					reg = <0x0c>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Y8";
++					maxim,gmsl-ser-device = <&ser1_a>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    prim-d4m = <&d4m2_depth>;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m5_out: endpoint {
++								port-index = <2>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in5>;
++							};
++						};
++					};
++					/* mode0: Y8, mode1: depth D16 */
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_c";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "0";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "a";
++						csi-mode = "1x4";
++						st-vc = <0>;
++						vc-id = <1>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m3_depth: d4m3_depth@2a {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1d>;
++					reg = <0x2a>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Depth";
++					maxim,gmsl-ser-device = <&ser1_b>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    is-prim-d4m;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m6_out: endpoint {
++								port-index = <2>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in6>;
++							};
++						};
++					};
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_c";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "1";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "b";
++						csi-mode = "1x4";
++						st-vc = <2>;
++						vc-id = <2>;
++						num-lanes = <2>;
++					};
++				};
++
++				d4m3_ir: d4m3_ir@2c {
++					status = "ok";
++					def-addr = <0x10>;
++					def-d4m-addr = <0x1d>;
++					reg = <0x2c>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&p3737_vdd_1v8_sys>;
++					cam-type = "Y8";
++					maxim,gmsl-ser-device = <&ser1_b>;
++					maxim,gmsl-dser-device = <&dser1>;
++                    prim-d4m = <&d4m3_depth>;
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m7_out: endpoint {
++								port-index = <2>;
++								bus-width = <2>;
++								remote-endpoint = <&csi_in7>;
++							};
++						};
++					};
++					/* mode0: Y8, mode1: depth D16 */
++					mode0 {
++						pixel_t = "grey_y16";
++						num_lanes = "2";
++						csi_pixel_bit_depth = "16";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_c";
++						mclk_khz = "24000";
++						pix_clk_hz = "74250000";
++						line_length = "1280"; /* 2200 */
++						embedded_metadata_height = "0";
++					};
++					gmsl-link {
++						src-csi-port = "b";
++						dst-csi-port = "a";
++						serdes-csi-link = "b";
++						csi-mode = "1x4";
++						st-vc = <2>;
++						vc-id = <3>;
++						num-lanes = <2>;
++					};
++				};
++			};
++
++			i2c@2 {
++				reg = <2>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++				i2c-mux,deselect-on-exit;
++				
++				serdes@48 {
++					compatible = "nvidia,serdes";
++					reg = <0x48>;
++					pwdn-gpios = <&tegra_main_gpio CAM2_PWDN GPIO_ACTIVE_HIGH>;
++					channel = <0>;
++				};
++
++				fzcam_a@2a {
++					compatible = "nvidia,fzcam";
++					reg = <0x2a>;
++
++					devnode = "video0";
++					sensor_model ="fzcam";
++
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <0>;
++					
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_a";
++						vc_id = "0";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++						embedded_metadata_height = "0";
++					};
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out0: endpoint {
++								vc-id = <0>;
++								port-index = <0>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in0>;
++								};
++							};
++						};
++				};
++
++				fzcam_b@2b {
++					compatible = "nvidia,fzcam";
++					reg = <0x2b>;
++					
++					devnode = "video1";
++					sensor_model ="fzcam";
++
++					/* Define any required hw resources needed by driver */
++					/* ie. clocks, io pins, power sources */
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <0>;
++
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_a";
++						vc_id = "1";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++						embedded_metadata_height = "0";
++					};
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out1: endpoint {
++								vc-id = <1>;
++								port-index = <0>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in1>;
++							};
++						};
++					};
++				};
++			};
++		
++			i2c@3 { //MAX96712
++				reg = <3>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++				i2c-mux,deselect-on-exit;
++				
++				serdes@29 {
++					compatible = "nvidia,serdesa";
++					reg = <0x29>;
++					pwdn-gpios = <&tegra_main_gpio CAM3_PWDN GPIO_ACTIVE_HIGH>;
++					channel = <1>;
++				};
++				fzcam_a@2a {
++					compatible = "nvidia,fzcama";
++					reg = <0x2a>;
++
++					devnode = "video2";
++					sensor_model ="fzcama";
++
++					/* Define any required hw resources needed by driver */
++					/* ie. clocks, io pins, power sources */
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <1>;
++
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_g";
++						vc_id = "0";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++
++						embedded_metadata_height = "0";
++					};
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out2: endpoint {
++								vc-id = <0>;
++								port-index = <5>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in2>;
++							};
++						};
++					};
++				};	
++				fzcam_b@2b {
++					compatible = "nvidia,fzcama";
++					reg = <0x2b>;
++
++					devnode = "video3";
++					sensor_model ="fzcama";
++
++					/* Define any required hw resources needed by driver */
++					/* ie. clocks, io pins, power sources */
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <1>;
++
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_g";
++						vc_id = "1";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++						embedded_metadata_height = "0";
++					};
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out3: endpoint {
++								vc-id = <1>;
++								port-index = <5>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in3>;
++							};
++						};
++					};
++				};	
++				fzcam_c@2c {
++					compatible = "nvidia,fzcama";
++					reg = <0x2c>;
++
++					devnode = "video4";
++					sensor_model ="fzcama";
++
++					/* Define any required hw resources needed by driver */
++					/* ie. clocks, io pins, power sources */
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <1>;
++					
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_g";
++						vc_id = "2";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++						embedded_metadata_height = "0";
++					};
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out4: endpoint {
++								vc-id = <2>;
++								port-index = <5>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in4>;
++								};
++							};
++						};
++				};	
++				fzcam_d@2d {
++					compatible = "nvidia,fzcama";
++					reg = <0x2d>;
++
++					devnode = "video5";	
++					sensor_model ="fzcama";
++
++					/* Define any required hw resources needed by driver */
++					/* ie. clocks, io pins, power sources */
++					clocks = <&bpmp_clks TEGRA234_CLK_EXTPERIPH1>,
++							<&bpmp_clks TEGRA234_CLK_EXTPERIPH1>;
++					clock-names = "extperiph1", "pllp_grtba";
++					mclk = "extperiph1";
++					channel = <1>;			
++
++					mode0 {
++						mclk_khz = "37125";
++						num_lanes = "4";
++						tegra_sinterface = "serial_g";
++						vc_id = "3";
++						
++						discontinuous_clk = "no";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						
++						csi_pixel_bit_depth = "16";
++						mode_type = "yuv";
++						pixel_phase = "uyvy";
++
++						active_w = "1920";
++						active_h = "1536";
++						readout_orientation = "0";
++						line_length = "2200";
++						inherent_gain = "1";
++						
++						pix_clk_hz = "74250000";
++						serdes_pix_clk_hz = "375000000";
++
++						gain_factor = "10";
++						min_gain_val = "1"; /* 0dB */
++						max_gain_val = "480"; /* 48dB */
++						step_gain_val = "3"; /* 0.3 */
++						default_gain = "1";
++						framerate_factor = "1000000";
++						min_framerate = "30000000"; /* 1.5 */
++						max_framerate = "30000000"; /* 30 */
++						step_framerate = "1";
++						default_framerate= "30000000";
++
++						exposure_factor = "1000000";
++						min_exp_time = "30"; /* us */
++						max_exp_time = "660000"; /* us */
++						step_exp_time = "1";
++						default_exp_time = "33334";/* us */
++
++						embedded_metadata_height = "0";
++					};
++
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++						port@0 {
++							reg = <0>;
++							fzcam_fzcam_out5: endpoint {
++								vc-id = <3>;
++								port-index = <5>;
++								bus-width = <4>;
++								remote-endpoint = <&fzcam_csi_in5>;
++							};
++						};
++					};
++				};				
++			};
++		};
++	};
++
++	host1x@13e00000 {
++		nvcsi@15a00000 {
++			#address-cells = <0x1>;
++			#size-cells = <0x0>;
++
++			num-channels = <14>;
++			//intel d4xx
++			channel@0 {
++				reg = <0x0>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in0: endpoint@0 {
++							status = "ok";
++							port-index = <4>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m0_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out0: endpoint@1 {
++							status = "ok";
++							remote-endpoint = <&vi_in0>;
++						};
++					};
++				};
++			};
++			channel@1 {
++				reg = <0x1>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in1: endpoint@2 {
++							status = "ok";
++							port-index = <4>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m1_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out1: endpoint@3 {
++							status = "ok";
++							remote-endpoint = <&vi_in1>;
++						};
++					};
++
++				};
++			};
++			channel@2 {
++				reg = <0x2>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in2: endpoint@4 {
++							status = "ok";
++							port-index = <4>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m2_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out2: endpoint@5 {
++							status = "ok";
++							remote-endpoint = <&vi_in2>;
++						};
++					};
++				};
++			};
++			channel@3 {
++				reg = <0x3>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in3: endpoint@6 {
++							status = "ok";
++							port-index = <4>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m3_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out3: endpoint@7 {
++							status = "ok";
++							remote-endpoint = <&vi_in3>;
++						};
++					};
++				};
++			};
++			channel@4 {
++				reg = <0x4>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in4: endpoint@8 {
++							status = "ok";
++							port-index = <2>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m4_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out4: endpoint@9 {
++							status = "ok";
++							remote-endpoint = <&vi_in4>;
++						};
++					};
++				};
++			};
++			channel@5 {
++				reg = <0x5>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in5: endpoint@10 {
++							status = "ok";
++							port-index = <2>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m5_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out5: endpoint@11 {
++							status = "ok";
++							remote-endpoint = <&vi_in5>;
++						};
++					};
++				};
++			};
++			channel@6 {
++				reg = <0x6>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in6: endpoint@12 {
++							status = "ok";
++							port-index = <2>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m6_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out6: endpoint@13 {
++							status = "ok";
++							remote-endpoint = <&vi_in6>;
++						};
++					};
++				};
++			};
++			channel@7 {
++				reg = <0x7>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						csi_in7: endpoint@14 {
++							status = "ok";
++							port-index = <2>;
++							bus-width = <2>;
++							remote-endpoint = <&d4m7_out>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out7: endpoint@15 {
++							status = "ok";
++							remote-endpoint = <&vi_in7>;
++						};
++					};
++				};
++			};
++
++			//FZCAM
++			channel@8 {
++				reg = <8>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in0: endpoint@16 {
++							port-index = <0>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out0>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out0: endpoint@17 {
++							remote-endpoint = <&fzcam_vi_in0>;
++						};
++					};
++				};
++			};
++			channel@9 {
++				reg = <9>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in1: endpoint@18 {
++							port-index = <0>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out1>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out1: endpoint@19 {
++							remote-endpoint = <&fzcam_vi_in1>;
++						};
++					};
++				};
++			};
++			channel@10 {
++				reg = <10>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in2: endpoint@20 {
++							port-index = <6>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out2>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out2: endpoint@21 {
++							remote-endpoint = <&fzcam_vi_in2>;
++						};
++					};
++				};
++			};
++			channel@11 {
++				reg = <11>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in3: endpoint@22 {
++							port-index = <6>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out3>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out3: endpoint@23 {
++							remote-endpoint = <&fzcam_vi_in3>;
++						};
++					};
++				};
++			};			
++			channel@12 {
++				reg = <12>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in4: endpoint@24 {
++							port-index = <6>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out4>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out4: endpoint@25{
++							remote-endpoint = <&fzcam_vi_in4>;
++						};
++					};
++				};
++			};
++			channel@13 {
++				reg = <13>;
++				ports {
++					#address-cells = <1>;
++					#size-cells = <0>;
++					port@0 {
++						reg = <0>;
++						fzcam_csi_in5: endpoint@26 {
++							port-index = <6>;
++							bus-width = <4>;
++							remote-endpoint = <&fzcam_fzcam_out5>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						fzcam_csi_out5: endpoint@27 {
++							remote-endpoint = <&fzcam_vi_in5>;
++						};
++					};
++				};
++			};
++		};
++	};
++};
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
+index 6b7996267..1483ffacf 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-fixed-regulator.dtsi
+@@ -161,7 +161,7 @@
+ 			regulator-name = "vdd_sys_en";
+ 			regulator-min-microvolt = <1200000>;
+ 			regulator-max-microvolt = <1200000>;
+-			gpio = <&tegra_main_gpio TEGRA234_MAIN_GPIO(AC, 7) 0>;
++			/* gpio = <&tegra_main_gpio TEGRA234_MAIN_GPIO(AC, 7) 0>; */
+ 			regulator-always-on;
+ 			enable-active-high;
+ 		};
+@@ -172,7 +172,7 @@
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			vin-supply = <&p3737_vdd_1v8_sys>;
+-			gpio = <&tegra_aon_gpio TEGRA234_AON_GPIO(CC, 2) 0>; //CAM_INT3, GPIO_ACTIVE_HIGH == 0
++			/* gpio = <&tegra_aon_gpio TEGRA234_AON_GPIO(CC, 2) 0>; //CAM_INT3, GPIO_ACTIVE_HIGH == 0 */
+ 			enable-active-high;
+ 		};
+ 	};
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+index 4059d66b5..d906f68e4 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+@@ -20,7 +20,7 @@
+ #include "tegra234-power-tree-p3701-0000-p3737-0000.dtsi"
+ #include "tegra234-dcb-p3701-0000-a02-p3737-0000-a01.dtsi"
+ #include <tegra234-soc/mods-simple-bus.dtsi>
+-#include "cvb/tegra234-p3737-camera-modules.dtsi"
++#include "cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi"
+ #include <t234-common-cvb/tegra234-pwm.dtsi>
+ #include <t234-common-cvm/tegra234-cpuidle.dtsi>
+ #include <t234-common-cvm/tegra234-thermal.dtsi>
