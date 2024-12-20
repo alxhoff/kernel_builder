@@ -89,7 +89,11 @@ echo "Extracted function: $FUNCTION"
 echo "Extracted offset: $OFFSET"
 
 # Find the base address of the function
-BASE_ADDRESS=$("$NM_TOOL" "$VMLINUX_PATH" | grep " $FUNCTION" | awk '{print $1}')
+BASE_ADDRESS=$("$NM_TOOL" "$VMLINUX_PATH" | grep " $FUNCTION" | awk '{print $1}' | head -n 1)
+
+# Sanitize the base address
+BASE_ADDRESS=$(echo "$BASE_ADDRESS" | tr -d '\n')
+
 if [[ -z "$BASE_ADDRESS" ]]; then
     echo "Error: Failed to find base address for function: $FUNCTION"
     exit 1
@@ -98,11 +102,15 @@ fi
 
 # Calculate the absolute address using Python
 ABSOLUTE_ADDRESS_HEX=$(python3 -c "
-base_address = int('$BASE_ADDRESS', 16)
-offset = int('$OFFSET', 16)
-absolute_address = base_address + offset
-print(f'0x{absolute_address:x}')
-")
+try:
+ base_address = int('$BASE_ADDRESS', 16)
+ offset = int('$OFFSET', 16)
+ absolute_address = base_address + offset
+ print(f'0x{absolute_address:x}')
+except ValueError as e:
+ print(f'Error: Invalid input to Python calculation: {e}', file=sys.stderr)
+ sys.exit(1)
+" 2>/dev/null)
 
 if [ $? -ne 0 ]; then
     echo "Error: Failed to calculate absolute address using Python."
