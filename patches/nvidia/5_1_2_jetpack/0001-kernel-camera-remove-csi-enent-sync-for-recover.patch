@@ -1,0 +1,65 @@
+From 1ea4cae852e144871724b7ac176072823f2142f5 Mon Sep 17 00:00:00 2001
+From: snchen <snchen@nvidia.com>
+Date: Tue, 13 Aug 2024 13:29:51 +0800
+Subject: [PATCH] kernel: camera: remove csi enent sync for recover
+
+CSI enent sync for recover cause kernel null point and cause panic.
+
+bug 4695672
+
+Change-Id: I267cc69b45bf2495eb13771cbbef15b4fe998d6c
+Signed-off-by: snchen <snchen@nvidia.com>
+---
+ drivers/media/platform/tegra/camera/csi/csi.c     | 6 +++++-
+ drivers/media/platform/tegra/camera/vi/vi5_fops.c | 2 ++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/tegra/camera/csi/csi.c b/drivers/media/platform/tegra/camera/csi/csi.c
+index d788f7041..8632b9b68 100644
+--- a/drivers/media/platform/tegra/camera/csi/csi.c
++++ b/drivers/media/platform/tegra/camera/csi/csi.c
+@@ -229,6 +229,7 @@ static int tegra_csi_s_power(struct v4l2_subdev *subdev, int enable)
+ 	return err;
+ }
+ 
++#if 0
+ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 	unsigned int sync_events)
+ {
+@@ -242,6 +243,7 @@ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 
+ 	return err;
+ }
++#endif
+ 
+ /*
+  * -----------------------------------------------------------------------------
+@@ -738,7 +740,9 @@ static struct v4l2_subdev_pad_ops tegra_csi_pad_ops = {
+ 
+ static struct v4l2_subdev_core_ops tegra_csi_core_ops = {
+ 	.s_power	= tegra_csi_s_power,
+-	.sync		= tegra_csi_sync_event,
++#if 0
++    .sync		= tegra_csi_sync_event,
++#endif
+ };
+ 
+ static struct v4l2_subdev_ops tegra_csi_ops = {
+diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 2071b3687..a85f8c17e 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -638,8 +638,10 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 		goto done;
+ 	}
+ 
++#if 0
+ 	v4l2_subdev_call(csi_subdev, core, sync,
+ 		V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER);
++#endif
+ 
+ 	/* restart vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+-- 
+2.25.1
+
