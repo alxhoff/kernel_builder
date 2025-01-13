@@ -139,6 +139,8 @@ For further details on the XML structure, consult NVIDIA’s documentation for y
 EOF
 }
 
+FLASH_ONLY=0
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -162,6 +164,11 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1
       shift
       ;;
+	--flash-only)
+      FLASH_ONLY=1
+      shift
+      ;;
+
     --help)
       show_help
       exit 0
@@ -283,6 +290,7 @@ if [ -n "$ROOTDISK_PARTITION_XML" ]; then
   if [ $SKIP_ROOTFS_FLASH -eq 0 ]; then
     echo "Using l4t_initrd_flash.sh for flashing the USB device to store the rootfs"
     cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./tools/kernel_flash/l4t_initrd_flash.sh -c $ROOTDISK_PARTITION_XML --external-device sda1 --direct $DISK_NAME jetson-agx-orin-devkit external"
+	[ $FLASH_ONLY -eq 1 ] && cmd+=" --flash-only"
     if confirm_command "$cmd"; then
       if [ $DRY_RUN -eq 0 ]; then
         pushd "${L4T_DIR%/}" > /dev/null
