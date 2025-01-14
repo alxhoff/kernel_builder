@@ -1,0 +1,46 @@
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+index d788f7041..8632b9b68 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+@@ -229,6 +229,7 @@ static int tegra_csi_s_power(struct v4l2_subdev *subdev, int enable)
+ 	return err;
+ }
+ 
++#if 0
+ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 	unsigned int sync_events)
+ {
+@@ -242,6 +243,7 @@ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 
+ 	return err;
+ }
++#endif
+ 
+ /*
+  * -----------------------------------------------------------------------------
+@@ -738,7 +740,9 @@ static struct v4l2_subdev_pad_ops tegra_csi_pad_ops = {
+ 
+ static struct v4l2_subdev_core_ops tegra_csi_core_ops = {
+ 	.s_power	= tegra_csi_s_power,
+-	.sync		= tegra_csi_sync_event,
++#if 0
++    .sync		= tegra_csi_sync_event,
++#endif
+ };
+ 
+ static struct v4l2_subdev_ops tegra_csi_ops = {
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index fe02cc0da..ea8b7e7d0 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -674,8 +674,10 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 		goto done;
+ 	}
+ 
++#if 0
+ 	v4l2_subdev_call(csi_subdev, core, sync,
+ 		V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER);
++#endif
+ 
+ 	/* restart vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
