@@ -66,7 +66,7 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 case "$ACTION" in
     --decompile)
         # Decompile .dtb to .dts
-        if [[ "$FILE_PATH" != *.dtb ]]; then
+		if [[ "$FILE_PATH" != *.dtb && "$FILE_PATH" != *.dtbo ]]; then
             echo "Error: Input file must have a .dtb extension for decompilation."
             exit 1
         fi
