@@ -1,8 +1,8 @@
 diff --git a/kernel/nvidia/drivers/media/i2c/max9295.c b/kernel/nvidia/drivers/media/i2c/max9295.c
-index 6311d97d7..eb9838c86 100644
+index 3e4e930d0..fd2c254e4 100644
 --- a/kernel/nvidia/drivers/media/i2c/max9295.c
 +++ b/kernel/nvidia/drivers/media/i2c/max9295.c
-@@ -573,6 +573,21 @@ int max9295_init_settings(struct device *dev)
+@@ -624,6 +624,22 @@ int max9295_init_settings(struct device *dev)
  		{MAX9295_START_PIPE_ADDR, 0xF0},
  	};
  
@@ -21,12 +21,13 @@ index 6311d97d7..eb9838c86 100644
 +		{0x02C0, 0x1B},
 +	};
 +
- 	mutex_lock(&priv->lock);
++
+ 	if (!priv)
+ 		return -EINVAL;
  
- 	// Init control
-@@ -583,6 +598,13 @@ int max9295_init_settings(struct device *dev)
+@@ -635,6 +651,13 @@ int max9295_init_settings(struct device *dev)
  		err |= __max9295_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
- 					  GMSL_CSI_DT_EMBED, i);
+ 						GMSL_CSI_DT_EMBED, i);
  
 +	// Trigger Depth
 +	err |= max9295_set_registers(dev, map_depth_trigger,
@@ -39,10 +40,10 @@ index 6311d97d7..eb9838c86 100644
  
  	return err;
 diff --git a/kernel/nvidia/drivers/media/i2c/max9296.c b/kernel/nvidia/drivers/media/i2c/max9296.c
-index 316e687a1..9621736b6 100644
+index 4c15f1efc..1ba941bd6 100644
 --- a/kernel/nvidia/drivers/media/i2c/max9296.c
 +++ b/kernel/nvidia/drivers/media/i2c/max9296.c
-@@ -932,12 +932,33 @@ int max9296_init_settings(struct device *dev)
+@@ -967,6 +967,20 @@ int max9296_init_settings(struct device *dev)
  	int i;
  	struct max9296 *priv = dev_get_drvdata(dev);
  
@@ -51,7 +52,7 @@ index 316e687a1..9621736b6 100644
 +		/** {0x02C2, 0x82}, // #MFP6 */
 +		/** {0x02C3, 0x1F}, */
 +		// For GMSL_10CH_SCH_V1.1 version (isx031 and d457 use diffrent trig gpio )
-+		{0x02C5, 0x82}, #MFP7
++		{0x02C5, 0x82}, // #MFP7
 +		{0x02C6, 0x1F},
 +	};
 +
@@ -62,9 +63,10 @@ index 316e687a1..9621736b6 100644
 +
  	mutex_lock(&priv->lock);
  
- 	for (i = 0; i < MAX9296_MAX_PIPES; i++)
- 		err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
- 					  GMSL_CSI_DT_EMBED, i);
+ 	if (!priv->settings_setup) {
+@@ -977,6 +991,13 @@ int max9296_init_settings(struct device *dev)
+ 		priv->settings_setup = true;
+ 	}
  
 +	// Trigger Depth
 +	err |= max9296_set_registers(dev, map_depth_trigger,

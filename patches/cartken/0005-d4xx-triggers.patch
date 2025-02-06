@@ -1,8 +1,8 @@
 diff --git a/kernel/nvidia/drivers/media/i2c/max9295.c b/kernel/nvidia/drivers/media/i2c/max9295.c
-index 6311d97d7..f354739e2 100644
+index 3fcc40761..9ea705179 100644
 --- a/kernel/nvidia/drivers/media/i2c/max9295.c
 +++ b/kernel/nvidia/drivers/media/i2c/max9295.c
-@@ -573,6 +573,27 @@ int max9295_init_settings(struct device *dev)
+@@ -624,9 +624,24 @@ int max9295_init_settings(struct device *dev)
  		{MAX9295_START_PIPE_ADDR, 0xF0},
  	};
  
@@ -21,18 +21,16 @@ index 6311d97d7..f354739e2 100644
 +		{0x02C0, 0x1B},
 +	};
 +
-+	if (!priv) {
-+		goto ret;
-+	}
-+
-+    dev_info(dev, "%s starting init\n", __func__);
+ 	if (!priv) 
+ 		return -EINVAL;
+-	
 +
  	mutex_lock(&priv->lock);
  
- 	// Init control
-@@ -583,6 +604,13 @@ int max9295_init_settings(struct device *dev)
+ 	err |= max9295_set_registers(dev, map_pipe_opt, ARRAY_SIZE(map_pipe_opt));
+@@ -635,6 +650,13 @@ int max9295_init_settings(struct device *dev)
  		err |= __max9295_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
- 					  GMSL_CSI_DT_EMBED, i);
+ 						GMSL_CSI_DT_EMBED, i);
  
 +	// Trigger Depth
 +	err |= max9295_set_registers(dev, map_depth_trigger,
@@ -45,10 +43,10 @@ index 6311d97d7..f354739e2 100644
  
  	return err;
 diff --git a/kernel/nvidia/drivers/media/i2c/max9296.c b/kernel/nvidia/drivers/media/i2c/max9296.c
-index 316e687a1..7cf01e063 100644
+index 4c15f1efc..b2a529c51 100644
 --- a/kernel/nvidia/drivers/media/i2c/max9296.c
 +++ b/kernel/nvidia/drivers/media/i2c/max9296.c
-@@ -932,12 +932,34 @@ int max9296_init_settings(struct device *dev)
+@@ -967,6 +967,20 @@ int max9296_init_settings(struct device *dev)
  	int i;
  	struct max9296 *priv = dev_get_drvdata(dev);
  
@@ -68,9 +66,10 @@ index 316e687a1..7cf01e063 100644
 +
  	mutex_lock(&priv->lock);
  
- 	for (i = 0; i < MAX9296_MAX_PIPES; i++)
- 		err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
- 					  GMSL_CSI_DT_EMBED, i);
+ 	if (!priv->settings_setup) {
+@@ -977,6 +991,14 @@ int max9296_init_settings(struct device *dev)
+ 		priv->settings_setup = true;
+ 	}
  
 +	// Trigger Depth
 +	err |= max9296_set_registers(dev, map_depth_trigger,

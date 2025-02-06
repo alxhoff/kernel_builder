@@ -1,27 +1,3 @@
-diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
-index ecb68a3e4..9373288a6 100644
---- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
-+++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
-@@ -349,11 +349,17 @@ static int vi_capture_ivc_send_control(
- 	size_t size,
- 	uint32_t resp_id)
- {
--	struct vi_capture *capture = chan->capture_data;
--	struct CAPTURE_MSG_HEADER resp_header = msg->header;
-+	struct vi_capture *capture;
-+	struct CAPTURE_MSG_HEADER resp_header;
- 	uint32_t timeout = HZ;
- 	int err = 0;
- 
-+	if (!chan || !chan->dev || !chan->capture_data || !msg)
-+		return -EINVAL;
-+
-+	capture = chan->capture_data;
-+	resp_header = msg->header;
-+
- 	dev_dbg(chan->dev, "%s: sending chan_id %u msg_id %u\n",
- 			__func__, resp_header.channel_id, resp_header.msg_id);
- 	resp_header.msg_id = resp_id;
 diff --git a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
 index 04c95aef3..f6cb92497 100644
 --- a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h

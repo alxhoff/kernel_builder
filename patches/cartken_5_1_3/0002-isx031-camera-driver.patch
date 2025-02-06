@@ -1414,13 +1414,14 @@ index 000000000..9b4b26388
 +CONFIG_PID_IN_CONTEXTIDR=y
 +# CONFIG_RUNTIME_TESTING_MENU is not set
 diff --git a/kernel/nvidia/drivers/media/i2c/Kconfig b/kernel/nvidia/drivers/media/i2c/Kconfig
-index 7f288faf7..377ad2921 100644
+index 5ec3c683c..5ac7c6d4e 100644
 --- a/kernel/nvidia/drivers/media/i2c/Kconfig
 +++ b/kernel/nvidia/drivers/media/i2c/Kconfig
-@@ -231,6 +231,12 @@ config VIDEO_D4XX_SERDES
+@@ -210,6 +210,13 @@ config NV_VIRTUAL_I2C_MUX
  
-                 This option is for setup with Maxim Serdes.
- 
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called virtual_i2c_mux.
++
 +config NV_VIDEO_ISX031
 +	tristate "ISX031 camera sensor support"
 +	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API && I2C_IOEXPANDER_SER_MAX9295 && I2C_IOEXPANDER_DESER_MAX9296
@@ -1673,13 +1674,13 @@ index 000000000..7f288faf7
 +
 +endif
 diff --git a/kernel/nvidia/drivers/media/i2c/Makefile b/kernel/nvidia/drivers/media/i2c/Makefile
-index e11e8ad39..49f3c8b9c 100644
+index c4708d8c7..8cdf742ac 100644
 --- a/kernel/nvidia/drivers/media/i2c/Makefile
 +++ b/kernel/nvidia/drivers/media/i2c/Makefile
-@@ -28,3 +28,4 @@ obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
+@@ -27,3 +27,4 @@ obj-$(CONFIG_NV_VIDEO_HAWK_OWL) += nv_hawk_owl.o
+ obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
  obj-$(CONFIG_VIDEO_ECAM) += ar1335.o
  ar1335-objs :=  ar1335_common.o
- obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
 +obj-$(CONFIG_NV_VIDEO_ISX031) += isx031/
 diff --git a/kernel/nvidia/drivers/media/i2c/Makefile.orig b/kernel/nvidia/drivers/media/i2c/Makefile.orig
 new file mode 100644

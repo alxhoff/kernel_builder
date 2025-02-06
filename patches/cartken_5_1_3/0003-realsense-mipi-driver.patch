@@ -1,12 +1,11 @@
 diff --git a/kernel/nvidia/drivers/media/i2c/Kconfig b/kernel/nvidia/drivers/media/i2c/Kconfig
-index 5ec3c683c..7f288faf7 100644
+index 5ac7c6d4e..770edac27 100644
 --- a/kernel/nvidia/drivers/media/i2c/Kconfig
 +++ b/kernel/nvidia/drivers/media/i2c/Kconfig
-@@ -210,6 +210,27 @@ config NV_VIRTUAL_I2C_MUX
+@@ -217,6 +217,26 @@ config NV_VIDEO_ISX031
+ 	help
+ 	  Video4Linux2 sensor-level driver for the Sony ISX031 camera sensor
  
- 	  To compile this driver as a module, choose M here: the module
- 	  will be called virtual_i2c_mux.
-+
 +config VIDEO_D4XX
 +	tristate "D4XX camera sensor support"
 +	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
@@ -31,13 +30,13 @@ index 5ec3c683c..7f288faf7 100644
  
  endif
 diff --git a/kernel/nvidia/drivers/media/i2c/Makefile b/kernel/nvidia/drivers/media/i2c/Makefile
-index c4708d8c7..e11e8ad39 100644
+index 8cdf742ac..d4d1633e2 100644
 --- a/kernel/nvidia/drivers/media/i2c/Makefile
 +++ b/kernel/nvidia/drivers/media/i2c/Makefile
-@@ -27,3 +27,4 @@ obj-$(CONFIG_NV_VIDEO_HAWK_OWL) += nv_hawk_owl.o
- obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
+@@ -28,3 +28,4 @@ obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
  obj-$(CONFIG_VIDEO_ECAM) += ar1335.o
  ar1335-objs :=  ar1335_common.o
+ obj-$(CONFIG_NV_VIDEO_ISX031) += isx031/
 +obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
 diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
 new file mode 100644
