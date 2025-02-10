@@ -7,7 +7,7 @@
 # Function to display help
 show_help() {
     cat <<EOF
-Usage: $0 [options] <rootfs_directory>
+Usage: $0 [options] <rootfs_directory> <orin|xavier>
 
 Options:
   --help       Show this help message.
@@ -17,26 +17,24 @@ Description:
   This script sets up a chroot environment for a Jetson root filesystem, ensuring:
     1. Internet access is available within the chroot for installing packages.
     2. Necessary devices and filesystems are mounted in the chroot environment.
-    3. A cleanup option to unmount filesystems in case the script exits unexpectedly.
-
-Steps performed by this script:
-  1. Bind mount necessary filesystems (e.g., /proc, /sys, /dev, and /dev/pts).
-  2. Copy DNS resolver configuration (/etc/resolv.conf) for internet access.
-  3. Enter the chroot environment using the "chroot" command.
-  4. Cleanup mounted filesystems after exiting the chroot or via the "cleanup" option.
+    3. The SOC type is set based on user input (either "orin" or "xavier").
+    4. A cleanup option to unmount filesystems in case the script exits unexpectedly.
 
 Example:
-  To chroot:
-    $0 /path/to/jetson/rootfs
+  To chroot into an Orin-based Jetson:
+    $0 /path/to/jetson/rootfs orin
+
+  To chroot into a Xavier-based Jetson:
+    $0 /path/to/jetson/rootfs xavier
 
   To clean up:
     $0 cleanup /path/to/jetson/rootfs
 EOF
 }
 
-# Ensure at least one argument is provided
-if [ "$#" -lt 1 ]; then
-    echo "Error: Missing argument."
+# Ensure at least two arguments are provided
+if [ "$#" -lt 2 ]; then
+    echo "Error: Missing arguments."
     echo "Use --help for usage instructions."
     exit 1
 fi
@@ -47,21 +45,6 @@ if [ "$1" == "--help" ]; then
     exit 0
 fi
 
-# Define cleanup function
-cleanup() {
-    ROOTFS_DIR=$1
-    echo "Cleaning up mount points for $ROOTFS_DIR..."
-
-    # Attempt to unmount in reverse order
-    umount -l "$ROOTFS_DIR/proc" 2>/dev/null || echo "Warning: /proc not mounted."
-    umount -l "$ROOTFS_DIR/sys" 2>/dev/null || echo "Warning: /sys not mounted."
-    umount -l "$ROOTFS_DIR/dev/pts" 2>/dev/null || echo "Warning: /dev/pts not mounted."
-    umount -l "$ROOTFS_DIR/dev" 2>/dev/null || echo "Warning: /dev not mounted."
-
-    echo "Cleanup completed."
-    exit 0
-}
-
 # Handle cleanup argument
 if [ "$1" == "cleanup" ]; then
     if [ "$#" -ne 2 ]; then
@@ -69,12 +52,22 @@ if [ "$1" == "cleanup" ]; then
         echo "Usage: $0 cleanup <rootfs_directory>"
         exit 1
     fi
-
     cleanup "$2"
 fi
 
-# Root filesystem directory provided as argument
+# Root filesystem directory
 ROOTFS_DIR=$1
+SOC_TYPE=$2  # User-provided SOC type
+
+# Validate SOC type
+case "$SOC_TYPE" in
+    orin) SOC="t234" ;;
+    xavier) SOC="t194" ;;
+    *)
+        echo "Error: Invalid SOC type. Must be 'orin' or 'xavier'."
+        exit 1
+        ;;
+esac
 
 # Check if the directory exists
 if [ ! -d "$ROOTFS_DIR" ]; then
@@ -88,16 +81,25 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-echo "Preparing to chroot into $ROOTFS_DIR..."
+echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 
 # Bind mount necessary filesystems
 mount --bind /proc "$ROOTFS_DIR/proc"
 mount --bind /sys "$ROOTFS_DIR/sys"
 mount --bind /dev "$ROOTFS_DIR/dev"
 mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
+mount --bind /tmp "$ROOTFS_DIR/tmp"
+
+# Ensure /tmp has correct permissions inside chroot
+chmod 1777 "$ROOTFS_DIR/tmp"
 
 # Copy DNS resolver configuration for internet access
 cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+
+# Fix NVIDIA repository URLs inside chroot
+if [ -f "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list" ]; then
+    sed -i "s|<SOC>|$SOC|g" "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
+fi
 
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
