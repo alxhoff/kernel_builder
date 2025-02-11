@@ -126,5 +126,28 @@ mkdir -p "$TEGRA_DIR/rootfs"
 sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 echo "Root filesystem extracted successfully."
 
-echo "Setup completed successfully!"
+echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
+sudo -u $(logname) git clone --depth=1 git@gitlab.com:cartken/kernel-os/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+echo "Toolchain cloned successfully."
 
+# Download chroot script
+chroot_script="$TEGRA_DIR/jetson_chroot.sh"
+echo "Checking for chroot script..."
+if [ ! -f "$chroot_script" ]; then
+    echo "Downloading chroot script..."
+    wget -O "$chroot_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/jetson_chroot.sh"
+	chmod +x $chroot_script
+    echo "chroot script downloaded successfully."
+fi
+
+# Download package script
+package_script="$TEGRA_DIR/get_packages.sh"
+echo "Checking for package script..."
+if [ ! -f "$package_script" ]; then
+    echo "Downloading package script..."
+    wget -O "$package_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/get_packages.sh"
+	chmod +x $package_script
+    echo "package script downloaded successfully."
+fi
+
+echo "Setup completed successfully!"

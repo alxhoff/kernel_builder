@@ -5,7 +5,7 @@ set -e
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLCHAIN_DIR="$TEGRA_DIR/toolchain/bin"
 KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
-CROSS_COMPILE="$TOOLCHAIN_DIR/bin/aarch64-buildroot-linux-gnu-"
+CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 MENUCONFIG=false
 LOCALVERSION=""
