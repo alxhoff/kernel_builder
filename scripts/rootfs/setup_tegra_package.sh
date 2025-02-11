@@ -145,7 +145,7 @@ package_script="$TEGRA_DIR/get_packages.sh"
 echo "Checking for package script..."
 if [ ! -f "$package_script" ]; then
     echo "Downloading package script..."
-    wget -O "$package_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/get_packages.sh"
+    wget -O "$package_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/get_packages.sh"
 	chmod +x $package_script
     echo "package script downloaded successfully."
 fi
