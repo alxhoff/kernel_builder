@@ -1,4 +1,3 @@
-*.txt
 !target_modules.txt
 *.cap
 kernels/*

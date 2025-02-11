@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Script: jetson_chroot.sh
-# Description: Script to chroot into a Jetson root filesystem with internet access.
+# Description: Script to chroot into a Jetson root filesystem with optional command execution.
 # Author: Alex Hoffman
 
 # Function to display help
 show_help() {
     cat <<EOF
-Usage: $0 [options] <rootfs_directory> <orin|xavier>
+Usage: $0 [options] <rootfs_directory> <orin|xavier> [command_file]
 
 Options:
   --help       Show this help message.
@@ -19,6 +19,7 @@ Description:
     2. Necessary devices and filesystems are mounted in the chroot environment.
     3. The SOC type is set based on user input (either "orin" or "xavier").
     4. A cleanup option to unmount filesystems in case the script exits unexpectedly.
+    5. An optional file with commands to be executed inside the chroot.
 
 Example:
   To chroot into an Orin-based Jetson:
@@ -29,6 +30,9 @@ Example:
 
   To clean up:
     $0 cleanup /path/to/jetson/rootfs
+
+  To execute commands from a file inside chroot:
+    $0 /path/to/jetson/rootfs orin /path/to/commands.txt
 EOF
 }
 
@@ -50,9 +54,8 @@ cleanup() {
     ROOTFS_DIR=$1
     echo "Cleaning up mount points for $ROOTFS_DIR..."
 
-    # Unmount in reverse order to avoid issues
     for mount_point in dev/pts dev/shm dev proc sys tmp; do
-        if findmnt -r "$ROOTFS_DIR/$mount_point" >/dev/null; then
+        if mountpoint -q "$ROOTFS_DIR/$mount_point"; then
             umount -l "$ROOTFS_DIR/$mount_point"
         fi
     done
@@ -76,7 +79,8 @@ fi
 
 # Root filesystem directory
 ROOTFS_DIR=$1
-SOC_TYPE=$2  # User-provided SOC type
+SOC_TYPE=$2
+COMMAND_FILE=${3:-}
 
 # Validate SOC type
 case "$SOC_TYPE" in
@@ -103,12 +107,16 @@ fi
 echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 
 # Bind mount necessary filesystems
-mount --bind /proc "$ROOTFS_DIR/proc"
-mount --bind /sys "$ROOTFS_DIR/sys"
-mount --bind /dev "$ROOTFS_DIR/dev"
-mount -t devpts -o gid=5,mode=620 devpts "$ROOTFS_DIR/dev/pts"
-mount -t tmpfs shm "$ROOTFS_DIR/dev/shm"
-mount --bind /tmp "$ROOTFS_DIR/tmp"
+for mount_point in proc sys dev dev/pts dev/shm tmp; do
+    if ! mountpoint -q "$ROOTFS_DIR/$mount_point"; then
+        case $mount_point in
+            dev/pts) mount -t devpts -o gid=5,mode=620 devpts "$ROOTFS_DIR/$mount_point" ;;
+            dev/shm) mount -t tmpfs shm "$ROOTFS_DIR/$mount_point" ;;
+            tmp) mount --bind /tmp "$ROOTFS_DIR/tmp" ;;
+            *) mount --bind "/$mount_point" "$ROOTFS_DIR/$mount_point" ;;
+        esac
+    fi
+done
 
 # Ensure /tmp has correct permissions inside chroot
 chmod 1777 "$ROOTFS_DIR/tmp"
@@ -129,9 +137,7 @@ for dev in ptmx tty console null; do
 done
 
 # Ensure /var/cache/man exists and has correct permissions
-if [ ! -d "$ROOTFS_DIR/var/cache/man" ]; then
-    mkdir -p "$ROOTFS_DIR/var/cache/man"
-fi
+mkdir -p "$ROOTFS_DIR/var/cache/man"
 chmod -R 777 "$ROOTFS_DIR/var/cache/man"
 
 # Fix NVIDIA repository URLs inside chroot
@@ -139,15 +145,35 @@ if [ -f "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list" ]; then
     sed -i "s|<SOC>|$SOC|g" "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
 fi
 
-# Ensure PATH is correctly set inside chroot without duplicating it
-BASHRC="$ROOTFS_DIR/root/.bashrc"
-if ! grep -q 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' "$BASHRC" 2>/dev/null; then
-    echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' >> "$BASHRC"
+# If a command file is provided, execute each line inside the chroot
+if [ -n "$COMMAND_FILE" ]; then
+    if [ ! -f "$COMMAND_FILE" ]; then
+        echo "Error: Command file $COMMAND_FILE does not exist."
+        exit 1
+    fi
+
+    echo "Executing commands from $COMMAND_FILE inside chroot..."
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Ignore empty lines and comments
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+        echo "Running: $line"
+		chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; $line"
+
+        if [ $? -ne 0 ]; then
+            echo "Error executing: $line"
+            exit 1
+        fi
+    done < "$COMMAND_FILE"
+
+    echo "Command execution completed."
+    exit 0
 fi
 
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
-sudo chroot "$ROOTFS_DIR" /bin/bash
+chroot "$ROOTFS_DIR" /bin/bash --login -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; exec bash"
 
 # Exit without running cleanup again
 exit 0
