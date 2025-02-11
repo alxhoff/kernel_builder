@@ -139,6 +139,12 @@ if [ -f "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list" ]; then
     sed -i "s|<SOC>|$SOC|g" "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
 fi
 
+# Ensure PATH is correctly set inside chroot without duplicating it
+BASHRC="$ROOTFS_DIR/root/.bashrc"
+if ! grep -q 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' "$BASHRC" 2>/dev/null; then
+    echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' >> "$BASHRC"
+fi
+
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
 sudo chroot "$ROOTFS_DIR" /bin/bash
