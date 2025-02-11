@@ -2,7 +2,7 @@
 
 # Script: jetson_chroot.sh
 # Description: Script to chroot into a Jetson root filesystem with internet access.
-# Author: Linux Specialist
+# Author: Alex Hoffman
 
 # Function to display help
 show_help() {
@@ -45,6 +45,24 @@ if [ "$1" == "--help" ]; then
     exit 0
 fi
 
+# Define cleanup function
+cleanup() {
+    ROOTFS_DIR=$1
+    echo "Cleaning up mount points for $ROOTFS_DIR..."
+
+    # Unmount in reverse order to avoid issues
+    for mount_point in dev/pts dev/shm dev proc sys tmp; do
+        if findmnt -r "$ROOTFS_DIR/$mount_point" >/dev/null; then
+            umount -l "$ROOTFS_DIR/$mount_point"
+        fi
+    done
+
+    echo "Cleanup completed."
+}
+
+# Ensure cleanup runs on script exit
+trap 'cleanup "$ROOTFS_DIR"' EXIT SIGINT SIGTERM
+
 # Handle cleanup argument
 if [ "$1" == "cleanup" ]; then
     if [ "$#" -ne 2 ]; then
@@ -53,6 +71,7 @@ if [ "$1" == "cleanup" ]; then
         exit 1
     fi
     cleanup "$2"
+    exit 0
 fi
 
 # Root filesystem directory
@@ -87,7 +106,8 @@ echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 mount --bind /proc "$ROOTFS_DIR/proc"
 mount --bind /sys "$ROOTFS_DIR/sys"
 mount --bind /dev "$ROOTFS_DIR/dev"
-mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
+mount -t devpts -o gid=5,mode=620 devpts "$ROOTFS_DIR/dev/pts"
+mount -t tmpfs shm "$ROOTFS_DIR/dev/shm"
 mount --bind /tmp "$ROOTFS_DIR/tmp"
 
 # Ensure /tmp has correct permissions inside chroot
@@ -96,6 +116,24 @@ chmod 1777 "$ROOTFS_DIR/tmp"
 # Copy DNS resolver configuration for internet access
 cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
+# Ensure /dev/ptmx and /dev/tty exist
+for dev in ptmx tty console null; do
+    if [ ! -e "$ROOTFS_DIR/dev/$dev" ]; then
+        case $dev in
+            ptmx) mknod -m 666 "$ROOTFS_DIR/dev/$dev" c 5 2 ;;
+            tty) mknod -m 666 "$ROOTFS_DIR/dev/$dev" c 5 0 ;;
+            console) mknod -m 600 "$ROOTFS_DIR/dev/$dev" c 5 1 ;;
+            null) mknod -m 666 "$ROOTFS_DIR/dev/$dev" c 1 3 ;;
+        esac
+    fi
+done
+
+# Ensure /var/cache/man exists and has correct permissions
+if [ ! -d "$ROOTFS_DIR/var/cache/man" ]; then
+    mkdir -p "$ROOTFS_DIR/var/cache/man"
+fi
+chmod -R 777 "$ROOTFS_DIR/var/cache/man"
+
 # Fix NVIDIA repository URLs inside chroot
 if [ -f "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list" ]; then
     sed -i "s|<SOC>|$SOC|g" "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
@@ -103,8 +141,8 @@ fi
 
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
-chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; exec /bin/bash"
+sudo chroot "$ROOTFS_DIR" /bin/bash
 
-# Cleanup after exiting chroot
-cleanup "$ROOTFS_DIR"
+# Exit without running cleanup again
+exit 0
 
