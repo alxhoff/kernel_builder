@@ -40,12 +40,18 @@ declare -A DRIVER_URLS=(
 # Default values
 JETPACK_VERSION="5.1.3"
 DOWNLOAD=true
+ACCESS_TOKEN=""
+TAG="latest"
+SOC="orin"
 
 # Function to show help
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -j, --jetpack VERSION   Specify JetPack version (default: $JETPACK_VERSION)"
+	echo "  --access-token TOKEN     Provide the access token (required)"
+    echo "  --tag TAG                Specify tag for get_packages.sh (default: $TAG)"
+    echo "  --soc SOC                Specify SoC type for jetson_chroot.sh (default: $SOC)"
     echo "                         Available versions: 5.1.3 (L4T ${JETPACK_L4T_MAP[5.1.3]}), 5.1.2 (L4T ${JETPACK_L4T_MAP[5.1.2]})"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
     echo "  -h, --help              Show this help message"
@@ -57,6 +63,18 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -j|--jetpack)
             JETPACK_VERSION="$2"
+            shift 2
+            ;;
+        --access-token)
+            ACCESS_TOKEN="$2"
+            shift 2
+            ;;
+        --tag)
+            TAG="$2"
+            shift 2
+            ;;
+        --soc)
+            SOC="$2"
             shift 2
             ;;
         --no-download)
@@ -76,6 +94,12 @@ done
 # Validate JetPack version
 if [[ -z "${JETPACK_L4T_MAP[$JETPACK_VERSION]}" ]]; then
     echo "Error: Unsupported JetPack version. Use --help to see available versions."
+    exit 1
+fi
+
+# Ensure access token is provided
+if [[ -z "$ACCESS_TOKEN" ]]; then
+    echo "Error: --access-token is required."
     exit 1
 fi
 
@@ -140,14 +164,36 @@ if [ ! -f "$chroot_script" ]; then
     echo "chroot script downloaded successfully."
 fi
 
-# Download package script
-package_script="$TEGRA_DIR/get_packages.sh"
-echo "Checking for package script..."
-if [ ! -f "$package_script" ]; then
-    echo "Downloading package script..."
-    wget -O "$package_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/get_packages.sh"
-	chmod +x $package_script
-    echo "package script downloaded successfully."
+GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/rootfs"
+
+echo "Fetching list of files in rootfs folder..."
+FILES=$(curl -s "$GIT_ROOTFS_URL" | jq -r '.[].download_url')
+
+if [[ -z "$FILES" ]]; then
+    echo "Error: Could not retrieve file list from GitHub."
+    exit 1
 fi
+
+echo "Downloading all rootfs scripts into $TEGRA_DIR..."
+
+for FILE in $FILES; do
+    wget -q --show-progress -P "$TEGRA_DIR/" "$FILE"
+done
+rm $TEGRA_DIR/setup_tegra_package.sh
+
+echo "All rootfs scripts downloaded successfully."
+
+# **Ensure executable permissions for scripts**
+echo "Setting execute permissions for scripts..."
+chmod +x "$TEGRA_DIR/"*.sh
+
+cd $TEGRA_DIR
+
+echo "Running get_packages.sh with access token and tag: $TAG..."
+./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
+sudo cp -r packages rootfs/root/
+sudo ./build_kernel.sh
+echo "Setting up chroot environment for SoC: $SOC..."
+sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
 
 echo "Setup completed successfully!"
