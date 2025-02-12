@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 # Function to show help
 show_help() {
     echo "Usage: $0 [options]"
@@ -30,7 +28,7 @@ echo "Applying Jetson binaries..."
 sudo ./apply_binaries.sh
 
 echo "Creating default user..."
-sudo ./l4t_create_default_user.sh -u cartken -p cartken -n cart1jetson --autologin --accept-license
+sudo ./tools/l4t_create_default_user.sh -u cartken -p cartken -n cart1jetson --autologin --accept-license
 
 echo "Setup completed successfully!"
 

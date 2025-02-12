@@ -190,6 +190,8 @@ chmod +x "$TEGRA_DIR/"*.sh
 cd $TEGRA_DIR
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
+echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee rootfs/root/.bashrc > /dev/null
+sudo ./setup_rootfs.sh
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r packages rootfs/root/
 sudo ./build_kernel.sh

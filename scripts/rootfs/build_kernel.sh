@@ -5,6 +5,7 @@ set -e
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTFS_DIR="$TEGRA_DIR/rootfs"
 TOOLCHAIN_DIR="$TEGRA_DIR/toolchain/bin"
+KERNEL_SRC_ROOT="$TEGRA_DIR/kernel_src"
 KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
 CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
@@ -88,24 +89,40 @@ if [ ! -d "$KERNEL_SRC" ]; then
     exit 1
 fi
 
-cd "$KERNEL_SRC"
+GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patches/$PATCH"
 
-if [-n "$PATCH_SOURCE"]
-GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/rootfs"
+if [ "$PATCH_SOURCE" = true ]; then
+    echo "Fetching list of patches for $PATCH kernel..."
 
-echo "Fetching list of files in rootfs folder..."
-FILES=$(curl -s "$GIT_ROOTFS_URL" | jq -r '.[].download_url')
+    # Fetch the list of files and process them line by line
+    curl -s "$GIT_PATCH_URL" | jq -r '.[].download_url' | while read -r FILE_URL; do
+        if [[ -z "$FILE_URL" ]]; then
+            echo "Error: Could not retrieve patch list from GitHub."
+            exit 1
+        fi
 
-if [[ -z "$FILES" ]]; then
-    echo "Error: Could not retrieve file list from GitHub."
-    exit 1
+        FILE_NAME=$(basename "$FILE_URL")
+        PATCH_FILE="$TEGRA_DIR/kernel_patches/$FILE_NAME"
+
+        echo "Downloading $FILE_NAME..."
+        wget -q --show-progress -O "$PATCH_FILE" "$FILE_URL"
+
+        if [[ -f "$PATCH_FILE" ]]; then
+            # Check if the patch is already applied
+            if patch -p1 -d "$KERNEL_SRC_ROOT" --dry-run -f < "$PATCH_FILE" >/dev/null 2>&1; then
+                echo "Applying patch $FILE_NAME..."
+                patch -p1 -d "$KERNEL_SRC_ROOT" < "$PATCH_FILE"
+            else
+                echo "Skipping $FILE_NAME: Already applied."
+            fi
+        else
+            echo "Error: Patch file $FILE_NAME not found!"
+            exit 1
+        fi
+    done
 fi
 
-echo "Downloading all rootfs scripts into $TEGRA_DIR..."
-
-for FILE in $FILES; do
-    wget -q --show-progress -P "$TEGRA_DIR/" "$FILE"
-done
+cd "$KERNEL_SRC"
 
 # Download cartken_defconfig
 defconfig_path="$KERNEL_SRC/arch/arm64/configs/cartken_defconfig"
@@ -125,18 +142,18 @@ fi
 # Compile the kernel as the original user
 if [ -n "$LOCALVERSION" ]; then
     echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
-    sudo -u "$SUDO_USER" make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" tegra_defconfig
-    sudo -u "$SUDO_USER" make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" tegra_defconfig
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
 
     # Run modules_install as root
-    make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
 else
     echo "Building kernel using cartken_defconfig..."
-    sudo -u "$SUDO_USER" make -C "$KERNEL_SRC" $MAKE_ARGS tegra_defconfig
-    sudo -u "$SUDO_USER" make -C "$KERNEL_SRC" $MAKE_ARGS
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS tegra_defconfig
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS
 
     # Run modules_install as root
-    make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
 fi
 
 # Define paths for kernel Image and DTB
