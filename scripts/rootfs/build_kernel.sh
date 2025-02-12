@@ -10,6 +10,13 @@ CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 MENUCONFIG=false
 LOCALVERSION=""
+PATCH="5.1.3"
+PATCH_SOURCE=false
+
+declare -A JETPACK_L4T_MAP=(
+    [5.1.3]=35.5.0
+    [5.1.2]=35.4.1
+)
 
 # Ensure the script is run with sudo
 if [ "$EUID" -ne 0 ]; then
@@ -28,6 +35,7 @@ USER_HOME=$(eval echo ~$SUDO_USER)
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
+    echo "  --patch VERSION   Specify JetPack version (default: $JETPACK_VERSION)"
     echo "  --menuconfig        Open menuconfig before compiling the kernel"
     echo "  --localversion STR  Set the LOCALVERSION for the kernel build"
     echo "  -h, --help          Show this help message"
@@ -37,6 +45,11 @@ show_help() {
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --patch)
+            PATCH="$2"
+			PATCH_SOURCE=true
+            shift 2
+            ;;
         --menuconfig)
             MENUCONFIG=true
             shift
@@ -55,6 +68,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate JetPack version
+if [[ -z "${JETPACK_L4T_MAP[$PATCH]}" ]]; then
+    echo "Error: Unsupported JetPack version. Use --help to see available versions."
+    exit 1
+fi
+
 # Check if toolchain is present, otherwise pull it
 echo "Checking for toolchain..."
 if [ ! -d "$TOOLCHAIN_DIR" ]; then
@@ -70,6 +89,23 @@ if [ ! -d "$KERNEL_SRC" ]; then
 fi
 
 cd "$KERNEL_SRC"
+
+if [-n "$PATCH_SOURCE"]
+GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/rootfs"
+
+echo "Fetching list of files in rootfs folder..."
+FILES=$(curl -s "$GIT_ROOTFS_URL" | jq -r '.[].download_url')
+
+if [[ -z "$FILES" ]]; then
+    echo "Error: Could not retrieve file list from GitHub."
+    exit 1
+fi
+
+echo "Downloading all rootfs scripts into $TEGRA_DIR..."
+
+for FILE in $FILES; do
+    wget -q --show-progress -P "$TEGRA_DIR/" "$FILE"
+done
 
 # Download cartken_defconfig
 defconfig_path="$KERNEL_SRC/arch/arm64/configs/cartken_defconfig"
