@@ -30,7 +30,6 @@ if [ -z "$SUDO_USER" ]; then
     echo "Error: This script must be run using sudo, not as root directly."
     exit 1
 fi
-USER_HOME=$(eval echo ~$SUDO_USER)
 
 # Function to show help
 show_help() {
@@ -79,7 +78,7 @@ fi
 echo "Checking for toolchain..."
 if [ ! -d "$TOOLCHAIN_DIR" ]; then
     echo "Toolchain not found. Cloning..."
-    sudo -u "$SUDO_USER" git clone --depth=1 git@gitlab.com:cartken/kernel-os/jetson-linux-toolchain "$TOOLCHAIN_DIR"
+    sudo git clone --depth=1 git@gitlab.com:cartken/kernel-os/jetson-linux-toolchain "$TOOLCHAIN_DIR"
     echo "Toolchain cloned successfully."
 fi
 
@@ -92,20 +91,31 @@ fi
 GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patches/$PATCH"
 
 if [ "$PATCH_SOURCE" = true ]; then
+    sudo mkdir -p "$TEGRA_DIR/kernel_patches"
     echo "Fetching list of patches for $PATCH kernel..."
 
-    # Fetch the list of files and process them line by line
-    curl -s "$GIT_PATCH_URL" | jq -r '.[].download_url' | while read -r FILE_URL; do
-        if [[ -z "$FILE_URL" ]]; then
-            echo "Error: Could not retrieve patch list from GitHub."
-            exit 1
+    # Fetch the list of files and check if it's valid JSON
+    PATCH_LIST=$(curl -s "$GIT_PATCH_URL")
+
+    if ! echo "$PATCH_LIST" | jq empty 2>/dev/null; then
+        echo "Error: Failed to retrieve patch list or invalid JSON response."
+        echo "Response: $PATCH_LIST"
+        exit 1
+    fi
+
+    # Extract URLs and filter out empty lines
+    echo "$PATCH_LIST" | jq -r '.[].download_url' | grep -v '^$' | while read -r FILE_URL; do
+        # Skip null or empty URLs without exiting
+        if [[ -z "$FILE_URL" || "$FILE_URL" == "null" ]]; then
+            echo "Skipping invalid or empty patch URL."
+            continue
         fi
 
         FILE_NAME=$(basename "$FILE_URL")
         PATCH_FILE="$TEGRA_DIR/kernel_patches/$FILE_NAME"
 
         echo "Downloading $FILE_NAME..."
-        wget -q --show-progress -O "$PATCH_FILE" "$FILE_URL"
+        wget -v --show-progress -O "$PATCH_FILE" "$FILE_URL"
 
         if [[ -f "$PATCH_FILE" ]]; then
             # Check if the patch is already applied
@@ -129,14 +139,14 @@ defconfig_path="$KERNEL_SRC/arch/arm64/configs/cartken_defconfig"
 echo "Checking for cartken_defconfig..."
 if [ ! -f "$defconfig_path" ]; then
     echo "Downloading cartken_defconfig..."
-    sudo -u "$SUDO_USER" wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/cartken_defconfig"
+    sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/cartken_defconfig"
     echo "cartken_defconfig downloaded successfully."
 fi
 
 # Run menuconfig if requested
 if [ "$MENUCONFIG" = true ]; then
     echo "Running menuconfig..."
-    sudo -u "$SUDO_USER" make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
 fi
 
 # Compile the kernel as the original user

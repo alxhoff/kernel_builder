@@ -129,22 +129,22 @@ else
 fi
 
 # Extract driver package
-TEGRA_DIR="tegra_$JETPACK_VERSION"
-sudo -u $(logname) mkdir -p "$TEGRA_DIR"
+TEGRA_DIR="$JETPACK_VERSION"
+sudo mkdir -p "$TEGRA_DIR"
 echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
-sudo -u $(logname) tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
+sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
 echo "Driver package extracted successfully. Moving contents out of Linux_for_Tegra..."
 mv "$TEGRA_DIR/Linux_for_Tegra"/* "$TEGRA_DIR"/
 rmdir "$TEGRA_DIR/Linux_for_Tegra"
 echo "Cleanup complete."
 
 # Extract kernel sources
-TMP_DIR=$(sudo -u $(logname) mktemp -d)
+TMP_DIR=$(sudo mktemp -d)
 echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
-sudo -u $(logname) tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
+sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
 echo "Extracting kernel sources from $TMP_DIR/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
-sudo -u $(logname) mkdir -p "$TEGRA_DIR/kernel_src"
-sudo -u $(logname) tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+sudo mkdir -p "$TEGRA_DIR/kernel_src"
+sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 echo "Kernel sources extracted successfully."
 rm -rf "$TMP_DIR"
 
@@ -155,7 +155,7 @@ sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 echo "Root filesystem extracted successfully."
 
 echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
-sudo -u $(logname) git clone --depth=1 git@gitlab.com:cartken/kernel-os/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
 echo "Toolchain cloned successfully."
 
 # Download chroot script
@@ -198,7 +198,7 @@ echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee rootfs/root/
 sudo ./setup_rootfs.sh
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r packages rootfs/root/
-sudo ./build_kernel.sh
+sudo ./build_kernel.sh --patch $JETPACK_VERSION
 echo "Setting up chroot environment for SoC: $SOC..."
 sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
 
