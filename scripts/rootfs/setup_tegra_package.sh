@@ -19,6 +19,7 @@ fi
 declare -A JETPACK_L4T_MAP=(
     [5.1.3]=35.5.0
     [5.1.2]=35.4.1
+	[6.0DP]=36.2
 	[6.2]=36.4.3
 )
 
@@ -26,18 +27,21 @@ declare -A JETPACK_L4T_MAP=(
 declare -A ROOTFS_URLS=(
     [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/tegra_linux_sample-root-filesystem_r35.5.0_aarch64.tbz2"
     [5.1.2]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/tegra_linux_sample-root-filesystem_r35.4.1_aarch64.tbz2"
+	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/release/tegra_linux_sample-root-filesystem_r36.2.0_aarch64.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Tegra_Linux_Sample-Root-Filesystem_r36.4.3_aarch64.tbz2"
 )
 
 declare -A KERNEL_URLS=(
     [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
     [5.1.2]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2"
+	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
 )
 
 declare -A DRIVER_URLS=(
     [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2"
     [5.1.2]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/jetson_linux_r35.4.1_aarch64.tbz2"
+	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/release/jetson_linux_r36.2.0_aarch64.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Jetson_Linux_r36.4.3_aarch64.tbz2"
 )
 
@@ -134,37 +138,50 @@ sudo mkdir -p "$TEGRA_DIR"
 echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
 sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
 echo "Driver package extracted successfully. Moving contents out of Linux_for_Tegra..."
-mv "$TEGRA_DIR/Linux_for_Tegra"/* "$TEGRA_DIR"/
+sudo mv "$TEGRA_DIR/Linux_for_Tegra"/* "$TEGRA_DIR"/
 rmdir "$TEGRA_DIR/Linux_for_Tegra"
 echo "Cleanup complete."
 
 # Extract kernel sources
 TMP_DIR=$(sudo mktemp -d)
-echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
-sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
-echo "Extracting kernel sources from $TMP_DIR/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
-sudo mkdir -p "$TEGRA_DIR/kernel_src"
-sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
-# If JetPack version is 6.2, extract additional kernel sources
-if [[ "$JETPACK_VERSION" == "6.2" ]]; then
-    echo "JetPack 6.2 detected. Extracting additional kernel sources..."
+# Check JetPack version and extract additional sources accordingly
+if [[ "$JETPACK_VERSION" == "5.1.2" || "$JETPACK_VERSION" == "5.1.3" ]]; then
+    echo "JetPack $JETPACK_VERSION detected. Extracting standard kernel sources..."
+
+	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
+	sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
+	echo "Extracting kernel sources from $TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
+	sudo mkdir -p "$TEGRA_DIR/kernel_src"
+	sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+
+elif [[ "$JETPACK_VERSION" == "6.2" || "$JETPACK_VERSION" == "6.0DP" ]]; then
+    echo "JetPack $JETPACK_VERSION detected. Extracting additional kernel sources..."
+
+	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
+	sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
+	echo "Extracting kernel sources from $TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
+	sudo mkdir -p "$TEGRA_DIR/kernel_src"
+	sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
     # Extract Out-of-Tree Modules
-    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/kernel_oot_modules_src.tbz2" ]]; then
+    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
         echo "Extracting kernel out-of-tree modules..."
-        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
     else
         echo "Warning: kernel_oot_modules_src.tbz2 not found!"
     fi
 
     # Extract NVIDIA Kernel Display Driver Source
-    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
+    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
         echo "Extracting NVIDIA kernel display driver source..."
-        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
+        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
     else
         echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
     fi
+
+else
+    echo "Warning: Unsupported JetPack version ($JETPACK_VERSION). Skipping additional kernel extraction."
 fi
 
 echo "Kernel sources extracted successfully."

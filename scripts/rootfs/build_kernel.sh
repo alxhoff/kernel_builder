@@ -6,7 +6,6 @@ TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTFS_DIR="$TEGRA_DIR/rootfs"
 TOOLCHAIN_DIR="$TEGRA_DIR/toolchain/bin"
 KERNEL_SRC_ROOT="$TEGRA_DIR/kernel_src"
-KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
 CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 MENUCONFIG=false
@@ -17,6 +16,7 @@ PATCH_SOURCE=false
 declare -A JETPACK_L4T_MAP=(
     [5.1.3]=35.5.0
     [5.1.2]=35.4.1
+	[6.0DP]=36.2
 	[6.2]=36.4.3
 )
 
@@ -36,7 +36,7 @@ fi
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  --patch VERSION   Specify JetPack version (default: $JETPACK_VERSION)"
+    echo "  --patch VERSION   Specify JetPack version (default: $PATCH)"
     echo "  --menuconfig        Open menuconfig before compiling the kernel"
     echo "  --localversion STR  Set the LOCALVERSION for the kernel build"
     echo "  -h, --help          Show this help message"
@@ -68,6 +68,16 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Set KERNEL_SRC based on JetPack version
+if [[ "$PATCH" == "5.1.2" || "$PATCH" == "5.1.3" ]]; then
+    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
+elif [[ "$PATCH" == "6.2" || "$PATCH" == "6.0DP" ]]; then
+    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-jammy-src"
+else
+    echo "Warning: Unsupported JetPack version ($PATCH). Defaulting to kernel-5.10."
+    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
+fi
 
 # Validate JetPack version
 if [[ -z "${JETPACK_L4T_MAP[$PATCH]}" ]]; then
@@ -104,8 +114,8 @@ if [ "$PATCH_SOURCE" = true ]; then
         exit 1
     fi
 
-    # Extract URLs and filter out empty lines
-    echo "$PATCH_LIST" | jq -r '.[].download_url' | grep -v '^$' | while read -r FILE_URL; do
+    # Extract URLs, filter out empty lines, and ignore .gitkeep/.gitignore
+    echo "$PATCH_LIST" | jq -r '.[] | select(.name != ".gitkeep" and .name != ".gitignore") | .download_url' | grep -v '^$' | while read -r FILE_URL; do
         # Skip null or empty URLs without exiting
         if [[ -z "$FILE_URL" || "$FILE_URL" == "null" ]]; then
             echo "Skipping invalid or empty patch URL."
@@ -113,6 +123,13 @@ if [ "$PATCH_SOURCE" = true ]; then
         fi
 
         FILE_NAME=$(basename "$FILE_URL")
+
+        # Ensure we are not downloading unwanted files
+        if [[ "$FILE_NAME" == ".gitkeep" || "$FILE_NAME" == ".gitignore" ]]; then
+            echo "Skipping $FILE_NAME (not a patch file)."
+            continue
+        fi
+
         PATCH_FILE="$TEGRA_DIR/kernel_patches/$FILE_NAME"
 
         echo "Downloading $FILE_NAME..."

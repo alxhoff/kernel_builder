@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="ubuntu:22.04"
 CONTAINER_NAME="tegra_setup"
 SCRIPT_NAME="setup_tegra_package.sh"
+RUN_SETUP_SCRIPT=true
 
 # Function to show help
 show_help() {
@@ -24,14 +25,23 @@ show_help() {
     echo "  --soc SOC                Specify SoC type for jetson_chroot.sh (default: unspecified)"
     echo "                         Available versions: 5.1.3 (L4T <L4T_VERSION_5.1.3>), 5.1.2 (L4T <L4T_VERSION_5.1.2>)"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
+    echo "  --inspect               Start a shell inside the container without running the setup script"
     echo "  -h, --help              Show this help message"
     exit 0
 }
 
-# Check if --help is passed
-if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-    show_help
-fi
+# Check for arguments
+for arg in "$@"; do
+    case $arg in
+        --inspect)
+            RUN_SETUP_SCRIPT=false
+            shift
+            ;;
+        --help|-h)
+            show_help
+            ;;
+    esac
+done
 
 # Get the real user details
 HOST_USER=$(logname 2>/dev/null || echo $SUDO_USER)
@@ -40,6 +50,13 @@ HOST_GID=$(id -g $HOST_USER)
 
 # Pull the latest Ubuntu 22.04 image
 docker pull $IMAGE
+
+# Determine the command to run inside the container
+if [[ "$RUN_SETUP_SCRIPT" == true ]]; then
+    CONTAINER_CMD="su - $HOST_USER -c 'sudo ./setup_tegra_package.sh $*'"
+else
+    CONTAINER_CMD="su - $HOST_USER"
+fi
 
 # Run the script inside a privileged container with the user setup
 docker run --rm -it \
@@ -53,10 +70,10 @@ docker run --rm -it \
     $IMAGE \
     /bin/bash -c "
         apt-get update && apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential && \
-		apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common && \
+        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common && \
         groupadd --gid $HOST_GID $HOST_USER && \
         useradd --uid $HOST_UID --gid $HOST_GID --home $SCRIPT_DIR --shell /bin/bash $HOST_USER && \
         echo '$HOST_USER ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers && \
-        su - $HOST_USER -c 'sudo ./setup_tegra_package.sh $*'
+        $CONTAINER_CMD
     "
 

@@ -25,9 +25,9 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 echo "Applying Jetson binaries..."
-sudo mount --bind /dev rootfs/dev
+#sudo mount --bind /dev rootfs/dev
 sudo ./apply_binaries.sh
-sudo umount rootfs/dev
+#sudo umount rootfs/dev
 
 echo "Creating default user..."
 pushd tools
