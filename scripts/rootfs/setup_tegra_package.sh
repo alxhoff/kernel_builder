@@ -238,7 +238,7 @@ echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee rootfs/root/
 sudo ./setup_rootfs.sh
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r packages rootfs/root/
-sudo ./build_kernel.sh --patch $JETPACK_VERSION
+sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion cartken$JETPACK_VERSION
 echo "Setting up chroot environment for SoC: $SOC..."
 sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
 

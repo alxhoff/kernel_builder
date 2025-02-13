@@ -17,6 +17,7 @@ PATCH_SOURCE=false
 declare -A JETPACK_L4T_MAP=(
     [5.1.3]=35.5.0
     [5.1.2]=35.4.1
+	[6.2]=36.4.3
 )
 
 # Ensure the script is run with sudo
