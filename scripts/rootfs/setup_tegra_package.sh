@@ -145,6 +145,28 @@ sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
 echo "Extracting kernel sources from $TMP_DIR/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
 sudo mkdir -p "$TEGRA_DIR/kernel_src"
 sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+
+# If JetPack version is 6.2, extract additional kernel sources
+if [[ "$JETPACK_VERSION" == "6.2" ]]; then
+    echo "JetPack 6.2 detected. Extracting additional kernel sources..."
+
+    # Extract Out-of-Tree Modules
+    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/kernel_oot_modules_src.tbz2" ]]; then
+        echo "Extracting kernel out-of-tree modules..."
+        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+    else
+        echo "Warning: kernel_oot_modules_src.tbz2 not found!"
+    fi
+
+    # Extract NVIDIA Kernel Display Driver Source
+    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
+        echo "Extracting NVIDIA kernel display driver source..."
+        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
+    else
+        echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
+    fi
+fi
+
 echo "Kernel sources extracted successfully."
 rm -rf "$TMP_DIR"
 
@@ -171,18 +193,36 @@ fi
 GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/rootfs"
 
 echo "Fetching list of files in rootfs folder..."
-FILES=$(curl -s "$GIT_ROOTFS_URL" | jq -r '.[].download_url')
+FILES=$(curl -s "$GIT_ROOTFS_URL")
 
-if [[ -z "$FILES" ]]; then
-    echo "Error: Could not retrieve file list from GitHub."
+# Check if the response is valid JSON
+if ! echo "$FILES" | jq empty 2>/dev/null; then
+    echo "Error: Failed to retrieve file list or invalid JSON response."
+    echo "Response: $FILES"
+    exit 1
+fi
+
+# Extract URLs and filter out null or empty lines
+FILE_URLS=$(echo "$FILES" | jq -r '.[] | select(.type=="file") | .download_url' | grep -v '^$')
+
+# Ensure we have valid file URLs
+if [[ -z "$FILE_URLS" ]]; then
+    echo "Error: No valid files found in GitHub response."
     exit 1
 fi
 
 echo "Downloading all rootfs scripts into $TEGRA_DIR..."
 
-for FILE in $FILES; do
-    wget -q --show-progress -P "$TEGRA_DIR/" "$FILE"
+for FILE in $FILE_URLS; do
+    if [[ -z "$FILE" || "$FILE" == "null" ]]; then
+        echo "Skipping invalid or empty file URL."
+        continue
+    fi
+
+    echo "Downloading $(basename "$FILE")..."
+    wget --show-progress -P "$TEGRA_DIR/" "$FILE"
 done
+
 rm $TEGRA_DIR/setup_tegra_package.sh
 
 echo "All rootfs scripts downloaded successfully."
