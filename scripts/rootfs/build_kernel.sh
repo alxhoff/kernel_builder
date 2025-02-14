@@ -153,11 +153,11 @@ fi
 cd "$KERNEL_SRC"
 
 # Download cartken_defconfig
-defconfig_path="$KERNEL_SRC/arch/arm64/configs/cartken_defconfig"
+defconfig_path="$KERNEL_SRC/arch/arm64/configs/defconfig"
 echo "Checking for cartken_defconfig..."
 if [ ! -f "$defconfig_path" ]; then
-    echo "Downloading cartken_defconfig..."
-    sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/cartken_defconfig"
+    echo "Downloading cartken defconfig..."
+    sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
     echo "cartken_defconfig downloaded successfully."
 fi
 
@@ -170,14 +170,14 @@ fi
 # Compile the kernel as the original user
 if [ -n "$LOCALVERSION" ]; then
     echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" tegra_defconfig
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
     sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
 
     # Run modules_install as root
     sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
 else
     echo "Building kernel using cartken_defconfig..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS tegra_defconfig
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
     sudo make -C "$KERNEL_SRC" $MAKE_ARGS
 
     # Run modules_install as root
