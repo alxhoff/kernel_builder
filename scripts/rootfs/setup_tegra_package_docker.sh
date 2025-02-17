@@ -79,7 +79,7 @@ docker run --rm -it \
     "$IMAGE" \
     /bin/bash -c "
         apt-get update && \
-        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential && \
+        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential kmod && \
         apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common && \
 
         if [ \"$HOST_USER\" != \"root\" ]; then \
