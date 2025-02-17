@@ -62,6 +62,7 @@ fi
 docker run --rm -it \
     --name $CONTAINER_NAME \
     --privileged \
+	--network=host \
     -v "$SCRIPT_DIR:$SCRIPT_DIR" \
     -w "$SCRIPT_DIR" \
     -e HOME="$SCRIPT_DIR" \
