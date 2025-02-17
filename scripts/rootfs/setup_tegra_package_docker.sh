@@ -7,7 +7,7 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 # Get the directory of the script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
 # Set variables
 IMAGE="ubuntu:22.04"
@@ -53,28 +53,42 @@ docker pull $IMAGE
 
 # Determine the command to run inside the container
 if [[ "$RUN_SETUP_SCRIPT" == true ]]; then
-    CONTAINER_CMD="su - $HOST_USER -c 'sudo ./setup_tegra_package.sh $*'"
+    if [[ "$HOST_USER" == "root" ]]; then
+        CONTAINER_CMD="./setup_tegra_package.sh $*"
+    else
+        CONTAINER_CMD="su - $HOST_USER -c 'sudo ./setup_tegra_package.sh $*'"
+    fi
 else
-    CONTAINER_CMD="su - $HOST_USER"
+    if [[ "$HOST_USER" == "root" ]]; then
+        CONTAINER_CMD="/bin/bash"
+    else
+        CONTAINER_CMD="su - $HOST_USER"
+    fi
 fi
 
 # Run the script inside a privileged container with the user setup
 docker run --rm -it \
-    --name $CONTAINER_NAME \
+    --name "$CONTAINER_NAME" \
     --privileged \
-	--network=host \
+    --network=host \
     -v "$SCRIPT_DIR:$SCRIPT_DIR" \
     -w "$SCRIPT_DIR" \
     -e HOME="$SCRIPT_DIR" \
     -e LOGNAME="$HOST_USER" \
     -e USER="$HOST_USER" \
-    $IMAGE \
+    "$IMAGE" \
     /bin/bash -c "
-        apt-get update && apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential && \
+        apt-get update && \
+        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential && \
         apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common && \
-        groupadd --gid $HOST_GID $HOST_USER && \
-        useradd --uid $HOST_UID --gid $HOST_GID --home $SCRIPT_DIR --shell /bin/bash $HOST_USER && \
-        echo '$HOST_USER ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers && \
-        $CONTAINER_CMD
+
+        if [ \"$HOST_USER\" != \"root\" ]; then \
+            groupadd --gid \"$HOST_GID\" \"$HOST_USER\" && \
+            useradd --uid \"$HOST_UID\" --gid \"$HOST_GID\" --home \"$SCRIPT_DIR\" --shell /bin/bash \"$HOST_USER\" && \
+            echo \"$HOST_USER ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers; \
+            exec su - \"$HOST_USER\" -c \"$CONTAINER_CMD\"; \
+        else \
+            exec $CONTAINER_CMD; \
+        fi
     "
 
