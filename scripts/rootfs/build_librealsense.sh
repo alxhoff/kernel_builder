@@ -1,33 +1,56 @@
 #!/bin/bash
 
-# Usage: ./install_realsense_sdk.sh <gitlab_access_token> [branch_name]
-# Example: ./install_realsense_sdk.sh your_access_token v2.56.3-cartken
+set -e  # Exit immediately on error
 
-# Check if the GitLab access token is provided
-if [ -z "$1" ]; then
-    echo "Error: GitLab access token is required as the first argument."
-    exit 1
+# Default values
+BRANCH_NAME="v2.56.3-cartken"
+INSTALL_DIR="$HOME/librealsense_cartken"
+REPO_URL="https://gitlab.com/cartken/librealsense_cartken.git"
+
+# Function to show help message
+show_help() {
+    echo "Usage: $0 <gitlab_access_token> [branch_name]"
+    echo ""
+    echo "Options:"
+    echo "  <gitlab_access_token>   Required. GitLab personal access token for authentication."
+    echo "  [branch_name]           Optional. Branch to clone (default: $BRANCH_NAME)."
+    echo "  -h, --help              Show this help message."
+    exit 0
+}
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_help
 fi
 
-# Assign variables
-GITLAB_ACCESS_TOKEN=$1
-BRANCH_NAME=${2:-v2.56.3-cartken}  # Default to 'v2.56.3-cartken' if no branch is specified
-REPO_URL="https://gitlab.com/cartken/librealsense_cartken.git"
-CLONE_URL="https://oauth2:${GITLAB_ACCESS_TOKEN}@gitlab.com/cartken/librealsense_cartken.git"
-INSTALL_DIR="$HOME/librealsense_cartken"
+# Validate input arguments
+if [[ -z "$1" ]]; then
+    echo "Error: GitLab access token is required."
+    show_help
+fi
 
-# Update and install required dependencies
+GITLAB_ACCESS_TOKEN=$1
+BRANCH_NAME=${2:-$BRANCH_NAME}  # Use provided branch name, or default to 'v2.56.3-cartken'
+CLONE_URL="https://oauth2:${GITLAB_ACCESS_TOKEN}@gitlab.com/cartken/librealsense_cartken.git"
+
+# Install dependencies
 echo "Updating system and installing dependencies..."
 sudo apt-get update && sudo apt-get upgrade -y
 sudo apt-get install -y git libssl-dev libusb-1.0-0-dev libudev-dev pkg-config libgtk-3-dev cmake
+sudo apt-get install -y git wget cmake build-essential v4l-utils
+sudo apt-get install -y libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev at
 
-# Clone the repository
-echo "Cloning the repository from ${REPO_URL}..."
-if git clone --branch "$BRANCH_NAME" "$CLONE_URL" "$INSTALL_DIR"; then
-    echo "Repository cloned successfully."
+# Clone the repository if it does not already exist
+if [[ -d "$INSTALL_DIR" ]]; then
+    echo "Skipping cloning: Repository already exists in $INSTALL_DIR."
 else
-    echo "Error: Failed to clone the repository. Please check your access token and branch name."
-    exit 1
+    echo "Cloning repository from ${REPO_URL}..."
+    if git clone --branch "$BRANCH_NAME" "$CLONE_URL" "$INSTALL_DIR"; then
+        echo "Repository cloned successfully."
+    else
+        echo "Error: Failed to clone the repository. Please check your access token and branch name."
+        exit 1
+    fi
 fi
 
 # Navigate to the installation directory
