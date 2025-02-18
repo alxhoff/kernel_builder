@@ -64,7 +64,7 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
     # Deploys the compiled kernel to a remote Jetson device via SCP.
     modules_base_dir = os.path.join("kernels", kernel_name, "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
-    kernel_version = next((version for version in kernel_versions if localversion in version), kernel_versions[0]) if localversion else kernel_versions[0]
+    kernel_version = next((version for version in kernel_versions if version.endswith(localversion)), kernel_versions[-1]) if localversion else kernel_versions[0]
 
     # Define paths for deployment
     kernel_image = os.path.join(modules_base_dir, "boot", f"Image.{localversion}") if localversion else os.path.join(modules_base_dir, "boot", "Image")
