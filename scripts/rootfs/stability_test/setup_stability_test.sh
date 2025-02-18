@@ -12,7 +12,7 @@ STABILITY_TEST_SCRIPT="/home/ros/stability_test.sh"  # Modify if needed
 show_help() {
     echo "Usage: $0 [--shell | --test]"
     echo "Options:"
-    echo "  --shell     Drop into an interactive bash shell inside the container."
+    echo "  --shell     Drop into an interactive bash shell inside the container (keeps changes)."
     echo "  --test      Run the stability test script inside the container."
     exit 0
 }
@@ -77,7 +77,7 @@ if ! $DOCKER_CMD image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
     echo "Docker image imported successfully."
 fi
 
-# Create the container if it doesn't exist
+# Check if the container exists, if not, create it
 if ! $DOCKER_CMD ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
     echo "Creating container '$CONTAINER_NAME'..."
     $DOCKER_CMD create -it --name "$CONTAINER_NAME" --runtime nvidia --privileged --network host \
@@ -95,6 +95,14 @@ fi
 if [[ "$MODE" == "shell" ]]; then
     echo "Dropping into an interactive bash shell inside the container..."
     $DOCKER_CMD exec -it "$CONTAINER_NAME" bash
+
+    # After exiting shell, commit changes
+    echo "Committing changes to Docker image..."
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    NEW_IMAGE_NAME="${IMAGE_NAME}-modified-${TIMESTAMP}"
+    $DOCKER_CMD commit "$CONTAINER_NAME" "$NEW_IMAGE_NAME"
+    echo "Changes saved as new image: $NEW_IMAGE_NAME"
+
 elif [[ "$MODE" == "test" ]]; then
     echo "Running stability test script inside the container..."
     $DOCKER_CMD exec -it "$CONTAINER_NAME" bash -c "$STABILITY_TEST_SCRIPT"
