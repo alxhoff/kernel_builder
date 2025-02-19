@@ -141,7 +141,8 @@ if [ "$PATCH_SOURCE" = true ]; then
 
 		if [[ -f "$PATCH_FILE" ]]; then
             echo "Applying patch $FILE_NAME..."
-            patch -p1 -d "$KERNEL_SRC" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!"
+            echo "patch -p1 -d "$KERNEL_SRC_ROOT" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!""
+            patch -p1 -d "$KERNEL_SRC_ROOT" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!"
         else
             echo "Error: Patch file $FILE_NAME not found!"
             exit 1
@@ -159,6 +160,8 @@ if [ ! -f "$defconfig_path" ]; then
     sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
     echo "cartken_defconfig downloaded successfully."
 fi
+
+sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
 
 # Run menuconfig if requested
 if [ "$MENUCONFIG" = true ]; then
