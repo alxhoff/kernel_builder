@@ -19,18 +19,12 @@ RUN_SETUP_SCRIPT=true
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -j, --jetpack VERSION   Specify JetPack version (default: 5.1.3)"
-    echo "  --access-token TOKEN     Provide the access token (required)"
-    echo "  --tag TAG                Specify tag for get_packages.sh (default: latest)"
-    echo "  --soc SOC                Specify SoC type for jetson_chroot.sh (default: unspecified)"
-    echo "                         Available versions: 5.1.3 (L4T <L4T_VERSION_5.1.3>), 5.1.2 (L4T <L4T_VERSION_5.1.2>)"
-    echo "  --no-download           Use existing .tbz2 files instead of downloading"
     echo "  --inspect               Start a shell inside the container without running the setup script"
     echo "  -h, --help              Show this help message"
     exit 0
 }
 
-# Check for arguments
+# Parse arguments
 for arg in "$@"; do
     case $arg in
         --inspect)
@@ -43,30 +37,17 @@ for arg in "$@"; do
     esac
 done
 
-# Get the real user details
-HOST_USER=$(logname 2>/dev/null || echo $SUDO_USER)
-HOST_UID=$(id -u $HOST_USER)
-HOST_GID=$(id -g $HOST_USER)
-
 # Pull the latest Ubuntu 22.04 image
-docker pull $IMAGE
+docker pull "$IMAGE"
 
 # Determine the command to run inside the container
 if [[ "$RUN_SETUP_SCRIPT" == true ]]; then
-    if [[ "$HOST_USER" == "root" ]]; then
-        CONTAINER_CMD="./setup_tegra_package.sh $*"
-    else
-        CONTAINER_CMD="su - $HOST_USER -c 'sudo ./setup_tegra_package.sh $*'"
-    fi
+    CONTAINER_CMD="./setup_tegra_package.sh $*"
 else
-    if [[ "$HOST_USER" == "root" ]]; then
-        CONTAINER_CMD="/bin/bash"
-    else
-        CONTAINER_CMD="su - $HOST_USER"
-    fi
+    CONTAINER_CMD="/bin/bash"
 fi
 
-# Run the script inside a privileged container with the user setup
+# Run the script inside a privileged container as root
 docker run --rm -it \
     --name "$CONTAINER_NAME" \
     --privileged \
@@ -74,21 +55,12 @@ docker run --rm -it \
     -v "$SCRIPT_DIR:$SCRIPT_DIR" \
     -w "$SCRIPT_DIR" \
     -e HOME="$SCRIPT_DIR" \
-    -e LOGNAME="$HOST_USER" \
-    -e USER="$HOST_USER" \
     "$IMAGE" \
     /bin/bash -c "
         apt-get update && \
         apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential kmod && \
-        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common && \
+        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common
 
-        if [ \"$HOST_USER\" != \"root\" ]; then \
-            groupadd --gid \"$HOST_GID\" \"$HOST_USER\" && \
-            useradd --uid \"$HOST_UID\" --gid \"$HOST_GID\" --home \"$SCRIPT_DIR\" --shell /bin/bash \"$HOST_USER\" && \
-            echo \"$HOST_USER ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers; \
-            exec su - \"$HOST_USER\" -c \"$CONTAINER_CMD\"; \
-        else \
-            exec $CONTAINER_CMD; \
-        fi
+        exec $CONTAINER_CMD
     "
 

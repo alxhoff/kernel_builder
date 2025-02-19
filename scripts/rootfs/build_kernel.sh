@@ -69,14 +69,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Set KERNEL_SRC based on JetPack version
-if [[ "$PATCH" == "5.1.2" || "$PATCH" == "5.1.3" ]]; then
-    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
-elif [[ "$PATCH" == "6.2" || "$PATCH" == "6.0DP" ]]; then
-    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-jammy-src"
-else
-    echo "Warning: Unsupported JetPack version ($PATCH). Defaulting to kernel-5.10."
-    KERNEL_SRC="$TEGRA_DIR/kernel_src/kernel/kernel-5.10"
+KERNEL_SRC_DIR="$TEGRA_DIR/kernel_src/kernel"
+KERNEL_SRC="$KERNEL_SRC_DIR/kernel"
+
+# Check if the kernel directory already exists
+if [[ ! -d "$KERNEL_SRC" ]]; then
+    # Find the first matching kernel* directory
+    KERNEL_SRC_OG=$(find "$KERNEL_SRC_DIR" -mindepth 1 -maxdepth 1 -type d -name "kernel*" | head -n 1)
+
+    # Ensure a valid directory was found before moving
+    if [[ -n "$KERNEL_SRC_OG" && "$KERNEL_SRC_OG" != "$KERNEL_SRC" ]]; then
+        mv "$KERNEL_SRC_OG" "$KERNEL_SRC"
+    fi
 fi
 
 # Validate JetPack version
@@ -135,14 +139,9 @@ if [ "$PATCH_SOURCE" = true ]; then
         echo "Downloading $FILE_NAME..."
         wget -v --show-progress -O "$PATCH_FILE" "$FILE_URL"
 
-        if [[ -f "$PATCH_FILE" ]]; then
-            # Check if the patch is already applied
-            if patch -p1 -d "$KERNEL_SRC_ROOT" --dry-run -f < "$PATCH_FILE" >/dev/null 2>&1; then
-                echo "Applying patch $FILE_NAME..."
-                patch -p1 -d "$KERNEL_SRC_ROOT" < "$PATCH_FILE"
-            else
-                echo "Skipping $FILE_NAME: Already applied."
-            fi
+		if [[ -f "$PATCH_FILE" ]]; then
+            echo "Applying patch $FILE_NAME..."
+            patch -p1 -d "$KERNEL_SRC" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!"
         else
             echo "Error: Patch file $FILE_NAME not found!"
             exit 1
