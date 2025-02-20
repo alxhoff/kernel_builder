@@ -38,9 +38,23 @@ show_help() {
 # Function to execute or simulate commands
 run_cmd() {
     if $DRY_RUN; then
-        echo "[DRY-RUN] $1"
+        echo "[DRY-RUN] sudo $1"
     else
-        eval "$1"
+        sudo bash -c "$1"
+    fi
+}
+
+# Function to ensure BSP folder contains Linux_for_Tegra
+ensure_linux_for_tegra() {
+    local BSP_PATH="$1"
+    if [[ ! -d "$BSP_PATH/Linux_for_Tegra" ]]; then
+        echo "Rearranging $BSP_PATH to include Linux_for_Tegra..."
+        echo "mkdir -p \"Linux_for_Tegra\""
+        run_cmd "mkdir -p \"Linux_for_Tegra\""
+        echo "mv \"$BSP_PATH\"/* \"Linux_for_Tegra/\""
+        run_cmd "mv \"$BSP_PATH\"/* \"Linux_for_Tegra/\""
+        echo "mv \"Linux_for_Tegra\" \"$BSP_PATH\"/"
+        run_cmd "mv \"Linux_for_Tegra\" \"$BSP_PATH\"/"
     fi
 }
 
@@ -48,11 +62,11 @@ run_cmd() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --base-bsp)
-            BASE_BSP=$(realpath "$2")/Linux_for_Tegra
+            BASE_BSP=$(realpath "$2")
             shift 2
             ;;
         --target-bsp)
-            TARGET_BSP=$(realpath "$2")/Linux_for_Tegra
+            TARGET_BSP=$(realpath "$2")
             shift 2
             ;;
         --deploy)
@@ -89,6 +103,14 @@ if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
     exit 1
 fi
 
+# Ensure BSP directories contain Linux_for_Tegra
+ensure_linux_for_tegra "$BASE_BSP"
+ensure_linux_for_tegra "$TARGET_BSP"
+
+# Update BASE_BSP and TARGET_BSP to include Linux_for_Tegra
+BASE_BSP="$BASE_BSP/Linux_for_Tegra"
+TARGET_BSP="$TARGET_BSP/Linux_for_Tegra"
+
 # Extract version numbers
 BASE_VERSION=$(basename "$(dirname "$BASE_BSP")")
 TARGET_VERSION=$(basename "$(dirname "$TARGET_BSP")")
@@ -104,20 +126,21 @@ fi
 OTA_TOOL_URL="${OTA_TOOL_URLS[$TARGET_VERSION]}"
 OTA_TOOL_FILE="$(basename "$OTA_TOOL_URL")"
 
-# Download OTA tools if missing
+# Download OTA tools if missing (wget does not need sudo)
 if [[ ! -f "$OTA_TOOL_FILE" ]]; then
     echo "Downloading OTA tools for target BSP $TARGET_VERSION..."
-    run_cmd "wget -O \"$OTA_TOOL_FILE\" \"$OTA_TOOL_URL\""
+    if $DRY_RUN; then
+        echo "[DRY-RUN] wget -O \"$OTA_TOOL_FILE\" \"$OTA_TOOL_URL\""
+    else
+        wget -O "$OTA_TOOL_FILE" "$OTA_TOOL_URL"
+    fi
 else
     echo "OTA tools already downloaded."
 fi
 
 # Extract OTA tools directly into TARGET_BSP
 echo "Extracting OTA tools into $TARGET_BSP..."
-run_cmd "sudo tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
-
-# Change into TARGET_BSP directory
-run_cmd "cd \"$TARGET_BSP\""
+run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
 
 # Apply force partition change if requested
 if $FORCE_PARTITION_CHANGE; then
@@ -127,7 +150,7 @@ fi
 
 # Generate OTA payload
 echo "Generating OTA update payload..."
-run_cmd "sudo -E ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+run_cmd "cd \"$TARGET_BSP\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
 # Find the generated payload
 PAYLOAD_PATH="$TARGET_BSP/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
@@ -142,8 +165,13 @@ echo "OTA payload generated successfully: $PAYLOAD_PATH"
 if [[ -n "$DEPLOY_IP" ]]; then
     echo "Deploying OTA update to Jetson device at $DEPLOY_IP..."
 
-    run_cmd "scp \"$OTA_TOOL_FILE\" root@$DEPLOY_IP:/home/root/"
-    run_cmd "scp \"$PAYLOAD_PATH\" root@$DEPLOY_IP:/home/root/"
+    if $DRY_RUN; then
+        echo "[DRY-RUN] scp \"$OTA_TOOL_FILE\" root@$DEPLOY_IP:/home/root/"
+        echo "[DRY-RUN] scp \"$PAYLOAD_PATH\" root@$DEPLOY_IP:/home/root/"
+    else
+        scp "$OTA_TOOL_FILE" root@$DEPLOY_IP:/home/root/
+        scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/home/root/
+    fi
 
     run_cmd "ssh root@$DEPLOY_IP 'mkdir -p /home/root/ota_update && tar -xjf \"/home/root/$OTA_TOOL_FILE\" -C /home/root/ota_update'"
     run_cmd "ssh root@$DEPLOY_IP 'sudo mkdir -p /ota && sudo mv /home/root/ota_payload_package.tar.gz /ota/'"
