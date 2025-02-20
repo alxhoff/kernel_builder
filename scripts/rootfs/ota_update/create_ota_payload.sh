@@ -7,6 +7,7 @@ DRY_RUN=false
 DEPLOY_IP=""
 BASE_BSP=""
 TARGET_BSP=""
+FORCE_PARTITION_CHANGE=false
 
 declare -A BSP_VERSION_MAP=(
     [5.1.2]="R35-4"
@@ -24,12 +25,13 @@ declare -A OTA_TOOL_URLS=(
 
 # Function to show help
 show_help() {
-    echo "Usage: $0 --base-bsp <path> --target-bsp <path> [--deploy <device-ip>] [--dry-run]"
+    echo "Usage: $0 --base-bsp <path> --target-bsp <path> [--deploy <device-ip>] [--dry-run] [--force-partition-change]"
     echo "Options:"
-    echo "  --base-bsp PATH     Path to the BASE BSP source (e.g., 5.1.2)"
-    echo "  --target-bsp PATH   Path to the TARGET BSP source (e.g., 5.1.3)"
-    echo "  --deploy IP         Deploy the generated OTA update to the given device IP (e.g., 192.168.1.91)"
-    echo "  --dry-run           Show commands that would be executed without running them"
+    echo "  --base-bsp PATH              Path to the BASE BSP source (e.g., 5.1.2)"
+    echo "  --target-bsp PATH            Path to the TARGET BSP source (e.g., 5.1.3)"
+    echo "  --deploy IP                  Deploy the generated OTA update to the given device IP (e.g., 192.168.1.91)"
+    echo "  --dry-run                    Show commands that would be executed without running them"
+    echo "  --force-partition-change     Modify l4t_generate_ota_package.sh to enable partition changes"
     exit 0
 }
 
@@ -59,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --force-partition-change)
+            FORCE_PARTITION_CHANGE=true
             shift
             ;;
         -h|--help)
@@ -110,6 +116,12 @@ fi
 echo "Extracting OTA tools into $TARGET_BSP..."
 run_cmd "cd $(dirname "$TARGET_BSP")"
 run_cmd "sudo tar xpf \"$OTA_TOOL_FILE\""
+
+# Apply force partition change if requested
+if $FORCE_PARTITION_CHANGE; then
+    echo "Enabling partition layout change..."
+    run_cmd "sed -i 's/^LAYOUT_CHANGE=0/LAYOUT_CHANGE=1/' \"$TARGET_BSP/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh\""
+fi
 
 # Generate OTA payload
 echo "Generating OTA update payload..."
