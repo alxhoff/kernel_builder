@@ -142,6 +142,15 @@ fi
 echo "Extracting OTA tools into $TARGET_BSP..."
 run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
 
+# Remove specific line from ota_make_recovery_img_dtb.sh
+OTA_SCRIPT="${TARGET_BSP}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
+if [[ -f "$OTA_SCRIPT" ]]; then
+    echo "Removing problematic line from $OTA_SCRIPT..."
+	run_cmd "sudo sed -i '/ssh-keygen[[:space:]]\+-t[[:space:]]\+dsa[[:space:]]\+-N/d' \"$OTA_SCRIPT\""
+else
+    echo "Warning: $OTA_SCRIPT not found. Skipping modification."
+fi
+
 # Apply force partition change if requested
 if $FORCE_PARTITION_CHANGE; then
     echo "Enabling partition layout change..."
