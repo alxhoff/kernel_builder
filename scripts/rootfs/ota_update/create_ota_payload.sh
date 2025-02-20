@@ -112,10 +112,12 @@ else
     echo "OTA tools already downloaded."
 fi
 
-# Extract OTA tools
+# Extract OTA tools directly into TARGET_BSP
 echo "Extracting OTA tools into $TARGET_BSP..."
-run_cmd "cd $(dirname "$TARGET_BSP")"
-run_cmd "sudo tar xpf \"$OTA_TOOL_FILE\""
+run_cmd "sudo tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+
+# Change into TARGET_BSP directory
+run_cmd "cd \"$TARGET_BSP\""
 
 # Apply force partition change if requested
 if $FORCE_PARTITION_CHANGE; then
@@ -125,7 +127,6 @@ fi
 
 # Generate OTA payload
 echo "Generating OTA update payload..."
-run_cmd "cd \"$TARGET_BSP\""
 run_cmd "sudo -E ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
 # Find the generated payload
