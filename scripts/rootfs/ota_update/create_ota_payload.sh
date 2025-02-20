@@ -71,6 +71,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Ensure the script is run with sudo (after help is shown)
+if [[ "$EUID" -ne 0 ]]; then
+    echo "Error: This script must be run with sudo."
+    exit 1
+fi
+
 # Validate required parameters
 if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
     echo "Error: Both --base-bsp and --target-bsp must be provided."
