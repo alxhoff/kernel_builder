@@ -154,12 +154,9 @@ cd "$KERNEL_SRC"
 
 # Download cartken_defconfig
 defconfig_path="$KERNEL_SRC/arch/arm64/configs/defconfig"
-echo "Checking for cartken_defconfig..."
-if [ ! -f "$defconfig_path" ]; then
-    echo "Downloading cartken defconfig..."
-    sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
-    echo "cartken_defconfig downloaded successfully."
-fi
+echo "Downloading cartken defconfig..."
+sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
+echo "cartken_defconfig downloaded successfully."
 
 sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
 
