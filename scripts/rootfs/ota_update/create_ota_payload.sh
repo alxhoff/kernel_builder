@@ -150,15 +150,15 @@ fi
 
 # Extract OTA tools directly into TARGET_BSP
 echo "Extracting OTA tools into $TARGET_BSP..."
-#run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
 
 # Replace partition XML if provided
-# if [[ -n "$PARTITION_XML" ]]; then
-#     TARGET_PARTITION_XML="$TARGET_BSP/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
-#     echo "Replacing partition XML file..."
-#     echo "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
-#     run_cmd "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
-# fi
+if [[ -n "$PARTITION_XML" ]]; then
+	TARGET_PARTITION_XML="$TARGET_BSP/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+	echo "Replacing partition XML file..."
+	echo "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
+	run_cmd "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
+fi
 
 # Remove specific line from ota_make_recovery_img_dtb.sh
 OTA_SCRIPT="${TARGET_BSP}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
