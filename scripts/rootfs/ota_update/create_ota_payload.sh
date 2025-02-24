@@ -8,6 +8,7 @@ DEPLOY_IP=""
 BASE_BSP=""
 TARGET_BSP=""
 FORCE_PARTITION_CHANGE=false
+PARTITION_XML=""
 
 declare -A BSP_VERSION_MAP=(
     [5.1.2]="R35-4"
@@ -32,6 +33,7 @@ show_help() {
     echo "  --deploy IP                  Deploy the generated OTA update to the given device IP (e.g., 192.168.1.91)"
     echo "  --dry-run                    Show commands that would be executed without running them"
     echo "  --force-partition-change     Modify l4t_generate_ota_package.sh to enable partition changes"
+	echo "  --partition-xml FILE         Path to a partition XML file to replace the default one in the target BSP"
     exit 0
 }
 
@@ -81,6 +83,10 @@ while [[ $# -gt 0 ]]; do
             FORCE_PARTITION_CHANGE=true
             shift
             ;;
+		--partition-xml)
+            PARTITION_XML=$(realpath "$2")
+            shift 2
+            ;;
         -h|--help)
             show_help
             ;;
@@ -110,6 +116,10 @@ ensure_linux_for_tegra "$TARGET_BSP"
 # Update BASE_BSP and TARGET_BSP to include Linux_for_Tegra
 BASE_BSP="$BASE_BSP/Linux_for_Tegra"
 TARGET_BSP="$TARGET_BSP/Linux_for_Tegra"
+echo "BASE_BSP: $BASE_BSP"
+echo "TARGET_BSP: $TARGET_BSP"
+export BASE_BSP=$BASE_BSP
+export TARGET_BSP=$TARGET_BSP
 
 # Extract version numbers
 BASE_VERSION=$(basename "$(dirname "$BASE_BSP")")
@@ -140,7 +150,15 @@ fi
 
 # Extract OTA tools directly into TARGET_BSP
 echo "Extracting OTA tools into $TARGET_BSP..."
-run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+#run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+
+# Replace partition XML if provided
+# if [[ -n "$PARTITION_XML" ]]; then
+#     TARGET_PARTITION_XML="$TARGET_BSP/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+#     echo "Replacing partition XML file..."
+#     echo "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
+#     run_cmd "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
+# fi
 
 # Remove specific line from ota_make_recovery_img_dtb.sh
 OTA_SCRIPT="${TARGET_BSP}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
@@ -159,6 +177,7 @@ fi
 
 # Generate OTA payload
 echo "Generating OTA update payload..."
+echo "./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
 run_cmd "cd \"$TARGET_BSP\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
 # Find the generated payload
