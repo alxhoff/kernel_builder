@@ -73,6 +73,7 @@ RUN apt-get update && apt-get install -y apt-utils && \\
     pv zip unzip git curl libssl-dev rsync jq \\
     && apt-get clean
 RUN pip3 install --no-cache-dir pyyaml
+RUN ln -s $(which python3) /usr/bin/python
 WORKDIR /workspace
 EOF
 fi
