@@ -148,6 +148,12 @@ else
     echo "OTA tools already downloaded."
 fi
 
+echo "Applying binaries"
+cd $TARGET_BSP
+[ -e "$TARGET_BSP/rootfs/dev/random" ] && sudo rm "$TARGET_BSP/rootfs/dev/random"
+[ -e "$TARGET_BSP/rootfs/dev/urandom" ] && sudo rm "$TARGET_BSP/rootfs/dev/urandom"
+sudo ./apply_binaries.sh
+
 # Extract OTA tools directly into TARGET_BSP
 echo "Extracting OTA tools into $TARGET_BSP..."
 run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
@@ -178,7 +184,7 @@ fi
 # Generate OTA payload
 echo "Generating OTA update payload..."
 echo "./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
-run_cmd "cd \"$TARGET_BSP\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+run_cmd "cd \"$TARGET_BSP\" && ROOTFS_AB=0 ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
 # Find the generated payload
 PAYLOAD_PATH="$TARGET_BSP/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
