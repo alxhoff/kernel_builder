@@ -154,9 +154,9 @@ if [ "$NO_DEPLOY" == false ]; then
   fi
 
   # Prepare deploy command with the correct options
-  DEPLOY_COMMAND="$DEPLOY_SCRIPT $KERNEL_NAME --ip $DEVICE_IP --user $USERNAME"
+  DEPLOY_COMMAND="$DEPLOY_SCRIPT "$KERNEL_NAME" --ip $DEVICE_IP --user $USERNAME"
   [ "$DRY_RUN" == true ] && DEPLOY_COMMAND+=" --dry-run"
-  DEPLOY_COMMAND+=" --localversion $LOCALVERSION_ARG"
+  DEPLOY_COMMAND+=" --localversion "$LOCALVERSION_ARG""
   [ "$KERNEL_ONLY" == true ] && DEPLOY_COMMAND+=" --kernel-only"
   [ "$DTB_FLAG" == true ] && DEPLOY_COMMAND+=" --dtb"
 

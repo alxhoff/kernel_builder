@@ -82,7 +82,7 @@ def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localver
         base_command += f" CROSS_COMPILE={toolchain_bin_path}-"
 
     if localversion:
-        base_command += f" LOCALVERSION={localversion}"
+        base_command += f" LOCALVERSION=-{localversion}"
 
     # Run make for each unique module directory located earlier
     for module_dir_relative, modules in module_locations.items():
@@ -131,7 +131,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
 
     if localversion:
-        base_command += f" LOCALVERSION={localversion}"
+        base_command += f" LOCALVERSION=-{localversion}"
 
     # Locate module directories
     module_locations = locate_target_modules(kernel_name)
@@ -171,7 +171,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         base_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, 'bin', toolchain_name)}-"
 
     if localversion:
-        base_command += f" LOCALVERSION={localversion}"
+        base_command += f" LOCALVERSION=-{localversion}"
 
     # If use_current_config is specified, get the current kernel config and place it in the kernel directory
     if use_current_config:
@@ -272,7 +272,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
 
     if localversion:
-        base_command += f" LOCALVERSION={localversion}"
+        base_command += f" LOCALVERSION=-{localversion}"
 
     env = os.environ.copy()
     if toolchain_name:
@@ -392,7 +392,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
 
     if localversion:
-        base_command += f" LOCALVERSION={localversion}"
+        base_command += f" LOCALVERSION=-{localversion}"
 
     # Locate module directories
     module_locations = locate_target_modules(kernel_name)

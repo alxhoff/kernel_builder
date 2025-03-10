@@ -74,7 +74,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --localversion)
       if [ -n "$2" ]; then
-        LOCALVERSION_ARG="--localversion $2"
+        LOCALVERSION_ARG="--localversion \"$2\""
         shift 2
       else
         echo "Error: --localversion requires a value"
