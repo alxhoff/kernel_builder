@@ -258,6 +258,6 @@ sudo cp -r packages rootfs/root/
 echo "Setting up chroot environment for SoC: $SOC..."
 sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
 
-sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion cartken$JETPACK_VERSION
+sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 
 echo "Setup completed successfully!"
