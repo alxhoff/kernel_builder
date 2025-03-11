@@ -9,6 +9,10 @@ PARTITION_XML=""
 FORCE_PARTITION_CHANGE=false
 REBUILD_IMAGE=false
 IMAGE_NAME="jetson-ota-builder:latest"
+BUILD_BOOTLOADER=false
+BUILD_ROOTFS=false
+SKIP_BUILD=false
+
 
 # Function to show help
 show_help() {
@@ -19,6 +23,10 @@ show_help() {
     echo "  --partition-xml FILE         Path to a partition XML file"
     echo "  --force-partition-change     Enable forced partition change during OTA payload generation"
     echo "  --rebuild                    Force rebuild of the Docker image"
+	echo "  --deploy IP					 Deploys the ota payload to a target device"
+	echo "  --skip-build				 Skips the generation of the OTA package (assumes it exists already)"
+	echo "  -b                           Build only the bootloader"
+    echo "  -r                           Build only the rootfs"
     exit 0
 }
 
@@ -45,6 +53,22 @@ while [[ $# -gt 0 ]]; do
             REBUILD_IMAGE=true
             shift
             ;;
+		--deploy)
+            DEPLOY_IP="$2"
+            shift 2
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+		-b)
+            BUILD_BOOTLOADER=true
+            shift
+            ;;
+        -r)
+            BUILD_ROOTFS=true
+            shift
+            ;;
         -h|--help)
             show_help
             ;;
@@ -56,8 +80,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required parameters
-if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" || -z "$PARTITION_XML" ]]; then
-    echo "Error: --base-bsp, --target-bsp, and --partition-xml must be provided."
+if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
+    echo "Error: --base-bsp and --target-bsp must be provided."
     exit 1
 fi
 
@@ -85,9 +109,11 @@ docker run --rm -it --privileged \
     --device /dev/loop-control \
     --device /dev/loop0:/dev/loop0 \
     --device /dev/loop1:/dev/loop1 \
+	-e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
+	-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" \
     -v "$(dirname "$BASE_BSP"):/workspace/base_bsp" \
     -v "$(dirname "$TARGET_BSP"):/workspace/target_bsp" \
-    -v "$(dirname "$PARTITION_XML"):/workspace/xml" \
+    $(if [[ -n "$PARTITION_XML" ]]; then echo "-v $(dirname "$PARTITION_XML"):/workspace/xml"; fi) \
     -v "$(pwd):/workspace/script" \
     "$IMAGE_NAME" \
     bash -c "
@@ -95,9 +121,14 @@ docker run --rm -it --privileged \
     sudo ./create_ota_payload.sh \
         --base-bsp /workspace/base_bsp/$(basename "$BASE_BSP") \
         --target-bsp /workspace/target_bsp/$(basename "$TARGET_BSP") \
-        --partition-xml /workspace/xml/$(basename "$PARTITION_XML") \
-        $(if $FORCE_PARTITION_CHANGE; then echo '--force-partition-change'; fi)
+        $(if [[ -n "$PARTITION_XML" ]]; then echo "--partition-xml /workspace/xml/$(basename "$PARTITION_XML")"; fi) \
+        $(if $FORCE_PARTITION_CHANGE; then echo '--force-partition-change'; fi) \
+        $(if $BUILD_BOOTLOADER; then echo '-b'; fi) \
+        $(if $BUILD_ROOTFS; then echo '-r'; fi) \
+		$(if [[ -n "$DEPLOY_IP" ]]; then echo "--deploy $DEPLOY_IP"; fi) \
+        $(if $SKIP_BUILD; then echo '--skip-build'; fi)
     "
+
 
 echo "OTA payload generation completed."
 

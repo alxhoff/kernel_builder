@@ -9,6 +9,9 @@ BASE_BSP=""
 TARGET_BSP=""
 FORCE_PARTITION_CHANGE=false
 PARTITION_XML=""
+BUILD_BOOTLOADER=false
+BUILD_ROOTFS=false
+SKIP_BUILD=false
 
 declare -A BSP_VERSION_MAP=(
     [5.1.2]="R35-4"
@@ -34,6 +37,9 @@ show_help() {
     echo "  --dry-run                    Show commands that would be executed without running them"
     echo "  --force-partition-change     Modify l4t_generate_ota_package.sh to enable partition changes"
 	echo "  --partition-xml FILE         Path to a partition XML file to replace the default one in the target BSP"
+	echo "  --skip-build				 Skips the building of the package (assumes it already exists)"
+	echo "  -b                           Build only the bootloader"
+    echo "  -r                           Build only the rootfs"
     exit 0
 }
 
@@ -87,6 +93,19 @@ while [[ $# -gt 0 ]]; do
             PARTITION_XML=$(realpath "$2")
             shift 2
             ;;
+		--skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+
+		-b)
+            BUILD_BOOTLOADER=true
+            shift
+            ;;
+        -r)
+            BUILD_ROOTFS=true
+            shift
+            ;;
         -h|--help)
             show_help
             ;;
@@ -135,6 +154,9 @@ fi
 # Get correct OTA tool URL for TARGET_BSP
 OTA_TOOL_URL="${OTA_TOOL_URLS[$TARGET_VERSION]}"
 OTA_TOOL_FILE="$(basename "$OTA_TOOL_URL")"
+# Ensure absolute paths before changing directories
+OTA_TOOL_FILE_PATH="$PWD/$OTA_TOOL_FILE"
+PAYLOAD_PATH="$TARGET_BSP/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
 
 # Download OTA tools if missing (wget does not need sudo)
 if [[ ! -f "$OTA_TOOL_FILE" ]]; then
@@ -148,15 +170,15 @@ else
     echo "OTA tools already downloaded."
 fi
 
+# Extract OTA tools directly into TARGET_BSP
+echo "Extracting OTA tools into $TARGET_BSP..."
+run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+
 echo "Applying binaries"
 cd $TARGET_BSP
 [ -e "$TARGET_BSP/rootfs/dev/random" ] && sudo rm "$TARGET_BSP/rootfs/dev/random"
 [ -e "$TARGET_BSP/rootfs/dev/urandom" ] && sudo rm "$TARGET_BSP/rootfs/dev/urandom"
 sudo ./apply_binaries.sh
-
-# Extract OTA tools directly into TARGET_BSP
-echo "Extracting OTA tools into $TARGET_BSP..."
-run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
 
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
@@ -181,10 +203,24 @@ if $FORCE_PARTITION_CHANGE; then
     run_cmd "sed -i 's/^LAYOUT_CHANGE=0/LAYOUT_CHANGE=1/' \"$TARGET_BSP/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh\""
 fi
 
+# Determine OTA build arguments
+OTA_BUILD_ARGS=""
+if $BUILD_BOOTLOADER; then
+    OTA_BUILD_ARGS+=" -b"
+fi
+if $BUILD_ROOTFS; then
+    OTA_BUILD_ARGS+=" -r"
+fi
+
 # Generate OTA payload
-echo "Generating OTA update payload..."
-echo "./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
-run_cmd "cd \"$TARGET_BSP\" && ROOTFS_AB=0 ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+if ! $SKIP_BUILD; then
+    echo "Generating OTA update payload..."
+    echo "./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+    run_cmd "cd \"$TARGET_BSP\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
+else
+    echo "Skipping OTA update payload generation (--skip-build enabled)."
+fi
+
 
 # Find the generated payload
 PAYLOAD_PATH="$TARGET_BSP/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
@@ -199,13 +235,16 @@ echo "OTA payload generated successfully: $PAYLOAD_PATH"
 if [[ -n "$DEPLOY_IP" ]]; then
     echo "Deploying OTA update to Jetson device at $DEPLOY_IP..."
 
-    if $DRY_RUN; then
-        echo "[DRY-RUN] scp \"$OTA_TOOL_FILE\" root@$DEPLOY_IP:/home/root/"
+	if $DRY_RUN; then
+        echo "[DRY-RUN] scp \"$OTA_TOOL_FILE_PATH\" root@$DEPLOY_IP:/home/root/"
         echo "[DRY-RUN] scp \"$PAYLOAD_PATH\" root@$DEPLOY_IP:/home/root/"
     else
-        scp "$OTA_TOOL_FILE" root@$DEPLOY_IP:/home/root/
+        echo "scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/home/root/"
+        scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/home/root/
+        echo "scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/home/root/"
         scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/home/root/
     fi
+
 
     run_cmd "ssh root@$DEPLOY_IP 'mkdir -p /home/root/ota_update && tar -xjf \"/home/root/$OTA_TOOL_FILE\" -C /home/root/ota_update'"
     run_cmd "ssh root@$DEPLOY_IP 'sudo mkdir -p /ota && sudo mv /home/root/ota_payload_package.tar.gz /ota/'"
