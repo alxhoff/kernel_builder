@@ -5,6 +5,7 @@ sudo apt autoremove -y
 sudo apt-mark unhold nvidia-l4t-bootloader nvidia-l4t-configs nvidia-l4t-tools nvidia-l4t-xusb-firmware
 echo "Installing apt packages"
 apt install -y python3-pip ifupdown v4l-utils apt-utils tree
+pip install -U sphinx
 echo "Installing viki"
 python3 -m pip install /root/packages/cartken-wheels/viki-*.whl
 echo "Installing cartken debians"
