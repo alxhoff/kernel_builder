@@ -68,7 +68,7 @@ fetch_package() {
     PACKAGE_URL="https://gitlab.com/api/v4/projects/$PROJECT_ID/packages/generic/$PACKAGE_NAME/$PACKAGE_TAG/$PACKAGE_NAME.zip"
 
     # Download the package zip file
-    curl --silent --location --header "PRIVATE-TOKEN: $ACCESS_TOKEN" \
+    curl --location --header "PRIVATE-TOKEN: $ACCESS_TOKEN" \
         --output "$OUTPUT_DIR/$PACKAGE_NAME.zip" \
         --create-dirs "$PACKAGE_URL"
 
