@@ -174,12 +174,6 @@ fi
 echo "Extracting OTA tools into $TARGET_BSP..."
 run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
 
-echo "Applying binaries"
-cd $TARGET_BSP
-[ -e "$TARGET_BSP/rootfs/dev/random" ] && sudo rm "$TARGET_BSP/rootfs/dev/random"
-[ -e "$TARGET_BSP/rootfs/dev/urandom" ] && sudo rm "$TARGET_BSP/rootfs/dev/urandom"
-sudo ./apply_binaries.sh
-
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
 	TARGET_PARTITION_XML="$TARGET_BSP/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
