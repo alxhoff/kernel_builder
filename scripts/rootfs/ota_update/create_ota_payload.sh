@@ -239,18 +239,18 @@ if [[ -n "$DEPLOY_IP" ]]; then
         echo "[DRY-RUN] scp \"$OTA_TOOL_FILE_PATH\" root@$DEPLOY_IP:/home/root/"
         echo "[DRY-RUN] scp \"$PAYLOAD_PATH\" root@$DEPLOY_IP:/home/root/"
     else
-        echo "scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/home/root/"
-        scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/home/root/
-        echo "scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/home/root/"
-        scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/home/root/
+        echo "scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/root/"
+        scp "$OTA_TOOL_FILE_PATH" root@$DEPLOY_IP:/root/
+        echo "scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/root/"
+        scp "$PAYLOAD_PATH" root@$DEPLOY_IP:/root/
     fi
 
 
-    run_cmd "ssh root@$DEPLOY_IP 'mkdir -p /home/root/ota_update && tar -xjf \"/home/root/$OTA_TOOL_FILE\" -C /home/root/ota_update'"
-    run_cmd "ssh root@$DEPLOY_IP 'sudo mkdir -p /ota && sudo mv /home/root/ota_payload_package.tar.gz /ota/'"
+    run_cmd "ssh root@$DEPLOY_IP 'mkdir -p /root/ota_update && tar -xjf \"/root/$OTA_TOOL_FILE\" -C /root/ota_update'"
+    run_cmd "ssh root@$DEPLOY_IP 'sudo mkdir -p /ota && sudo mv /root/ota_payload_package.tar.gz /ota/'"
 
     echo "Executing OTA update..."
-    run_cmd "ssh root@$DEPLOY_IP 'cd /home/root/ota_update/Linux_for_Tegra/tools/ota_tools/version_upgrade && sudo ./nv_ota_start.sh /ota/ota_payload_package.tar.gz'"
+    run_cmd "ssh root@$DEPLOY_IP 'cd /root/ota_update/Linux_for_Tegra/tools/ota_tools/version_upgrade && sudo ./nv_ota_start.sh /ota/ota_payload_package.tar.gz'"
 
     echo "Deployment completed!"
 fi
