@@ -26,12 +26,12 @@ fi
 
 echo "Applying Jetson binaries..."
 #sudo mount --bind /dev rootfs/dev
-sudo ./apply_binaries.sh
+./apply_binaries.sh
 #sudo umount rootfs/dev
 
 echo "Creating default user..."
 pushd tools
-sudo ./l4t_create_default_user.sh -u cartken -p cartken -n cart1jetson --autologin --accept-license
+./l4t_create_default_user.sh -u cartken -p cartken -n cart1jetson --autologin --accept-license
 popd
 
 echo "Setup completed successfully!"
