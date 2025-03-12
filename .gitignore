@@ -7,5 +7,7 @@ toolchains/*
 output/*
 !output/.gitkeep
 tags
+.vscode
+.dockerfile_hash
 
 __pycache__
