@@ -11,12 +11,12 @@ CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 # Constants
 DRIVER_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
 WORK_DIR="$(pwd)/jetson_display_driver"
+KERNEL_SOURCES_DIR="$WORK_DIR/kernel_src/kernel/kernel-5.10"
 SOURCE_TARBALL="$WORK_DIR/public_sources.tbz2"
 EXTRACTED_SOURCE_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
 DRIVER_TARBALL="$EXTRACTED_SOURCE_DIR/nvidia_kernel_display_driver_source.tbz2"
 DRIVER_SOURCE_DIR="$EXTRACTED_SOURCE_DIR/nvdisplay"
 
-# Function to show help
 show_help() {
     echo "Usage: $0 --toolchain <path> --kernel-sources <path> [--output-dir <path>]"
     echo "Options:"
@@ -26,7 +26,6 @@ show_help() {
     exit 0
 }
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --toolchain)
@@ -51,13 +50,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate required parameters
+CROSS_COMPILE_PATH="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
+
 if [[ -z "$TOOLCHAIN_PATH" || -z "$KERNEL_SOURCES_DIR" ]]; then
     echo "Error: --toolchain and --kernel-sources are required."
     exit 1
 fi
 
 mkdir -p "$WORK_DIR"
+
+if [ -d "$KERNEL_SOURCES_DIR" ]; then
+    echo "The folder is already named 'kernel-5.10'. Skipping rename."
+else
+	cp -r $KERNEL_SOURCES_DIR/../.. "$WORK_DIR/kernel_src"
+    SOURCE_DIR=$(find "$WORK_DIR/kernel_src/kernel/" -mindepth 1 -maxdepth 1 -type d -name "kernel*" ! -name "kernel-5.10" | head -n 1)
+    if [ -n "$SOURCE_DIR" ]; then
+        mv "$SOURCE_DIR" "$KERNEL_SOURCES_DIR"
+        echo "Folder renamed to 'kernel-5.10'."
+    else
+        echo "No matching folder found to rename."
+    fi
+fi
 
 if [[ ! -d "$EXTRACTED_SOURCE_DIR" ]]; then
     echo "Downloading public sources..."
@@ -72,33 +85,21 @@ if [[ ! -d "$DRIVER_SOURCE_DIR" ]]; then
     tar -xpf "$DRIVER_TARBALL" -C "$EXTRACTED_SOURCE_DIR"
 fi
 
-# Add toolchain to PATH
-export PATH="${TOOLCHAIN_PATH}/bin:$PATH"
-
-# Ensure output directory exists
+echo "Preparing kernel sources..running mrproper"
+make -C "$KERNEL_SOURCES_DIR" O=$OUTPUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3" mrproper
+if [[ -d "$OUTPUT_DIR" ]]; then
+    echo "Removing existing output directory: $OUTPUT_DIR"
+    rm -rf "$OUTPUT_DIR"
+fi
 mkdir -p "$OUTPUT_DIR"
 
-echo "Preparing kernel sources..."
-make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" mrproper
-echo "Cleaned with mrproper"
-make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" defconfig
-echo "Tegra defconfig applied"
-make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3"
-echo "Kernel built"
-make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" modules_prepare
-echo "Modules prepared"
+echo "Cleaned with mrproper, applying defconfig"
+make -C "$KERNEL_SOURCES_DIR" O=$OUTPUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3" defconfig
 
-export ARCH=arm64
-echo "ARCH: $ARCH"
-export TARGET_ARCH=aarch64
-echo "TARGET_ARCH: ${TARGET_ARCH}"
-export CROSS_COMPILE="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
-echo "CROSS_COMPILE: $CROSS_COMPILE"
-export CROSS_COMPILE_AARCH64_PATH=${TOOLCHAIN_PATH}
-export CROSS_COMPILE_AARCH64=${CROSS_COMPILE}
-export LOCALVERSION="-cartken5.1.3"
+echo "Tegra defconfig applied, building kernel"
+make -C "$KERNEL_SOURCES_DIR" O=$OUTPUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3"
 
-echo "Building NVIDIA Jetson display driver..."
+echo "Kernel built. Building NVIDIA Jetson display driver..."
 
 cd $DRIVER_SOURCE_DIR
 
