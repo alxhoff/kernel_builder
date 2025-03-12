@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # Default values
 TOOLCHAIN_PATH=""
@@ -20,7 +20,7 @@ DRIVER_SOURCE_DIR="$EXTRACTED_SOURCE_DIR/nvdisplay"
 show_help() {
     echo "Usage: $0 --toolchain <path> --kernel-sources <path> [--output-dir <path>]"
     echo "Options:"
-    echo "  --toolchain PATH       Path to the cross-compilation toolchain (required)"
+    echo "  --toolchain PATH       Path to the cross-compilation toolchain, ie. path $TO_HERE/bin/aarch64... (required)"
     echo "  --kernel-sources PATH  Path to the kernel source directory (required)"
     echo "  --output-dir PATH      Optional: Path to the output directory (default: ./build)"
     exit 0
@@ -57,10 +57,8 @@ if [[ -z "$TOOLCHAIN_PATH" || -z "$KERNEL_SOURCES_DIR" ]]; then
     exit 1
 fi
 
-# Create work directory
 mkdir -p "$WORK_DIR"
 
-# Download and extract public sources if not already present
 if [[ ! -d "$EXTRACTED_SOURCE_DIR" ]]; then
     echo "Downloading public sources..."
     wget -O "$SOURCE_TARBALL" "$DRIVER_TAR_URL"
@@ -69,7 +67,6 @@ if [[ ! -d "$EXTRACTED_SOURCE_DIR" ]]; then
     tar -xpf "$SOURCE_TARBALL" -C "$WORK_DIR"
 fi
 
-# Extract the driver sources if not already extracted
 if [[ ! -d "$DRIVER_SOURCE_DIR" ]]; then
     echo "Extracting display driver sources..."
     tar -xpf "$DRIVER_TARBALL" -C "$EXTRACTED_SOURCE_DIR"
@@ -81,11 +78,49 @@ export PATH="${TOOLCHAIN_PATH}/bin:$PATH"
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
 
-# Build the display driver
+echo "Preparing kernel sources..."
+make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" mrproper
+echo "Cleaned with mrproper"
+make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" defconfig
+echo "Tegra defconfig applied"
+make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3"
+echo "Kernel built"
+make -C "$KERNEL_SOURCES_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_PREFIX} LOCALVERSION="-cartken5.1.3" modules_prepare
+echo "Modules prepared"
+
+export ARCH=arm64
+echo "ARCH: $ARCH"
+export TARGET_ARCH=aarch64
+echo "TARGET_ARCH: ${TARGET_ARCH}"
+export CROSS_COMPILE="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
+echo "CROSS_COMPILE: $CROSS_COMPILE"
+export CROSS_COMPILE_AARCH64_PATH=${TOOLCHAIN_PATH}
+export CROSS_COMPILE_AARCH64=${CROSS_COMPILE}
+export LOCALVERSION="-cartken5.1.3"
+
 echo "Building NVIDIA Jetson display driver..."
-make -C "$DRIVER_SOURCE_DIR" modules -j "$(nproc)" TARGET_ARCH=aarch64 ARCH=arm64 \
-    CC="${CROSS_PREFIX}gcc" LD="${CROSS_PREFIX}ld" AR="${CROSS_PREFIX}ar" \
-    CXX="${CROSS_PREFIX}g++" OBJCOPY="${CROSS_PREFIX}objcopy" \
+
+cd $DRIVER_SOURCE_DIR
+
+echo "Running following command to build display driver"
+echo "IGNORE_MISSING_MODULE_SYMVERS=1 make VERBOSE=1 -C "$DRIVER_SOURCE_DIR" modules \
+	TARGET_ARCH=aarch64 ARCH=arm64 \
+	LOCALVERSION="-cartken5.1.3" \
+    CC="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}gcc" \
+    LD="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ld.bfd" \
+    AR="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ar" \
+    CXX="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}g++" \
+    OBJCOPY="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}objcopy" \
+    SYSOUT="$OUTPUT_DIR" SYSSRC="$KERNEL_SOURCES_DIR""
+
+IGNORE_MISSING_MODULE_SYMVERS=1 make VERBOSE=1 -C "$DRIVER_SOURCE_DIR" modules \
+	TARGET_ARCH=aarch64 ARCH=arm64 \
+	LOCALVERSION="-cartken5.1.3" \
+    CC="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}gcc" \
+    LD="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ld.bfd" \
+    AR="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ar" \
+    CXX="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}g++" \
+    OBJCOPY="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}objcopy" \
     SYSOUT="$OUTPUT_DIR" SYSSRC="$KERNEL_SOURCES_DIR"
 
 echo "Build complete. Output is in: $OUTPUT_DIR"
