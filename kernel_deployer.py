@@ -23,17 +23,23 @@ def create_deb_package(kernel_name, localversion=None):
         print("Error: Required kernel files are missing.")
         return None
 
-    # Create temporary directory for packaging
+    # Define a persistent output directory for the .deb package
+    output_dir = os.path.abspath("kernel_debs")  # Save in 'kernel_debs' folder
+    os.makedirs(output_dir, exist_ok=True)  # Ensure directory exists
+
+    # Define the final .deb package filename
+    package_name = f"linux-custom-{kernel_version}.deb"
+    deb_file_path = os.path.join(output_dir, package_name)
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        package_name = f"linux-custom-{kernel_version}"
-        debian_dir = os.path.join(temp_dir, package_name)
+        debian_dir = os.path.join(temp_dir, package_name.replace(".deb", ""))
         os.makedirs(debian_dir, exist_ok=True)
 
         # Create DEBIAN control directory
         debian_control_dir = os.path.join(debian_dir, "DEBIAN")
         os.makedirs(debian_control_dir, exist_ok=True)
 
-        control_content = f"""Package: {package_name}
+        control_content = f"""Package: {package_name.replace('.deb', '')}
 Version: {kernel_version}
 Architecture: arm64
 Maintainer: Your Name <your@email.com>
@@ -42,32 +48,30 @@ Depends: initramfs-tools
 Section: kernel
 Priority: optional
 """
-
         with open(os.path.join(debian_control_dir, "control"), "w") as control_file:
             control_file.write(control_content)
 
+        # Set up post-installation script
         postinst_content = f"""#!/bin/bash
 set -e
 echo "Installing custom kernel {kernel_version}"
 cp /boot/Image /boot/Image.previous || true
 mv /boot/Image.{localversion} /boot/Image
-mv /boot/dtb/tegra234-p3701-0000-p3737-0000{localversion}.dtb /boot/dtb/
 depmod {kernel_version}
 update-initramfs -c -k {kernel_version}
 
 # Update extlinux.conf
 sed -i 's|LINUX .*|LINUX /boot/Image|' /boot/extlinux/extlinux.conf
 sed -i 's|INITRD .*|INITRD /boot/initrd.img-{kernel_version}|' /boot/extlinux/extlinux.conf
-sed -i 's|FDT .*|FDT /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb|' /boot/extlinux/extlinux.conf
+sed -i 's|FDT .*|FDT /boot/dtb/tegra234-p3701-0000-p3737-0000{localversion}.dtb|' /boot/extlinux/extlinux.conf
 """
-
         with open(os.path.join(debian_control_dir, "postinst"), "w") as postinst_file:
             postinst_file.write(postinst_content)
 
-        # Make postinst executable
+        # Make postinst script executable
         os.chmod(os.path.join(debian_control_dir, "postinst"), 0o755)
 
-        # Copy files into package structure
+        # Copy necessary files into package structure
         boot_dir = os.path.join(debian_dir, "boot")
         dtb_dir = os.path.join(debian_dir, "boot/dtb")
         lib_modules_dir = os.path.join(debian_dir, "lib/modules")
@@ -78,14 +82,36 @@ sed -i 's|FDT .*|FDT /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb|' /boot/extlin
 
         shutil.copy(kernel_image, boot_dir)
         shutil.copy(dtb_file, dtb_dir)
-        shutil.copytree(modules_dir, os.path.join(lib_modules_dir, kernel_version))
 
-        # Build the package
-        deb_file = f"{package_name}.deb"
-        subprocess.run(["dpkg-deb", "--build", debian_dir, deb_file], check=True)
+        def ignore_symlinks(src, names):
+            ignored = []
+            for name in names:
+                full_path = os.path.join(src, name)
+                if os.path.islink(full_path):
+                    target = os.readlink(full_path)
+                    if not os.path.exists(target):  # Ignore broken symlinks
+                        print(f"⚠️  Skipping broken symlink: {full_path} -> {target}")
+                        ignored.append(name)
+            return ignored
 
-        print(f"Debian package created: {deb_file}")
-        return deb_file
+        shutil.copytree(
+            modules_dir,
+            os.path.join(lib_modules_dir, kernel_version),
+            symlinks=True,  # Preserve symlinks
+            ignore=ignore_symlinks  # Ignore broken symlinks
+        )
+
+
+        # Build the Debian package
+        subprocess.run(["dpkg-deb", "--build", debian_dir, deb_file_path], check=True)
+
+        # Print the full path of the generated .deb package
+        print("")
+        print("✅ Debian package successfully created!")
+        print(f"📂 Saved to: {deb_file_path}")
+        print("")
+
+        return deb_file_path
 
 def deploy_x86(dry_run=False, localversion=None):
     # Deploys the compiled kernel to an x86 host machine.
@@ -143,16 +169,6 @@ def deploy_device(device_ip, user, dry_run=False, localversion=None, kernel_only
             subprocess.run(["scp", "-r", modules_dir, remote_modules_dir], check=True)
 
 def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None, dtb=False, kernel_only=False):
-
-    if debian:
-        # Generate Debian package only
-        deb_file = create_deb_package(kernel_name, localversion)
-        if deb_file:
-            print(f"Debian package created successfully: {deb_file}")
-        else:
-            print("Failed to create Debian package.")
-        return  # Exit without deploying to Jetson
-
     # Deploys the compiled kernel to a remote Jetson device via SCP.
     modules_base_dir = os.path.join("kernels", kernel_name, "modules")
     kernel_versions = os.listdir(os.path.join(modules_base_dir, "lib", "modules"))
@@ -405,13 +421,11 @@ def main():
     elif args.command == "deploy-device":
         deploy_device(device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, kernel_only=args.kernel_only)
     elif args.command == "deploy-jetson":
-        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, dtb=args.dtb, kernel_only=args.kernel_only, debian=args.debian)
+        deploy_jetson(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run, localversion=args.localversion, dtb=args.dtb, kernel_only=args.kernel_only)
     elif args.command == "deploy-targeted-modules":
         deploy_targeted_modules(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
     elif args.command == "deploy-debian":
         deb_file = create_deb_package(kernel_name=args.kernel_name, localversion=args.localversion)
-    if deb_file:
-        print(f"Debian package created successfully: {deb_file}")
     else:
         print("Failed to create Debian package.")
 

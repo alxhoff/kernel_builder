@@ -9,5 +9,6 @@ output/*
 tags
 .vscode
 .dockerfile_hash
+kernel_debs
 
 __pycache__

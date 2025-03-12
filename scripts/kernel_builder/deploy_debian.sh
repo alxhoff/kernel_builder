@@ -3,6 +3,8 @@
 # General script to create a Debian package from a compiled kernel.
 # Usage: ./deploy_debian.sh [KERNEL_NAME] [OPTIONS]
 
+set -ex
+
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
@@ -60,5 +62,26 @@ done
 
 # Prepare the command to run
 DEPLOY_COMMAND="python3 \"$KERNEL_DEPLOYER_PATH\" deploy-debian --kernel-name \"$KERNEL_NAME\""
+
+if [ -n "$LOCALVERSION_ARG" ]; then
+    DEPLOY_COMMAND+=" $LOCALVERSION_ARG"
+fi
+
+if [ "$DRY_RUN" = true ]; then
+    DEPLOY_COMMAND+=" --dry-run"
+fi
+
+# Print the command before executing
+echo "Running command: $DEPLOY_COMMAND"
+
+# Execute deployment command
+if ! eval $DEPLOY_COMMAND; then
+    echo "Failed to create the Debian package for kernel: $KERNEL_NAME"
+    exit 1
+fi
+
+echo "Debian package successfully created for kernel: $KERNEL_NAME"
+
+
 
 
