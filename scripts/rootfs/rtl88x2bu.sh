@@ -1,31 +1,63 @@
 #!/bin/bash
 
+# Default values
+KERNEL_SOURCE=""
+TOOLCHAIN_PATH=""
+
 # Display help message
-if [ "$1" == "--help" ]; then
-    echo "Usage: $0 <kernel_name> [localversion]"
-    echo "\nArguments:"
-    echo "  <kernel_name>   Name of the kernel to use for building the module."
-    echo "  [localversion]  Optional local version to append to the kernel version string."
-    echo "\nDescription:"
+show_help() {
+    echo "Usage: $0 --kernel-src <path> --toolchain <path> [--localversion <version>]"
+    echo
+    echo "Options:"
+    echo "  --kernel-src <path>   Specify the kernel source path manually."
+    echo "  --toolchain <path>    Specify the toolchain path, including the prefix for compilation."
+    echo "  --localversion <ver>  Optional local version to append to the kernel version string."
+    echo "  --help                Show this help message and exit."
+    echo
+    echo "Description:"
     echo "This script clones the rtl88x2bu repository, builds the module for the specified kernel,"
     echo "and copies the resulting .ko file to the script directory."
     exit 0
+}
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --kernel-src)
+            KERNEL_SOURCE="$2/kernel/kernel"
+            shift 2
+            ;;
+        --toolchain)
+            TOOLCHAIN_PATH=$(realpath "$2")
+            shift 2
+            ;;
+        --localversion)
+            LOCALVERSION="$2"
+            shift 2
+            ;;
+        --help)
+            show_help
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_help
+            ;;
+    esac
+done
+
+# Ensure required options are provided
+if [[ -z "$KERNEL_SOURCE" || -z "$TOOLCHAIN_PATH" ]]; then
+    echo "Error: You must provide both --kernel-src and --toolchain options."
+    show_help
 fi
 
-# Check if a kernel name argument is provided
-if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <kernel_name> [localversion]"
-    exit 1
-fi
-
-KERNEL_NAME=$1
-LOCALVERSION=${2:-""}  # Optional localversion argument
+# Resolve script and kernel source paths
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-TOOLCHAIN_PATH=$(realpath "$SCRIPT_DIR/../../toolchains/aarch64-buildroot-linux-gnu/bin/aarch64-buildroot-linux-gnu-")
-KERNEL_SOURCE=$(realpath "$SCRIPT_DIR/../../kernels/$KERNEL_NAME/kernel/kernel")
+KERNEL_SOURCE=$(realpath "$KERNEL_SOURCE")
 
+# Check if the kernel source directory exists
 if [ ! -d "$KERNEL_SOURCE" ]; then
-    echo "Kernel source directory does not exist: $KERNEL_SOURCE"
+    echo "Error: Kernel source directory does not exist: $KERNEL_SOURCE"
     exit 1
 fi
 
@@ -76,8 +108,4 @@ else
     echo "Module file not found after compilation"
     exit 1
 fi
-
-# Cleanup
-# echo "Cleaning up temporary files in $TEMP_DIR"
-# rm -rf "$TEMP_DIR"
 

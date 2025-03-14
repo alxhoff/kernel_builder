@@ -244,11 +244,12 @@ rm $TEGRA_DIR/setup_tegra_package.sh
 
 echo "All rootfs scripts downloaded successfully."
 
-# **Ensure executable permissions for scripts**
 echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
 
 cd $TEGRA_DIR
+
+sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee rootfs/root/.bashrc > /dev/null
@@ -257,7 +258,5 @@ sudo cp -r packages rootfs/root/
 sudo ./setup_rootfs.sh
 echo "Setting up chroot environment for SoC: $SOC..."
 sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
-
-sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 
 echo "Setup completed successfully!"

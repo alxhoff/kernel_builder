@@ -224,3 +224,33 @@ fi
 
 echo "Kernel build completed successfully!"
 
+cd $ROOTFS_DIR
+THIRD_PARTY_DRIVERS="rtl8192eu rtl88x2bu"
+
+echo "Building third party drivers"
+
+for DRIVER in $THIRD_PARTY_DRIVERS; do
+	echo "Building and installing $DRIVER"
+	LOCALVERSION="-cartken${PATCH}"
+	BUILD_SCRIPT="${DRIVER}.sh"
+	echo "$TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION"
+	$TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION
+done
+
+# Extract the kernel version from the Image file
+KERNEL_VERSION=$(strings "$KERNEL_IMAGE_ROOTFS/Image" | grep -oP 'Linux version \K[0-9]+\.[0-9]+\.[0-9]+(?:-[\w\d\.]+)?' | head -n 1)
+
+# Ensure kernel version is extracted
+if [[ -z "$KERNEL_VERSION" ]]; then
+    echo "Error: Failed to extract kernel version from Image"
+    exit 1
+fi
+
+echo "Detected Kernel Version: $KERNEL_VERSION"
+
+# Define module destination directory
+MODULE_DEST_DIR="$ROOTFS_DIR/lib/modules/$KERNEL_VERSION/kernel/drivers/net/wireless"
+
+# Ensure the destination directory exists
+sudo mkdir -p "$MODULE_DEST_DIR"
+cp "$TEGRA_DIR"/*.ko "$MODULE_DEST_DIR"
