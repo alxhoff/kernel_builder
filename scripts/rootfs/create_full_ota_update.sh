@@ -89,7 +89,8 @@ run_command ./create_debian.sh \
     --otapayload "../$TARGET_JETPACK/Linux_for_Tegra/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz" \
     --kernel-version "$KERNEL_VERSION" \
     --repo-version "$TAG" \
-    --target-bsp "$TARGET_JETPACK"
+    --target-bsp "$TARGET_JETPACK" \
+    --extlinux-conf "../$TARGET_JETPACK/Linux_for_Tegra/rootfs/boot/dtb/tegra234-p3701-0000-p3737-0000.dtb"
 
 echo "Full OTA update process completed successfully."
 

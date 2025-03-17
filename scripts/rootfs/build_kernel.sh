@@ -222,6 +222,24 @@ else
     exit 1
 fi
 
+EXTLINUX_CONF="$ROOTFS_DIR/boot/extlinux/extlinux.conf"
+DTB_PATH="/boot/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+
+# Ensure extlinux.conf exists before modifying
+if [[ -f "$EXTLINUX_CONF" ]]; then
+    echo "Updating extlinux.conf to use DTB: $DTB_PATH"
+
+    # Replace any existing FDT entry with the new DTB path
+    sudo sed -i "s|^FDT .*$|FDT $DTB_PATH|" "$EXTLINUX_CONF"
+
+    # If no FDT entry exists, add it under LABEL entry
+    if ! grep -q "^FDT " "$EXTLINUX_CONF"; then
+        sudo sed -i "/^LABEL /a FDT $DTB_PATH" "$EXTLINUX_CONF"
+    fi
+else
+    echo "Warning: extlinux.conf not found at $EXTLINUX_CONF. Skipping modification."
+fi
+
 echo "Kernel build completed successfully!"
 
 cd $ROOTFS_DIR

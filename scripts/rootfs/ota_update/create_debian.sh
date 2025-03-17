@@ -21,6 +21,7 @@ OTA_PAYLOAD=""
 KERNEL_VERSION=""
 REPO_VERSION=""
 TARGET_BSP=""
+EXTLINUX_CONF=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,6 +41,10 @@ while [[ $# -gt 0 ]]; do
             TARGET_BSP="$2"
             shift 2
             ;;
+		--extlinux-conf)
+            EXTLINUX_CONF="$2"
+            shift 2
+            ;;
         --help)
             show_help
             ;;
@@ -50,25 +55,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure all required parameters are provided
 if [[ -z "$OTA_PAYLOAD" || -z "$KERNEL_VERSION" || -z "$REPO_VERSION" || -z "$TARGET_BSP" ]]; then
     echo "Error: All parameters must be provided."
     show_help
 fi
 
-# Validate supported BSP versions
+if [[ -n "$EXTLINUX_CONF" && ! -f "$EXTLINUX_CONF" ]]; then
+    echo "Error: Specified extlinux.conf file does not exist: $EXTLINUX_CONF"
+    exit 1
+fi
+
 if [[ "$TARGET_BSP" != "5.1.3" ]]; then
     echo "Error: Unsupported target BSP version. Currently, only 5.1.3 is supported."
     exit 1
 fi
 
-# Set OTA tools download URL
 OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/ota_tools_R35.5.0_aarch64.tbz2"
 
-# Remove any existing temp directory from previous runs
 rm -rf /tmp/ota_tools
 
-# Create Debian package structure
 PKG_NAME="cartken-full-system-ota-release-${REPO_VERSION}-kernel-${KERNEL_VERSION}"
 PKG_DIR="/tmp/${PKG_NAME}"
 DEBIAN_DIR="$PKG_DIR/DEBIAN"
@@ -78,7 +83,6 @@ OTA_INSTALL_DIR="$PKG_DIR/ota"
 mkdir -p "$DEBIAN_DIR"
 mkdir -p "$OTA_INSTALL_DIR"
 
-# Create control file
 cat << EOF > "$DEBIAN_DIR/control"
 Package: $PKG_NAME
 Version: 1.0.0
@@ -87,13 +91,14 @@ Maintainer: Alex Hoffman <alxhoff@cartken.com>
 Description: Full system OTA update package for release $REPO_VERSION and with kernel version $KERNEL_VERSION
 EOF
 
-# Download and store OTA tools tarball without extracting
 wget -O "$OTA_INSTALL_DIR/ota_tools.tbz2" "$OTA_TOOLS_URL"
 
-# Move OTA payload tarball into package without extracting
 install -m 644 "$OTA_PAYLOAD" "$OTA_INSTALL_DIR/ota_payload_package.tar.gz"
 
-# Create a post-install script to extract and execute OTA update on the target machine
+if [[ -n "$EXTLINUX_CONF" ]]; then
+    install -m 644 "$EXTLINUX_CONF" "$OTA_INSTALL_DIR/extlinux.conf"
+fi
+
 cat << 'EOF' > "$DEBIAN_DIR/postinst"
 #!/bin/bash
 set -e
@@ -101,6 +106,12 @@ set -e
 # Extract OTA tools
 mkdir -p /tmp/ota_tools
 tar -xjf /ota/ota_tools.tbz2 -C /tmp/ota_tools && rm /ota/ota_tools.tbz2
+
+# Replace /boot/extlinux/extlinux.conf if provided
+if [[ -f /ota/extlinux.conf ]]; then
+    echo "Replacing /boot/extlinux/extlinux.conf with provided version..."
+    cp /ota/extlinux.conf /boot/extlinux/extlinux.conf
+fi
 
 # Set working directory
 export WORKDIR="/tmp/ota_tools"
@@ -110,17 +121,13 @@ cd "${WORKDIR}/Linux_for_Tegra/tools/ota_tools/version_upgrade"
 sudo ./nv_ota_start.sh /ota/ota_payload_package.tar.gz
 EOF
 
-# Make the post-install script executable
 chmod 755 "$DEBIAN_DIR/postinst"
 
-# Build the Debian package
 dpkg-deb --build "$PKG_DIR"
 
-# Move the package to the current directory
 mv "/tmp/${PKG_NAME}.deb" "./${PKG_NAME}.deb"
 
 echo "Debian package created: ${PKG_NAME}.deb"
 
-# Cleanup temporary package directory
 rm -rf "$PKG_DIR"
 
