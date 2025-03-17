@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 # Set variables
 IMAGE="ubuntu:22.04"
 CONTAINER_NAME="tegra_setup"
+DOCKER_TAG="$CONTAINER_NAME:latest"
 SCRIPT_NAME="setup_tegra_package.sh"
 RUN_SETUP_SCRIPT=true
 
@@ -31,23 +32,35 @@ for arg in "$@"; do
             RUN_SETUP_SCRIPT=false
             shift
             ;;
+        --rebuild)
+            REBUILD=true
+            shift
+            ;;
         --help|-h)
             show_help
             ;;
     esac
 done
 
-# Pull the latest Ubuntu 22.04 image
-docker pull "$IMAGE"
-
-# Determine the command to run inside the container
 if [[ "$RUN_SETUP_SCRIPT" == true ]]; then
     CONTAINER_CMD="./setup_tegra_package.sh $*"
 else
     CONTAINER_CMD="/bin/bash"
 fi
 
-# Run the script inside a privileged container as root
+if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" || "$REBUILD" == true ]]; then
+    echo "Building or rebuilding the Docker image..."
+	docker pull "$IMAGE"
+    docker build -t "$DOCKER_TAG" - <<EOF
+    FROM $IMAGE
+    RUN apt-get update && \
+        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential kmod && \
+        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common
+EOF
+else
+    echo "Using existing Docker image: $DOCKER_TAG"
+fi
+
 docker run --rm -it \
     --name "$CONTAINER_NAME" \
     --privileged \
@@ -55,12 +68,6 @@ docker run --rm -it \
     -v "$SCRIPT_DIR:$SCRIPT_DIR" \
     -w "$SCRIPT_DIR" \
     -e HOME="$SCRIPT_DIR" \
-    "$IMAGE" \
-    /bin/bash -c "
-        apt-get update && \
-        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential kmod && \
-        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common
-
-        exec $CONTAINER_CMD
-    "
+    "$DOCKER_TAG" \
+    /bin/bash -c "$CONTAINER_CMD"
 
