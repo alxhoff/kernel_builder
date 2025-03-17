@@ -249,8 +249,10 @@ fi
 echo "Detected Kernel Version: $KERNEL_VERSION"
 
 # Define module destination directory
-MODULE_DEST_DIR="$ROOTFS_DIR/lib/modules/$KERNEL_VERSION/kernel/drivers/net/wireless"
+KERNEL_LIB_DIR="$ROOTFS_DIR/lib/modules/$KERNEL_VERSION"
+MODULE_DEST_DIR="$KERNEL_LIB_DIR/kernel/drivers/net/wireless"
 
 # Ensure the destination directory exists
 sudo mkdir -p "$MODULE_DEST_DIR"
 cp "$TEGRA_DIR"/*.ko "$MODULE_DEST_DIR"
+depmod -b $ROOTFS_DIR $KERNEL_VERSION
