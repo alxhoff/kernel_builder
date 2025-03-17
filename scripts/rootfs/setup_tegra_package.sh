@@ -51,16 +51,20 @@ DOWNLOAD=true
 ACCESS_TOKEN=""
 TAG="latest"
 SOC="orin"
+SKIP_KERNEL_BUILD=false
+SKIP_CHROOT_BUILD=false
 
 # Function to show help
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -j, --jetpack VERSION   Specify JetPack version (default: $JETPACK_VERSION)"
-	echo "  --access-token TOKEN     Provide the access token (required)"
-    echo "  --tag TAG                Specify tag for get_packages.sh (default: $TAG)"
-    echo "  --soc SOC                Specify SoC type for jetson_chroot.sh (default: $SOC)"
-    echo "                         Available versions: 5.1.3 (L4T ${JETPACK_L4T_MAP[5.1.3]}), 5.1.2 (L4T ${JETPACK_L4T_MAP[5.1.2]})"
+	echo "  --access-token TOKEN    Provide the access token (required)"
+    echo "  --tag TAG               Specify tag for get_packages.sh (default: $TAG)"
+    echo "  --soc SOC               Specify SoC type for jetson_chroot.sh (default: $SOC)"
+    echo "						    Available versions: 5.1.3 (L4T ${JETPACK_L4T_MAP[5.1.3]}), 5.1.2 (L4T ${JETPACK_L4T_MAP[5.1.2]})"
+	echo "  --skip-kernel-build		Skips building the kernel"
+	echo "  --skip-chroot-build		Skips updating and settup up the rootfs in a chroot"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
     echo "  -h, --help              Show this help message"
     exit 0
@@ -89,6 +93,14 @@ while [[ $# -gt 0 ]]; do
             DOWNLOAD=false
             shift
             ;;
+        --skip-kernel-build)
+            SKIP_KERNEL_BUILD=true
+            shift
+            ;;
+        --skip-chroot-build)
+            SKIP_CHROOT_BUILD=true
+            shift
+            ;;
         -h|--help)
             show_help
             ;;
@@ -99,24 +111,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate JetPack version
 if [[ -z "${JETPACK_L4T_MAP[$JETPACK_VERSION]}" ]]; then
     echo "Error: Unsupported JetPack version. Use --help to see available versions."
     exit 1
 fi
 
-# Ensure access token is provided
 if [[ -z "$ACCESS_TOKEN" ]]; then
     echo "Error: --access-token is required."
     exit 1
 fi
 
-# Define filenames
 ROOTFS_FILE="$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
 KERNEL_FILE="$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
 DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
 
-# Download if necessary
 if [ "$DOWNLOAD" = true ]; then
     echo "Downloading required files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
     wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
@@ -132,7 +140,6 @@ else
     done
 fi
 
-# Extract driver package
 TEGRA_DIR="$JETPACK_VERSION"
 sudo mkdir -p "$TEGRA_DIR"
 echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
@@ -142,10 +149,8 @@ sudo mv "$TEGRA_DIR/Linux_for_Tegra"/* "$TEGRA_DIR"/
 rmdir "$TEGRA_DIR/Linux_for_Tegra"
 echo "Cleanup complete."
 
-# Extract kernel sources
 TMP_DIR=$(sudo mktemp -d)
 
-# Check JetPack version and extract additional sources accordingly
 if [[ "$JETPACK_VERSION" == "5.1.2" || "$JETPACK_VERSION" == "5.1.3" ]]; then
     echo "JetPack $JETPACK_VERSION detected. Extracting standard kernel sources..."
 
@@ -164,7 +169,6 @@ elif [[ "$JETPACK_VERSION" == "6.2" || "$JETPACK_VERSION" == "6.0DP" ]]; then
 	sudo mkdir -p "$TEGRA_DIR/kernel_src"
 	sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
-    # Extract Out-of-Tree Modules
     if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
         echo "Extracting kernel out-of-tree modules..."
         sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
@@ -172,7 +176,6 @@ elif [[ "$JETPACK_VERSION" == "6.2" || "$JETPACK_VERSION" == "6.0DP" ]]; then
         echo "Warning: kernel_oot_modules_src.tbz2 not found!"
     fi
 
-    # Extract NVIDIA Kernel Display Driver Source
     if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
         echo "Extracting NVIDIA kernel display driver source..."
         sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
@@ -192,12 +195,12 @@ echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 mkdir -p "$TEGRA_DIR/rootfs"
 sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 echo "Root filesystem extracted successfully."
+echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
 echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
 sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
 echo "Toolchain cloned successfully."
 
-# Download chroot script
 chroot_script="$TEGRA_DIR/jetson_chroot.sh"
 echo "Checking for chroot script..."
 if [ ! -f "$chroot_script" ]; then
@@ -219,10 +222,8 @@ if ! echo "$FILES" | jq empty 2>/dev/null; then
     exit 1
 fi
 
-# Extract URLs and filter out null or empty lines
 FILE_URLS=$(echo "$FILES" | jq -r '.[] | select(.type=="file") | .download_url' | grep -v '^$')
 
-# Ensure we have valid file URLs
 if [[ -z "$FILE_URLS" ]]; then
     echo "Error: No valid files found in GitHub response."
     exit 1
@@ -249,14 +250,23 @@ chmod +x "$TEGRA_DIR/"*.sh
 
 cd $TEGRA_DIR
 
-sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
+    sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+else
+    echo "Skipping kernel build as requested."
+fi
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
-echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee rootfs/root/.bashrc > /dev/null
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r packages rootfs/root/
+
 sudo ./setup_rootfs.sh
-echo "Setting up chroot environment for SoC: $SOC..."
-sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+
+if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+	echo "Setting up chroot environment for SoC: $SOC..."
+	sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+else
+    echo "Skipping rootfs setup in chroot as requested."
+fi
 
 echo "Setup completed successfully!"

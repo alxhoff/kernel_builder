@@ -21,7 +21,6 @@ usage() {
 
 DRY_RUN=false
 
-# Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --access-token)
@@ -63,35 +62,28 @@ run_command() {
     fi
 }
 
-# Run setup_tegra_package_docker.sh with base Jetpack version
-echo "Running setup_tegra_package_docker.sh with base Jetpack version: $BASE_JETPACK"
-run_command ./setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$BASE_JETPACK"
+echo "Running setup_tegra_package_docker.sh with target Jetpack version: $TARGET_JETPACK"
+run_command ./setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
 
-# Remove all .tbz2 files in the working directory
 echo "Removing all .tbz2 files from working directory"
 run_command rm -f *.tbz2
 
-# Run setup_tegra_package_docker.sh with target Jetpack version if different from base
 if [[ "$BASE_JETPACK" != "$TARGET_JETPACK" ]]; then
-    echo "Running setup_tegra_package_docker.sh with target Jetpack version: $TARGET_JETPACK"
-    run_command ./setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
+	echo "Running setup_tegra_package_docker.sh with base Jetpack version: $BASE_JETPACK"
+	run_command ./setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$BASE_JETPACK" --skip-kernel-build --skip-chroot-build
 else
     echo "Base and target Jetpack versions are the same, skipping second setup_tegra_package_docker.sh call."
 fi
 
-# Move into ota_update directory
 echo "Moving into ota_update directory"
 run_command cd ota_update || { echo "Failed to enter ota_update directory"; exit 1; }
 
-# Run create_ota_payload_docker.sh with given base and target BSP versions
 echo "Running create_ota_payload_docker.sh with base BSP: $BASE_JETPACK and target BSP: $TARGET_JETPACK"
 run_command ./create_ota_payload_docker.sh --base-bsp "../$BASE_JETPACK" --target-bsp "../$TARGET_JETPACK"
 
-# Extract kernel version from Image file
 KERNEL_VERSION=$(strings "../$TARGET_JETPACK/Linux_for_Tegra/kernel/Image" | grep -oP "Linux version \K[0-9.-]+-[^ ]+")
 echo "Extracted kernel version: $KERNEL_VERSION"
 
-# Run create_debian.sh with extracted kernel version
 echo "Running create_debian.sh with extracted kernel version"
 run_command ./create_debian.sh \
     --otapayload "../$TARGET_JETPACK/Linux_for_Tegra/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz" \
