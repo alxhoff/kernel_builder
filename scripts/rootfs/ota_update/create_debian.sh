@@ -69,7 +69,7 @@ OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v
 rm -rf /tmp/ota_tools
 
 # Create Debian package structure
-PKG_NAME="cartken-full-system-ota-kernel-release-${REPO_VERSION}-${KERNEL_VERSION}"
+PKG_NAME="cartken-full-system-ota-release-${REPO_VERSION}-kernel-${KERNEL_VERSION}"
 PKG_DIR="/tmp/${PKG_NAME}"
 DEBIAN_DIR="$PKG_DIR/DEBIAN"
 INSTALL_DIR="$PKG_DIR/usr/local/cartken/ota"
