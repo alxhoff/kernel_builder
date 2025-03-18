@@ -2,6 +2,11 @@
 
 set -e
 
+if [[ "$EUID" -ne 0 ]]; then
+    echo "Error: This script must be run with sudo."
+    exit 1
+fi
+
 # Default values
 DRY_RUN=false
 DEPLOY_IP=""
@@ -27,7 +32,6 @@ declare -A OTA_TOOL_URLS=(
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/ota_tools_r36.4.3_aarch64.tbz2"
 )
 
-# Function to show help
 show_help() {
     echo "Usage: $0 --base-bsp <path> --target-bsp <path> [--deploy <device-ip>] [--dry-run] [--force-partition-change]"
     echo "Options:"
@@ -43,7 +47,6 @@ show_help() {
     exit 0
 }
 
-# Function to execute or simulate commands
 run_cmd() {
     if $DRY_RUN; then
         echo "[DRY-RUN] sudo $1"
@@ -52,21 +55,6 @@ run_cmd() {
     fi
 }
 
-# Function to ensure BSP folder contains Linux_for_Tegra
-ensure_linux_for_tegra() {
-    local BSP_PATH="$1"
-    if [[ ! -d "$BSP_PATH/Linux_for_Tegra" ]]; then
-        echo "Rearranging $BSP_PATH to include Linux_for_Tegra..."
-        echo "mkdir -p \"Linux_for_Tegra\""
-        run_cmd "mkdir -p \"Linux_for_Tegra\""
-        echo "mv \"$BSP_PATH\"/* \"Linux_for_Tegra/\""
-        run_cmd "mv \"$BSP_PATH\"/* \"Linux_for_Tegra/\""
-        echo "mv \"Linux_for_Tegra\" \"$BSP_PATH\"/"
-        run_cmd "mv \"Linux_for_Tegra\" \"$BSP_PATH\"/"
-    fi
-}
-
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --base-bsp)
@@ -97,7 +85,6 @@ while [[ $# -gt 0 ]]; do
             SKIP_BUILD=true
             shift
             ;;
-
 		-b)
             BUILD_BOOTLOADER=true
             shift
@@ -116,36 +103,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure the script is run with sudo (after help is shown)
-if [[ "$EUID" -ne 0 ]]; then
-    echo "Error: This script must be run with sudo."
-    exit 1
-fi
-
-# Validate required parameters
 if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
     echo "Error: Both --base-bsp and --target-bsp must be provided."
     exit 1
 fi
 
-# Ensure BSP directories contain Linux_for_Tegra
-ensure_linux_for_tegra "$BASE_BSP"
-ensure_linux_for_tegra "$TARGET_BSP"
-
-# Update BASE_BSP and TARGET_BSP to include Linux_for_Tegra
-BASE_BSP="$BASE_BSP/Linux_for_Tegra"
-TARGET_BSP="$TARGET_BSP/Linux_for_Tegra"
-echo "BASE_BSP: $BASE_BSP"
-echo "TARGET_BSP: $TARGET_BSP"
-export BASE_BSP=$BASE_BSP
-export TARGET_BSP=$TARGET_BSP
-
-# Extract version numbers
-BASE_VERSION=$(basename "$(dirname "$BASE_BSP")")
-TARGET_VERSION=$(basename "$(dirname "$TARGET_BSP")")
-
-# Get correct BSP version for BASE_BSP
+BASE_VERSION=$(basename "$BASE_BSP")
+TARGET_VERSION=$(basename "$TARGET_BSP")
+BASE_L4T="$BASE_BSP/Linux_for_Tegra"
+TARGET_L4T="$TARGET_BSP/Linux_for_Tegra"
+export BASE_BSP=$BASE_BSP_L4T
+export TARGET_BSP=$TARGET_BSP_L4T
 BASE_BSP_VERSION="${BSP_VERSION_MAP[$BASE_VERSION]}"
+
+echo "BASE L4T: $BASE_L4T"
+
 if [[ -z "$BASE_BSP_VERSION" ]]; then
     echo "Error: Unsupported BASE_BSP version ($BASE_VERSION)."
     exit 1
@@ -171,19 +143,19 @@ else
 fi
 
 # Extract OTA tools directly into TARGET_BSP
-echo "Extracting OTA tools into $TARGET_BSP..."
-run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_BSP")\""
+echo "Extracting OTA tools into "$TARGET_L4T"..."
+run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_L4T")\""
 
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
-	TARGET_PARTITION_XML="$TARGET_BSP/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+	TARGET_PARTITION_XML="$TARGET_L4T/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
 	echo "Replacing partition XML file..."
 	echo "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
 	run_cmd "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
 fi
 
 # Remove specific line from ota_make_recovery_img_dtb.sh
-OTA_SCRIPT="${TARGET_BSP}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
+OTA_SCRIPT="${TARGET_L4T}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
 if [[ -f "$OTA_SCRIPT" ]]; then
     echo "Removing problematic line from $OTA_SCRIPT..."
 	run_cmd "sudo sed -i '/ssh-keygen[[:space:]]\+-t[[:space:]]\+dsa[[:space:]]\+-N/d' \"$OTA_SCRIPT\""
@@ -194,7 +166,7 @@ fi
 # Apply force partition change if requested
 if $FORCE_PARTITION_CHANGE; then
     echo "Enabling partition layout change..."
-    run_cmd "sed -i 's/^LAYOUT_CHANGE=0/LAYOUT_CHANGE=1/' \"$TARGET_BSP/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh\""
+    run_cmd "sed -i 's/^LAYOUT_CHANGE=0/LAYOUT_CHANGE=1/' \"$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh\""
 fi
 
 # Determine OTA build arguments
@@ -209,15 +181,15 @@ fi
 # Generate OTA payload
 if ! $SKIP_BUILD; then
     echo "Generating OTA update payload..."
-    echo "./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
-    run_cmd "cd \"$TARGET_BSP\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
+    echo "$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+    run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
 else
     echo "Skipping OTA update payload generation (--skip-build enabled)."
 fi
 
 
 # Find the generated payload
-PAYLOAD_PATH="$TARGET_BSP/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
+PAYLOAD_PATH="$TARGET_L4T/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz"
 if [[ ! -f "$PAYLOAD_PATH" && "$DRY_RUN" == false ]]; then
     echo "Error: Failed to generate OTA payload!"
     exit 1

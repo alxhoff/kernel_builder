@@ -61,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_BUILD=true
             shift
             ;;
+		--inspect)
+            INSPECT=true
+            shift
+            ;;
 		-b)
             BUILD_BOOTLOADER=true
             shift
@@ -104,23 +108,77 @@ else
     echo "Using existing Docker image: $IMAGE_NAME"
 fi
 
-# Run the script inside the container
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_BSP_VER="$(basename $BASE_BSP)"
+TARGET_BSP_VER="$(basename $TARGET_BSP)"
+
+# Function to ensure BSP folder contains Linux_for_Tegra
+ensure_linux_for_tegra() {
+    local SRC_PATH="$1"
+	local SRC_DIR=$(dirname "$1")
+	local TMP_DIR="$SRC_DIR/Linux_for_Tegra"
+    if [[ ! -d "$SRC_PATH/Linux_for_Tegra" ]]; then
+        echo "Rearranging $SRC_PATH to include Linux_for_Tegra..."
+        mv $SRC_PATH $TMP_DIR
+        mkdir -p $SRC_PATH
+        mv $TMP_DIR $SRC_PATH/
+    fi
+}
+
+# Ensure BSP directories contain Linux_for_Tegra
+ensure_linux_for_tegra "$TARGET_BSP"
+if [[ "$BASE_BSP" != "$TARGET_BSP" ]]; then
+	ensure_linux_for_tegra "$BASE_BSP"
+fi
+
+if [[ "$INSPECT" == true ]]; then
+    echo "Entering inspection mode..."
+    echo "docker run --rm -it --privileged \
+        --device /dev/loop-control \
+        --device /dev/loop0:/dev/loop0 \
+        --device /dev/loop1:/dev/loop1 \
+        -e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
+		-v /tmp:/tmp \
+        -v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" \
+        -v "$BASE_BSP:/workspace/base_bsp/$BASE_BSP_VER" \
+        -v "$TARGET_BSP:/workspace/target_bsp/$TARGET_BSP_VER" \
+        $(if [[ -n "$PARTITION_XML" ]]; then echo "-v $(dirname "$PARTITION_XML"):/workspace/xml"; fi) \
+        -v "$SCRIPT_DIR:/workspace/script" \
+        "$IMAGE_NAME" \
+        bash"
+    docker run --rm -it --privileged \
+        --device /dev/loop-control \
+        --device /dev/loop0:/dev/loop0 \
+        --device /dev/loop1:/dev/loop1 \
+        -e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
+		-v /tmp:/tmp \
+        -v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" \
+        -v "$BASE_BSP:/workspace/base_bsp/$BASE_BSP_VER" \
+        -v "$TARGET_BSP:/workspace/target_bsp/$TARGET_BSP_VER" \
+        $(if [[ -n "$PARTITION_XML" ]]; then echo "-v $(dirname "$PARTITION_XML"):/workspace/xml"; fi) \
+        -v "$SCRIPT_DIR:/workspace/script" \
+        "$IMAGE_NAME" \
+        bash
+    exit 0
+fi
+
 docker run --rm -it --privileged \
     --device /dev/loop-control \
     --device /dev/loop0:/dev/loop0 \
     --device /dev/loop1:/dev/loop1 \
 	-e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
+	-v /tmp:/tmp \
 	-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" \
-    -v "$(dirname "$BASE_BSP"):/workspace/base_bsp" \
-    -v "$(dirname "$TARGET_BSP"):/workspace/target_bsp" \
+    -v "$BASE_BSP:/workspace/base_bsp/$BASE_BSP_VER" \
+    -v "$TARGET_BSP:/workspace/target_bsp/$TARGET_BSP_VER" \
     $(if [[ -n "$PARTITION_XML" ]]; then echo "-v $(dirname "$PARTITION_XML"):/workspace/xml"; fi) \
-    -v "$(pwd):/workspace/script" \
+    -v "$SCRIPT_DIR:/workspace/script" \
     "$IMAGE_NAME" \
     bash -c "
     cd /workspace/script && \
     sudo ./create_ota_payload.sh \
-        --base-bsp /workspace/base_bsp/$(basename "$BASE_BSP") \
-        --target-bsp /workspace/target_bsp/$(basename "$TARGET_BSP") \
+        --base-bsp /workspace/base_bsp/"$BASE_BSP_VER" \
+        --target-bsp /workspace/target_bsp/"$TARGET_BSP_VER" \
         $(if [[ -n "$PARTITION_XML" ]]; then echo "--partition-xml /workspace/xml/$(basename "$PARTITION_XML")"; fi) \
         $(if $FORCE_PARTITION_CHANGE; then echo '--force-partition-change'; fi) \
         $(if $BUILD_BOOTLOADER; then echo '-b'; fi) \
