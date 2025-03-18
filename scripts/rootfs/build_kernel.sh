@@ -188,14 +188,14 @@ KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
 KERNEL_IMAGE_ROOTFS="$ROOTFS_DIR/boot/"
 
-DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb"
-DTB_DEST="$TEGRA_DIR/kernel/dtb/kernel_tegra234-p3701-0005-p3737-0000.dtb"
-DTB_ROOTFS="$ROOTFS_DIR/boot/dtb/"
+DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+DTB_DEST="$TEGRA_DIR/kernel/dtb/$DTB_NAME"
+BOOT_DIR="$ROOTFS_DIR/boot/"
+DTB_ROOTFS="$BOOT_DIR/dtb/"
 
 # Ensure destination directories exist
 sudo mkdir -p "$KERNEL_IMAGE_DEST"
-sudo mkdir -p "$KERNEL_IMAGE_ROOTFS"
-sudo mkdir -p "$DTB_DEST"
 sudo mkdir -p "$DTB_ROOTFS"
 
 # Copy kernel Image
@@ -215,29 +215,14 @@ if [ -f "$DTB_SRC" ]; then
     echo "Copying DTB file to $DTB_DEST..."
     sudo cp -v "$DTB_SRC" "$DTB_DEST"
 
+	echo "Copying DTB file to $DTB_ROOTFS..."
+    sudo cp -v "$DTB_SRC" "BOOT_DIR"
+
     echo "Copying DTB file to $DTB_ROOTFS..."
     sudo cp -v "$DTB_SRC" "$DTB_ROOTFS"
 else
     echo "Error: DTB file not found at $DTB_SRC"
     exit 1
-fi
-
-EXTLINUX_CONF="$ROOTFS_DIR/boot/extlinux/extlinux.conf"
-DTB_PATH="/boot/dtb/kernel_tegra234-p3701-0000-p3737-0000.dtb"
-
-# Ensure extlinux.conf exists before modifying
-if [[ -f "$EXTLINUX_CONF" ]]; then
-    echo "Updating extlinux.conf to use DTB: $DTB_PATH"
-
-    # Replace any existing FDT entry with the new DTB path
-    sudo sed -i "s|^FDT .*$|FDT $DTB_PATH|" "$EXTLINUX_CONF"
-
-    # If no FDT entry exists, add it under LABEL entry
-    if ! grep -q "^FDT " "$EXTLINUX_CONF"; then
-        sudo sed -i "/^LABEL /a FDT $DTB_PATH" "$EXTLINUX_CONF"
-    fi
-else
-    echo "Warning: extlinux.conf not found at $EXTLINUX_CONF. Skipping modification."
 fi
 
 echo "Kernel build completed successfully!"

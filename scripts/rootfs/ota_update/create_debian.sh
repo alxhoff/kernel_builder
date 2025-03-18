@@ -96,7 +96,31 @@ wget -O "$OTA_INSTALL_DIR/ota_tools.tbz2" "$OTA_TOOLS_URL"
 install -m 644 "$OTA_PAYLOAD" "$OTA_INSTALL_DIR/ota_payload_package.tar.gz"
 
 if [[ -n "$EXTLINUX_CONF" ]]; then
-    install -m 644 "$EXTLINUX_CONF" "$OTA_INSTALL_DIR/extlinux.conf"
+    cp "$EXTLINUX_CONF" "$OTA_INSTALL_DIR/extlinux.conf"
+	EXTLINUX_CONF="$OTA_INSTALL_DIR/extlinux.conf"
+
+	echo "Updating extlinux.conf to use DTB: $DTB_PATH"
+
+    # Replace any existing FDT entry with the new DTB path
+    sudo sed -i "s|^FDT .*$|FDT $DTB_PATH|" "$EXTLINUX_CONF"
+
+    # If no FDT entry exists, add it under LABEL entry
+    if ! grep -q "^FDT " "$EXTLINUX_CONF"; then
+        sudo sed -i "/^LABEL /a FDT $DTB_PATH" "$EXTLINUX_CONF"
+    fi
+
+	# Define the required APPEND line
+    REQUIRED_APPEND="    APPEND \${cbootargs} root=/dev/mmcblk0p1 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=tty0 firmware_class.path=/etc/firmware fbcon=map:0 net.ifnames=0"
+
+    # Ensure we only modify the APPEND line **inside the LABEL primary block**
+    awk -v append="$REQUIRED_APPEND" '
+    BEGIN { inside_label=0 }
+    /^LABEL primary$/ { inside_label=1 }
+    /^LABEL / && !/^LABEL primary$/ { inside_label=0 }
+    inside_label && /^ *APPEND / { $0=append }
+    { print }
+    ' "$EXTLINUX_CONF" > "$EXTLINUX_CONF.tmp" && mv "$EXTLINUX_CONF.tmp" "$EXTLINUX_CONF"
+
 fi
 
 cat << 'EOF' > "$DEBIAN_DIR/postinst"

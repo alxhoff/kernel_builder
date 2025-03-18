@@ -250,6 +250,9 @@ chmod +x "$TEGRA_DIR/"*.sh
 
 cd $TEGRA_DIR
 
+echo "Cleaning up kernel dtb files"
+sudo rm "$TEGRA_DIR/kernel/dtb/*"
+
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
     sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 else
