@@ -189,7 +189,7 @@ KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
 KERNEL_IMAGE_ROOTFS="$ROOTFS_DIR/boot/"
 
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb"
-DTB_DEST="$TEGRA_DIR/kernel/dtb/"
+DTB_DEST="$TEGRA_DIR/kernel/dtb/kernel_tegra234-p3701-0005-p3737-0000.dtb"
 DTB_ROOTFS="$ROOTFS_DIR/boot/dtb/"
 
 # Ensure destination directories exist
@@ -223,7 +223,7 @@ else
 fi
 
 EXTLINUX_CONF="$ROOTFS_DIR/boot/extlinux/extlinux.conf"
-DTB_PATH="/boot/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+DTB_PATH="/boot/dtb/kernel_tegra234-p3701-0000-p3737-0000.dtb"
 
 # Ensure extlinux.conf exists before modifying
 if [[ -f "$EXTLINUX_CONF" ]]; then
