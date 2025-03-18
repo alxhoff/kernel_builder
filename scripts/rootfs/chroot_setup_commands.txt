@@ -16,8 +16,8 @@ dpkg -i /root/packages/cartken-jetson-debians/cartken-wifi-tools.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-manager.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-networking-base.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial-credentials.deb
+dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
 sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
 echo "root:cartken" | chpasswd
 
