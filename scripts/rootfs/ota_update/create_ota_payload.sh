@@ -146,6 +146,19 @@ fi
 echo "Extracting OTA tools into "$TARGET_L4T"..."
 run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_L4T")\""
 
+OTA_BOARD_SPECS="$TARGET_L4T/tools/ota_tools/version_upgrade/ota_board_specs.conf"
+# Remove other board configs to speed up OTA generation ~x5
+#sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {/boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/!{/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/!{/^)/!d}}}' "$OTA_BOARD_SPECS"
+
+sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {
+  /boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/b
+  /boardid=3701;fab=300;boardsku=0000;.*rootdev=mmcblk0p1;/b
+  /boardid=3701;fab=300;boardsku=0005;.*rootdev=mmcblk0p1;/b
+  /^jetson_agx_orin_devkit_ota_emmc_r35_spec=/b
+  /^)/b
+  d
+}' "$OTA_BOARD_SPECS"
+
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
 	TARGET_PARTITION_XML="$TARGET_L4T/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
@@ -178,11 +191,21 @@ if $BUILD_ROOTFS; then
     OTA_BUILD_ARGS+=" -r"
 fi
 
+DTB_PATH="$TARGET_L4T/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+
 # Generate OTA payload
 if ! $SKIP_BUILD; then
     echo "Generating OTA update payload..."
-    echo "$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
-    run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
+	if [[ -n "$DTB_PATH" ]]; then
+		FLASH_OPTS="-p \"-d $DTB_PATH\""
+	else
+		FLASH_OPTS=""
+	fi
+
+	run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS $FLASH_OPTS jetson-agx-orin-devkit $BASE_BSP_VERSION"
+
+    # echo "$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
+    # run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
 else
     echo "Skipping OTA update payload generation (--skip-build enabled)."
 fi
