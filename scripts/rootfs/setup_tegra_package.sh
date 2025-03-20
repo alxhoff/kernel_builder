@@ -141,64 +141,68 @@ else
 fi
 
 TEGRA_DIR="$JETPACK_VERSION"
-sudo mkdir -p "$TEGRA_DIR"
-echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
-sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
-echo "Driver package extracted successfully. Moving contents out of Linux_for_Tegra..."
-sudo mv "$TEGRA_DIR/Linux_for_Tegra"/* "$TEGRA_DIR"/
-rmdir "$TEGRA_DIR/Linux_for_Tegra"
-echo "Cleanup complete."
+if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
+    sudo mkdir -p "$TEGRA_DIR"
+    echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
+    sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
+    echo "Driver package extracted successfully."
+fi
+TEGRA_DIR="$TEGRA_DIR/Linux_for_Tegra"
 
-TMP_DIR=$(sudo mktemp -d)
+if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
 
-if [[ "$JETPACK_VERSION" == "5.1.2" || "$JETPACK_VERSION" == "5.1.3" ]]; then
-    echo "JetPack $JETPACK_VERSION detected. Extracting standard kernel sources..."
-
+	TMP_DIR=$(sudo mktemp -d)
 	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
 	sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
-	echo "Extracting kernel sources from $TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
 	sudo mkdir -p "$TEGRA_DIR/kernel_src"
-	sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+	echo "JetPack $JETPACK_VERSION detected, extracting kernel sources"
 
-elif [[ "$JETPACK_VERSION" == "6.2" || "$JETPACK_VERSION" == "6.0DP" ]]; then
-    echo "JetPack $JETPACK_VERSION detected. Extracting additional kernel sources..."
+	if [[ "$JETPACK_VERSION" == "5.1.2" || "$JETPACK_VERSION" == "5.1.3" ]]; then
+		sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+	elif [[ "$JETPACK_VERSION" == "6.2" || "$JETPACK_VERSION" == "6.0DP" ]]; then
+		sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
-	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
-	sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
-	echo "Extracting kernel sources from $TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2 into $TEGRA_DIR/kernel_src..."
-	sudo mkdir -p "$TEGRA_DIR/kernel_src"
-	sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+		if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
+			echo "Extracting kernel out-of-tree modules..."
+			if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
+				sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+			fi
+		else
+			echo "Warning: kernel_oot_modules_src.tbz2 not found!"
+		fi
 
-    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
-        echo "Extracting kernel out-of-tree modules..."
-        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
-    else
-        echo "Warning: kernel_oot_modules_src.tbz2 not found!"
-    fi
+		if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
+			if [ ! -d "$TEGRA_DIR/kernel_src" ]; then
+				echo "Extracting NVIDIA kernel display driver source..."
+				sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
+				echo "Extraction completed."
+			fi
+		else
+			echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
+		fi
 
-    if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
-        echo "Extracting NVIDIA kernel display driver source..."
-        sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
-    else
-        echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
-    fi
+	else
+		echo "Warning: Unsupported JetPack version ($JETPACK_VERSION). Skipping additional kernel extraction."
+	fi
 
-else
-    echo "Warning: Unsupported JetPack version ($JETPACK_VERSION). Skipping additional kernel extraction."
+	echo "Kernel sources extracted successfully."
+	rm -rf "$TMP_DIR"
 fi
 
-echo "Kernel sources extracted successfully."
-rm -rf "$TMP_DIR"
-
-# Extract root filesystem
 echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
-mkdir -p "$TEGRA_DIR/rootfs"
-sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
-echo "Root filesystem extracted successfully."
+
+if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); then
+    mkdir -p "$TEGRA_DIR/rootfs"
+    sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
+    echo "Root filesystem extraction completed."
+fi
+
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
 echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
-sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+if [ ! -d "$TEGRA_DIR/toolchain" ]; then
+    sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+fi
 echo "Toolchain cloned successfully."
 
 chroot_script="$TEGRA_DIR/jetson_chroot.sh"
@@ -249,9 +253,6 @@ echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
 
 cd $TEGRA_DIR
-
-echo "Cleaning up kernel dtb files"
-sudo rm "$TEGRA_DIR/kernel/dtb/*"
 
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
     sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION

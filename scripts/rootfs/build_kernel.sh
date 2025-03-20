@@ -190,9 +190,10 @@ KERNEL_IMAGE_ROOTFS="$ROOTFS_DIR/boot/"
 
 DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
-DTB_DEST="$TEGRA_DIR/kernel/dtb/$DTB_NAME"
-BOOT_DIR="$ROOTFS_DIR/boot/"
-DTB_ROOTFS="$BOOT_DIR/dtb/"
+KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
+KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
+BOOT_DIR="$ROOTFS_DIR/boot"
+DTB_ROOTFS="$BOOT_DIR/dtb"
 
 # Ensure destination directories exist
 sudo mkdir -p "$KERNEL_IMAGE_DEST"
@@ -212,14 +213,16 @@ fi
 
 # Copy DTB file
 if [ -f "$DTB_SRC" ]; then
-    echo "Copying DTB file to $DTB_DEST..."
-    sudo cp -v "$DTB_SRC" "$DTB_DEST"
+    echo "Copying DTB file to $KERNEL_DTB_FILE..."
+    sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
 
 	echo "Copying DTB file to $DTB_ROOTFS..."
-    sudo cp -v "$DTB_SRC" "BOOT_DIR"
+    sudo cp -v "$DTB_SRC" "$BOOT_DIR/"
 
     echo "Copying DTB file to $DTB_ROOTFS..."
-    sudo cp -v "$DTB_SRC" "$DTB_ROOTFS"
+	# sudo rm "$KERNEL_DTB_DIR"/*
+    sudo cp -v "$DTB_SRC" "$DTB_ROOTFS/"
+    sudo cp -v "$DTB_SRC" "$KERNEL_DTB_DIR/"
 else
     echo "Error: DTB file not found at $DTB_SRC"
     exit 1
