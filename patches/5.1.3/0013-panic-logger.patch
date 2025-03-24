@@ -1,15 +1,3 @@
-diff --git a/kernel/kernel/arch/arm64/configs/defconfig b/kernel/kernel/arch/arm64/configs/defconfig
-index efdfb3086..7f0f465e4 100644
---- a/kernel/kernel/arch/arm64/configs/defconfig
-+++ b/kernel/kernel/arch/arm64/configs/defconfig
-@@ -2093,6 +2093,7 @@ CONFIG_PCI_ENDPOINT_TEST=m
- # CONFIG_XILINX_SDFEC is not set
- # CONFIG_PVPANIC is not set
- # CONFIG_HISI_HIKEY_USB is not set
-+CONFIG_CARTKEN_PANIC_LOGGER=m
- # CONFIG_C2PORT is not set
- 
- #
 diff --git a/kernel/kernel/drivers/misc/Kconfig b/kernel/kernel/drivers/misc/Kconfig
 index fafa8b0d8..50d18c7b7 100644
 --- a/kernel/kernel/drivers/misc/Kconfig
