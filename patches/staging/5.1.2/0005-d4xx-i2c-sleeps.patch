@@ -1,0 +1,22 @@
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 7fabaf382..7fda0ccd7 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -559,6 +559,8 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
+ 					"%s(): i2c raw write 0x%04x: %d bytes\n",
+ 					__func__, reg, (int)val_len);
+ 
++	usleep_range(100, 110);
++
+ 	return ret;
+ }
+ 
+@@ -574,6 +576,8 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
+ 					__func__, reg, *val);
+ 	}
+ 
++	usleep_range(100, 110);
++
+ 	return ret;
+ }
+ 
