@@ -160,10 +160,10 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 	if [[ "$JETPACK_VERSION" == "5.1.2" || "$JETPACK_VERSION" == "5.1.3" ]]; then
 		sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
-		if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
+		if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
 			if [ ! -d "$TEGRA_DIR/kernel_src" ]; then
 				echo "Extracting NVIDIA kernel display driver source..."
-				sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
+				sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
 				echo "Extraction completed."
 			fi
 		else
@@ -267,9 +267,11 @@ cd $TEGRA_DIR
 
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
     sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+	sudo ./build_display_driver.sh --toolchain "$TEGRA_DIR/toolchain/aarch64-buildroot-linux-gnu" --kernel-sources "$TEGRA_DIR/kernel_src"
 else
     echo "Skipping kernel build as requested."
 fi
+
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"

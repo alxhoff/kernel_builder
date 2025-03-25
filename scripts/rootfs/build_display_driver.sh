@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 TOOLCHAIN_PATH=""
