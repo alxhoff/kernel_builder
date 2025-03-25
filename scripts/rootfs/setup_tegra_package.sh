@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # Ensure script is run with sudo only for rootfs extraction
 if [[ $EUID -ne 0 ]]; then
@@ -53,6 +53,7 @@ TAG="latest"
 SOC="orin"
 SKIP_KERNEL_BUILD=false
 SKIP_CHROOT_BUILD=false
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Function to show help
 show_help() {
@@ -112,13 +113,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${JETPACK_L4T_MAP[$JETPACK_VERSION]}" ]]; then
-    echo "Error: Unsupported JetPack version. Use --help to see available versions."
-    exit 1
+	echo "Error: Unsupported JetPack version. Use --help to see available versions."
+	exit 1
 fi
 
 if [[ -z "$ACCESS_TOKEN" ]]; then
-    echo "Error: --access-token is required."
-    exit 1
+	echo "Error: --access-token is required."
+	exit 1
 fi
 
 ROOTFS_FILE="$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
@@ -126,26 +127,26 @@ KERNEL_FILE="$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
 DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
 
 if [ "$DOWNLOAD" = true ]; then
-    echo "Downloading required files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
-    wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
-    wget -c "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
-    wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
+	echo "Downloading required files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
+	wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
+	wget -c "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
+	wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
 else
-    echo "Skipping download, using local files."
-    for FILE in "$ROOTFS_FILE" "$KERNEL_FILE" "$DRIVER_FILE"; do
-        if [ ! -f "$FILE" ]; then
-            echo "Error: Expected file $FILE not found."
-            exit 1
-        fi
-    done
+	echo "Skipping download, using local files."
+	for FILE in "$ROOTFS_FILE" "$KERNEL_FILE" "$DRIVER_FILE"; do
+		if [ ! -f "$FILE" ]; then
+			echo "Error: Expected file $FILE not found."
+			exit 1
+		fi
+	done
 fi
 
-TEGRA_DIR="$JETPACK_VERSION"
+TEGRA_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
 if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
-    sudo mkdir -p "$TEGRA_DIR"
-    echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
-    sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
-    echo "Driver package extracted successfully."
+	sudo mkdir -p "$TEGRA_DIR"
+	echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
+	sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
+	echo "Driver package extracted successfully."
 fi
 TEGRA_DIR="$TEGRA_DIR/Linux_for_Tegra"
 
@@ -203,26 +204,26 @@ fi
 echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 
 if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); then
-    mkdir -p "$TEGRA_DIR/rootfs"
-    sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
-    echo "Root filesystem extraction completed."
+	mkdir -p "$TEGRA_DIR/rootfs"
+	sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
+	echo "Root filesystem extraction completed."
 fi
 
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
 echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
 if [ ! -d "$TEGRA_DIR/toolchain" ]; then
-    sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+	sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
 fi
 echo "Toolchain cloned successfully."
 
 chroot_script="$TEGRA_DIR/jetson_chroot.sh"
 echo "Checking for chroot script..."
 if [ ! -f "$chroot_script" ]; then
-    echo "Downloading chroot script..."
-    wget -O "$chroot_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/jetson_chroot.sh"
+	echo "Downloading chroot script..."
+	wget -O "$chroot_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/jetson_chroot.sh"
 	chmod +x $chroot_script
-    echo "chroot script downloaded successfully."
+	echo "chroot script downloaded successfully."
 fi
 
 GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/rootfs"
@@ -232,28 +233,28 @@ FILES=$(curl -s "$GIT_ROOTFS_URL")
 
 # Check if the response is valid JSON
 if ! echo "$FILES" | jq empty 2>/dev/null; then
-    echo "Error: Failed to retrieve file list or invalid JSON response."
-    echo "Response: $FILES"
-    exit 1
+	echo "Error: Failed to retrieve file list or invalid JSON response."
+	echo "Response: $FILES"
+	exit 1
 fi
 
 FILE_URLS=$(echo "$FILES" | jq -r '.[] | select(.type=="file") | .download_url' | grep -v '^$')
 
 if [[ -z "$FILE_URLS" ]]; then
-    echo "Error: No valid files found in GitHub response."
-    exit 1
+	echo "Error: No valid files found in GitHub response."
+	exit 1
 fi
 
 echo "Downloading all rootfs scripts into $TEGRA_DIR..."
 
 for FILE in $FILE_URLS; do
-    if [[ -z "$FILE" || "$FILE" == "null" ]]; then
-        echo "Skipping invalid or empty file URL."
-        continue
-    fi
+	if [[ -z "$FILE" || "$FILE" == "null" ]]; then
+		echo "Skipping invalid or empty file URL."
+		continue
+	fi
 
-    echo "Downloading $(basename "$FILE")..."
-    wget --show-progress -P "$TEGRA_DIR/" "$FILE"
+	echo "Downloading $(basename "$FILE")..."
+	wget --show-progress -P "$TEGRA_DIR/" "$FILE"
 done
 
 rm $TEGRA_DIR/setup_tegra_package.sh
@@ -266,12 +267,28 @@ chmod +x "$TEGRA_DIR/"*.sh
 cd $TEGRA_DIR
 
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
-    sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
-	sudo ./build_display_driver.sh --toolchain "$TEGRA_DIR/toolchain/aarch64-buildroot-linux-gnu" --kernel-sources "$TEGRA_DIR/kernel_src"
+	echo "Building kernel"
+	sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 else
-    echo "Skipping kernel build as requested."
+	echo "Skipping kernel build as requested."
 fi
 
+echo "Building display driver"
+echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src""
+sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src"
+
+DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
+ROOTFS_DIR="$TEGRA_DIR/rootfs"
+ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
+KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
+ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra"
+echo "Copying display driver into our kernel"
+mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
+NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
+echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
+cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
+
+depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"

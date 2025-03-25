@@ -1,21 +1,10 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 TOOLCHAIN_PATH=""
 KERNEL_SOURCES_DIR=""
-
-WORK_DIR="$(pwd)/jetson_display_driver"
-KERNEL_OUT_DIR="$(pwd)/kernel_out"
-
-BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
-BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
-NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
-NVDISPLAY_TAR="$NVDISPLAY_TAR_DIR/nvidia_kernel_display_driver_source.tbz2"
-NVDISPLAY_SOURCE_DIR="$NVDISPLAY_TAR_DIR/nvdisplay"
-
-KERNEL_TARGET_DIR="$WORK_DIR/kernel_src/kernel/kernel-5.10"
 
 show_help() {
     echo "Usage: $0 --toolchain <path> --kernel-sources <path> [--output-dir <path>]"
@@ -51,19 +40,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-CROSS_COMPILE_PATH="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
-
 if [[ -z "$TOOLCHAIN_PATH" || -z "$KERNEL_SOURCES_DIR" ]]; then
 	echo "Error: --toolchain and --kernel-sources are required."
 	exit 1
 fi
 
+L4T_DIR="$KERNEL_SOURCES_DIR/.."
+WORK_DIR="$L4T_DIR/jetson_display_driver"
+KERNEL_OUT_DIR="$WORK_DIR/kernel_out"
+
 mkdir -p "$WORK_DIR"
+
+KERNEL_TARGET_DIR="$WORK_DIR/kernel_src/kernel/kernel-5.10"
 
 if [[ -d "$KERNEL_TARGET_DIR" && -n "$(ls -A "$KERNEL_TARGET_DIR")" ]]; then
 	echo "Kernel source already exists at '$KERNEL_TARGET_DIR' and is not empty. Skipping copy."
 else
-	cp -r $KERNEL_SOURCES_DIR/../.. "$WORK_DIR/kernel_src"
+	cp -r $KERNEL_SOURCES_DIR "$WORK_DIR/kernel_src"
 	SOURCE_DIR=$(find "$WORK_DIR/kernel_src/kernel/" -mindepth 1 -maxdepth 1 -type d -name "kernel*" ! -name "kernel-5.10" | head -n 1)
 	if [ -n "$SOURCE_DIR" ]; then
 		mv "$SOURCE_DIR" "$KERNEL_TARGET_DIR"
@@ -72,6 +65,12 @@ else
 		echo "No matching folder found to rename."
 	fi
 fi
+
+BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
+BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
+NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
+NVDISPLAY_TAR="$NVDISPLAY_TAR_DIR/nvidia_kernel_display_driver_source.tbz2"
+NVDISPLAY_SOURCE_DIR="$NVDISPLAY_TAR_DIR/nvdisplay"
 
 if [[ ! -d "$NVDISPLAY_TAR_DIR" ]]; then
 	echo "Downloading and extracting public sources..."
@@ -83,6 +82,8 @@ if [[ ! -d "$NVDISPLAY_SOURCE_DIR" ]]; then
 	echo "Extracting display driver sources..."
 	tar -xpf "$NVDISPLAY_TAR" -C "$NVDISPLAY_TAR_DIR"
 fi
+
+CROSS_COMPILE_PATH="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
 
 if [[ "$REUSE_KERNEL" == "true" ]]; then
 	echo "Skipping kernel cleanup (mrproper) and reusing previous build..."
@@ -96,7 +97,7 @@ else
 	mkdir -p "$KERNEL_OUT_DIR"
 fi
 
-echo "Cleaned with mrproper, applying defconfig"
+echo "Applying defconfig"
 make -C "$KERNEL_TARGET_DIR" O=$KERNEL_OUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3" defconfig
 
 echo "Tegra defconfig applied, building kernel"

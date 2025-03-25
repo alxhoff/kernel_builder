@@ -3,7 +3,7 @@
 set -e
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOTFS_DIR="$TEGRA_DIR/rootfs"
+ROOTFS_ROOT_DIR="$TEGRA_DIR/rootfs"
 TOOLCHAIN_DIR="$TEGRA_DIR/toolchain/bin"
 KERNEL_SRC_ROOT="$TEGRA_DIR/kernel_src"
 CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
@@ -162,37 +162,34 @@ sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
 
 # Run menuconfig if requested
 if [ "$MENUCONFIG" = true ]; then
-    echo "Running menuconfig..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
+	echo "Running menuconfig..."
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
 fi
 
-# Compile the kernel as the original user
 if [ -n "$LOCALVERSION" ]; then
-    echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
+	echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
 
-    # Run modules_install as root
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
 else
-    echo "Building kernel using cartken_defconfig..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS
+	echo "Building kernel using cartken_defconfig..."
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS
 
-    # Run modules_install as root
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_DIR"
+	sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
 fi
 
 # Define paths for kernel Image and DTB
 KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
-KERNEL_IMAGE_ROOTFS="$ROOTFS_DIR/boot/"
+KERNEL_IMAGE_ROOTFS="$ROOTFS_ROOT_DIR/boot/"
 
 DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
 KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
-BOOT_DIR="$ROOTFS_DIR/boot"
+BOOT_DIR="$ROOTFS_ROOT_DIR/boot"
 DTB_ROOTFS="$BOOT_DIR/dtb"
 
 # Ensure destination directories exist
@@ -230,7 +227,7 @@ fi
 
 echo "Kernel build completed successfully!"
 
-cd $ROOTFS_DIR
+cd $ROOTFS_ROOT_DIR
 THIRD_PARTY_DRIVERS="rtl8192eu rtl88x2bu"
 
 echo "Building third party drivers"
@@ -255,10 +252,10 @@ fi
 echo "Detected Kernel Version: $KERNEL_VERSION"
 
 # Define module destination directory
-KERNEL_LIB_DIR="$ROOTFS_DIR/lib/modules/$KERNEL_VERSION"
+KERNEL_LIB_DIR="$ROOTFS_ROOT_DIR/lib/modules/$KERNEL_VERSION"
 MODULE_DEST_DIR="$KERNEL_LIB_DIR/kernel/drivers/net/wireless"
 
 # Ensure the destination directory exists
 sudo mkdir -p "$MODULE_DEST_DIR"
 cp "$TEGRA_DIR"/*.ko "$MODULE_DEST_DIR"
-depmod -b $ROOTFS_DIR $KERNEL_VERSION
+depmod -b $ROOTFS_ROOT_DIR $KERNEL_VERSION

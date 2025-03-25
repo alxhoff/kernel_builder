@@ -4,7 +4,8 @@ set -e
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_DIR=$(mktemp -d)
-TOOLCHAIN_DIR="$TMP_DIR/toolchain/bin"
+TOOLCHAIN_ROOT_DIR="$TMP_DIR/toolchain"
+TOOLCHAIN_DIR="$TOOLCHAIN_ROOT_DIR/bin"
 KERNEL_SRC_ROOT="$TMP_DIR/kernel_src"
 CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
@@ -182,6 +183,11 @@ for DRIVER in $THIRD_PARTY_DRIVERS; do
 
 done
 
+echo "Building display driver"
+DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
+"$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR"
+echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR""
+
 # Copy all built .ko files once
 for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
     if [[ -f "$KO_FILE" ]]; then
@@ -191,8 +197,6 @@ for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
 done
 
 depmod -b "$PKG_DIR" "$KERNEL_VERSION"
-    depmod -b "$PKG_DIR" "$KERNEL_VERSION"
-done
 
 OUTPUT_DEB="$TEGRA_DIR/$PKG_NAME.deb"
 dpkg-deb --build "$PKG_DIR" "$OUTPUT_DEB"
