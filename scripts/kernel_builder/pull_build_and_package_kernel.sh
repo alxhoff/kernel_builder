@@ -163,6 +163,37 @@ update-initramfs -c -k $KERNEL_VERSION
 EOF
 chmod 0755 "$PKG_DIR/DEBIAN/postinst"
 
+# Build third-party drivers
+THIRD_PARTY_DRIVERS="rtl8192eu rtl88x2bu"
+DRIVER_SCRIPTS_DIR="$TEGRA_DIR/../rootfs"
+DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/kernel/drivers/net/wireless"
+mkdir -p "$DRIVER_OUTPUT_DIR"
+echo "Building third party drivers..."
+for DRIVER in $THIRD_PARTY_DRIVERS; do
+    echo "Building and installing $DRIVER"
+    DRIVER_SCRIPT="$DRIVER_SCRIPTS_DIR/${DRIVER}.sh"
+    if [[ -x "$DRIVER_SCRIPT" ]]; then
+        echo "$DRIVER_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $KERNEL_VERSION_SUFFIX"
+        "$DRIVER_SCRIPT" --kernel-src "$KERNEL_SRC_ROOT" --toolchain "$CROSS_COMPILE" --localversion "$KERNEL_VERSION_SUFFIX"
+    else
+        echo "Error: Driver script $DRIVER_SCRIPT not found or not executable"
+        exit 1
+    fi
+
+done
+
+# Copy all built .ko files once
+for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
+    if [[ -f "$KO_FILE" ]]; then
+        echo "Copying $(basename "$KO_FILE") into module tree"
+        cp "$KO_FILE" "$DRIVER_OUTPUT_DIR/"
+    fi
+done
+
+depmod -b "$PKG_DIR" "$KERNEL_VERSION"
+    depmod -b "$PKG_DIR" "$KERNEL_VERSION"
+done
+
 OUTPUT_DEB="$TEGRA_DIR/$PKG_NAME.deb"
 dpkg-deb --build "$PKG_DIR" "$OUTPUT_DEB"
 echo "✅ Debian package created at: $OUTPUT_DEB"
