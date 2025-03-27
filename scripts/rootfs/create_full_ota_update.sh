@@ -68,7 +68,7 @@ run_command() {
 }
 
 echo "Running setup_tegra_package_docker.sh with target Jetpack version: $TARGET_JETPACK"
-run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK" --no-download
+run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
 
 if [[ "$BASE_JETPACK" != "$TARGET_JETPACK" ]]; then
 	echo "Removing all .tbz2 files from working directory"
@@ -92,6 +92,7 @@ run_command "$OTA_DIR"/create_debian.sh \
     --kernel-version "$KERNEL_VERSION" \
     --repo-version "$TAG" \
     --target-bsp "$TARGET_JETPACK" \
+    --base-bsp "$BASE_JETPACK" \
     --extlinux-conf "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf"
 
 echo "Full OTA update process completed successfully."

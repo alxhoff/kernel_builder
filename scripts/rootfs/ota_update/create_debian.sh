@@ -11,6 +11,7 @@ show_help() {
     echo "  --kernel-version <ver> Kernel version."
     echo "  --repo-version <ver>   Repository version."
     echo "  --target-bsp <ver>     Target BSP version (Only 5.1.3 supported currently)."
+    echo "  --base-bsp <ver>       Base BSP version."
     echo "  --help                 Show this help message and exit."
     echo
     exit 0
@@ -21,6 +22,7 @@ OTA_PAYLOAD=""
 KERNEL_VERSION=""
 REPO_VERSION=""
 TARGET_BSP=""
+BASE_BSP=""
 EXTLINUX_CONF=""
 
 while [[ $# -gt 0 ]]; do
@@ -35,6 +37,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --repo-version)
             REPO_VERSION="$2"
+            shift 2
+            ;;
+        --base-bsp)
+            BASE_BSP="$2"
             shift 2
             ;;
         --target-bsp)
@@ -74,7 +80,7 @@ OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v
 
 rm -rf /tmp/ota_tools
 
-PKG_NAME="cartken-full-system-ota-release-${REPO_VERSION}-kernel-${KERNEL_VERSION}"
+PKG_NAME="cartken-full-system-ota-from-${BASE_BSP}-to-${TARGET_BSP}-release-${REPO_VERSION}-kernel-${KERNEL_VERSION}"
 PKG_DIR="/tmp/${PKG_NAME}"
 DEBIAN_DIR="$PKG_DIR/DEBIAN"
 INSTALL_DIR="$PKG_DIR/usr/local/cartken/ota"
