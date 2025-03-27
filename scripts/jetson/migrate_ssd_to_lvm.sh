@@ -40,7 +40,7 @@ command -v gdisk >/dev/null || { echo "gdisk not found"; exit 1; }
 for bin in pvcreate vgcreate lvcreate lvdisplay; do
   if ! command -v "$bin" &>/dev/null; then
     echo "❌ Required LVM tool '$bin' is missing. Installing LVM2 (e.g. 'sudo apt install lvm2')."
-	apt install -y lvm2
+    apt install -y lvm2
   fi
 done
 pause_step
@@ -62,19 +62,11 @@ pause_step
 
 # === Step: Stop services that may use the mount ===
 echo "[*] Stopping services that may be using $MOUNT_OLD..."
-
-# Stop Docker to release /xavier_ssd
 systemctl stop docker || true
-
-# Optional: stop anything else here
-# systemctl stop some-other-service
-# killall some-process
-
 pause_step
 
 # === Step 2: Unmount and shrink filesystem ===
 echo "[*] Unmounting and checking filesystem..."
-echo "[*] Unmounting $MOUNT_OLD if mounted..."
 if mountpoint -q "$MOUNT_OLD"; then
   umount -l "$MOUNT_OLD"
 else
@@ -108,7 +100,6 @@ partprobe "$DISK"
 
 LVM_PART="${DISK}p${NEW_PART_NUM}"
 
-# Check if partition with that number exists already
 if sgdisk -p "$DISK" | grep -q "^ *${NEW_PART_NUM} "; then
   echo "[*] Partition number $NEW_PART_NUM already exists on $DISK, skipping creation."
 else
@@ -147,6 +138,33 @@ uuid=$(blkid -s UUID -o value "/dev/${VG_NAME}/${LV_NAME}")
 cp /etc/fstab /etc/fstab.bak
 sed -i "\|[[:space:]]${MOUNT_OLD}[[:space:]]|d" /etc/fstab
 echo "UUID=$uuid $MOUNT_OLD ext4 defaults,nofail 0 2" >> /etc/fstab
+
+# === Step 10: Expand LVM to use entire disk ===
+echo "[*] Expanding LVM to use entire disk..."
+# Unmount the LVM mount point (precaution)
+if mountpoint -q "$MOUNT_OLD"; then
+  echo "[-] Unmounting $MOUNT_OLD..."
+  umount "$MOUNT_OLD"
+fi
+
+# Resize the partition (p2) to the full disk
+echo "[*] Recreating partition 2 to span the entire disk..."
+lvm_start=$(gdisk -l "$DISK" | awk '$1 == "2" { print $2 }')
+echo -e "d\n2\nn\n2\n${lvm_start}\n\n\nt\n2\n8e00\nw\ny\n" | gdisk "$DISK"
+partprobe "$DISK"
+sleep 2
+
+# Resize the physical volume
+echo "[*] Resizing physical volume..."
+pvresize /dev/nvme0n1p2
+
+# Resize the logical volume and filesystem
+echo "[*] Resizing logical volume and filesystem..."
+lvextend -l +100%FREE "/dev/${VG_NAME}/${LV_NAME}"
+resize2fs "/dev/${VG_NAME}/${LV_NAME}"
+
+# Remount the LVM
+mount "/dev/${VG_NAME}/${LV_NAME}" "$MOUNT_OLD"
 
 echo
 echo "[✓] Migration complete. LVM is now mounted at $MOUNT_OLD."
