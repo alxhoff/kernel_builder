@@ -196,7 +196,7 @@ DTB_PATH="$TARGET_L4T/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
 # Generate OTA payload
 if ! $SKIP_BUILD; then
     echo "Generating OTA update payload..."
-	if [[ -n "$DTB_PATH" ]]; then
+	if [[ -n "$DTB_PATH" && "$BASE_BSP_VERSION" != "R35-4" ]]; then
 		FLASH_OPTS="-p \"-d $DTB_PATH\""
 	else
 		FLASH_OPTS=""
