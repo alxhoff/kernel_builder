@@ -71,12 +71,23 @@ if [[ -n "$EXTLINUX_CONF" && ! -f "$EXTLINUX_CONF" ]]; then
     exit 1
 fi
 
-if [[ "$TARGET_BSP" != "5.1.3" ]]; then
+if [[ "$TARGET_BSP" != "5.1.3" && "$TARGET_BSP" != "5.1.2" ]]; then
     echo "Error: Unsupported target BSP version. Currently, only 5.1.3 is supported."
     exit 1
 fi
 
-OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/ota_tools_R35.5.0_aarch64.tbz2"
+case "$TARGET_BSP" in
+    "5.1.3")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/ota_tools_R35.5.0_aarch64.tbz2"
+        ;;
+    "5.1.2")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/ota_tools_r35.4.1_aarch64.tbz2"
+        ;;
+    *)
+        echo "Error: Unsupported target BSP version. Supported: 5.1.2, 5.1.3"
+        exit 1
+        ;;
+esac
 
 rm -rf /tmp/ota_tools
 
