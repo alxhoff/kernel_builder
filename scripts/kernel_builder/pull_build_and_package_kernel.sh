@@ -132,16 +132,18 @@ PKG_DIR="$DEB_TMP_DIR/$PKG_NAME"
 mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/boot/dtb" "$PKG_DIR/lib/modules"
 mv "$DEB_TMP_DIR/root/lib/modules/$KERNEL_VERSION" "$PKG_DIR/lib/modules/"
 
-cp "$KERNEL_SRC/arch/arm64/boot/Image" "$PKG_DIR/boot/"
-cp "$KERNEL_SRC/arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb" "$PKG_DIR/boot/dtb/"
+cp "$KERNEL_SRC/arch/arm64/boot/Image" "$PKG_DIR/boot/Image-$KERNEL_VERSION"
+cp "$KERNEL_SRC/arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb" "$PKG_DIR/boot/dtb/tegra234-p3701-0000-p3737-0000-$KERNEL_VERSION.dtb"
 
 cat <<EOF > "$PKG_DIR/DEBIAN/control"
 Package: $PKG_NAME
 Version: $KERNEL_VERSION
 Architecture: arm64
-Maintainer: Kernel Builder <noreply@example.com>
+Maintainer: Alex Hoffman <alxhoff@cartken.com>
 Description: Custom Jetson Kernel $KERNEL_VERSION
 Depends: initramfs-tools
+Conflicts: nvidia-l4t-kernel
+Replaces: nvidia-l4t-kernel
 Section: kernel
 Priority: optional
 EOF
@@ -150,17 +152,17 @@ cat <<EOF > "$PKG_DIR/DEBIAN/postinst"
 #!/bin/bash
 set -e
 
-cp /boot/Image /boot/Image.previous
-cp /boot/Image /boot/Image
-cp /boot/dtb/tegra234*.dtb /boot/dtb/
-
 EXTLINUX_CONF="/boot/extlinux/extlinux.conf"
-sed -i "s|^LINUX .*|LINUX /boot/Image|" "\$EXTLINUX_CONF"
-sed -i "s|^INITRD .*|INITRD /boot/initrd.img-$KERNEL_VERSION|" "\$EXTLINUX_CONF"
-sed -i "s|^FDT .*|FDT /boot/dtb/tegra234-p3701-0000-p3737-0000.dtb|" "\$EXTLINUX_CONF"
 
-depmod $KERNEL_VERSION
-update-initramfs -c -k $KERNEL_VERSION
+# Update only within the 'LABEL primary' block
+sed -i "/^LABEL primary/,/^$/ {
+    s|^\\s*LINUX .*|    LINUX /boot/Image-$KERNEL_VERSION|
+    s|^\\s*INITRD .*|    INITRD /boot/initrd.img-$KERNEL_VERSION|
+    s|^\\s*FDT .*|    FDT /boot/dtb/tegra234-p3701-0000-p3737-0000-$KERNEL_VERSION.dtb|
+}" "\$EXTLINUX_CONF"
+
+depmod "$KERNEL_VERSION"
+update-initramfs -c -k "$KERNEL_VERSION"
 EOF
 chmod 0755 "$PKG_DIR/DEBIAN/postinst"
 
