@@ -3,6 +3,9 @@ sudo apt update
 sudo apt upgrade -y
 sudo apt autoremove -y
 sudo apt-mark unhold nvidia-l4t-bootloader nvidia-l4t-configs nvidia-l4t-tools nvidia-l4t-xusb-firmware
+sudo dpkg --purge nvidia-l4t-kernel-dtbs nvidia-l4t-jetson-io nvidia-l4t-display-kernel
+sudo dpkg --purge nvidia-l4t-kernel-headers
+sudo dpkg --purge nvidia-l4t0kernel
 echo "Installing apt packages"
 apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban
 pip install -U sphinx
