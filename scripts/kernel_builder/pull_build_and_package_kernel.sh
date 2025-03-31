@@ -17,8 +17,8 @@ CREATE_DEB=true
 
 # JetPack -> L4T version map
 declare -A JETPACK_L4T_MAP=(
-    [5.1.3]=35.5.0
     [5.1.2]=35.4.1
+    [5.1.3]=35.5.0
     [6.0DP]=36.2
     [6.2]=36.4.3
 )
@@ -57,6 +57,11 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1"; show_help;;
     esac
 done
+
+if [[ "$LOCALVERSION" == *"_"* ]]; then
+    echo "Error: LOCALVERSION must not contain underscores"
+    exit 1
+fi
 
 if [[ -z "${JETPACK_L4T_MAP[$PATCH]}" ]]; then
     echo "Unsupported JetPack version"; exit 1
