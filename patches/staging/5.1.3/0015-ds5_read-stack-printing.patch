@@ -14,9 +14,7 @@ index 04c8969ec..e5874f493 100644
  			dev_dbg(&state->client->dev,
  					"%s(): i2c raw write 0x%04x: %d bytes\n",
  					__func__, reg, (int)val_len);
-+
  	usleep_range(100,110);
-+
  	return ret;
  }
  
@@ -34,9 +32,7 @@ index 04c8969ec..e5874f493 100644
  			dev_dbg(&state->client->dev, "%s(): i2c read 0x%04x: 0x%x\n",
  					__func__, reg, *val);
  	}
-+
  	usleep_range(100,110);
-+
  	return ret;
  }
  
