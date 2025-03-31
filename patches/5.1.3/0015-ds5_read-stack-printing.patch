@@ -1,5 +1,5 @@
 diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
-index 04c8969ec..e5874f493 100644
+index 04c8969ec..c8de0cd51 100644
 --- a/kernel/nvidia/drivers/media/i2c/d4xx.c
 +++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
 @@ -30,6 +30,7 @@
@@ -10,14 +10,7 @@ index 04c8969ec..e5874f493 100644
  #ifdef CONFIG_VIDEO_INTEL_IPU6
  #include <linux/ipu-isys.h>
  #include <media/d4xx_pdata.h>
-@@ -562,22 +563,27 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
- 			dev_dbg(&state->client->dev,
- 					"%s(): i2c raw write 0x%04x: %d bytes\n",
- 					__func__, reg, (int)val_len);
- 	usleep_range(100,110);
- 	return ret;
- }
- 
+@@ -569,10 +570,11 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
  static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
  {
  	int ret = regmap_raw_read(state->regmap, reg, val, 2);
@@ -31,8 +24,3 @@ index 04c8969ec..e5874f493 100644
  		if (state->dfu_dev.dfu_state_flag == DS5_DFU_IDLE)
  			dev_dbg(&state->client->dev, "%s(): i2c read 0x%04x: 0x%x\n",
  					__func__, reg, *val);
- 	}
- 	usleep_range(100,110);
- 	return ret;
- }
- 
