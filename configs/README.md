@@ -19,6 +19,17 @@ CONFIG_USB_SERIAL_WWAN=m
 CONFIG_USB_SERIAL_OPTION=m
 CONFIG_USB_NET_QMI_WWAN=m
 
+## Multi-path TCP
+
+CONFIG_MPTCP=y
+CONFIG_INET_MPTCP_DIAG=m
+CONFIG_MPTCP_IPV6=y
+
+Depends on (but should already be enabled)
+
+CONFIG_NET=y
+CONFIG_INET=y
+
 ## Panic logger
 
 After patching in the driver
