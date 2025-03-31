@@ -1,0 +1,16 @@
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 4bdb089e6..55dad0d74 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -564,9 +564,9 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 			} else {
+ 				dev_warn(vi->dev,
+ 					"corr_err: discarding frame %d, flags: %d, "
+-					"err_data %d\n",
++					"err_data %d, status %d\n",
+ 					descr->status.frame_id, descr->status.flags,
+-					descr->status.err_data);
++					descr->status.err_data, descr->status.status);
+ 				frame_err = true;
+ 			}
+ 		} else if (!vi_port) {
