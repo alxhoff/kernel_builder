@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 # Ensure script is run with sudo only for rootfs extraction
 if [[ $EUID -ne 0 ]]; then
@@ -163,9 +163,9 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
 	sudo tar -xjf "$KERNEL_FILE" -C "$TMP_DIR"
 	sudo mkdir -p "$TEGRA_DIR/kernel_src"
-	echo "JetPack $JETPACK_VERSION detected, extracting kernel sources"
+	echo "JetPack \"$JETPACK_VERSION\" detected, extracting kernel sources"
 
-	case "$TARGET_BSP" in
+	case "$JETPACK_VERSION" in
 		5.1.2|5.1.3|5.1.4|5.1.5)
 			sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
