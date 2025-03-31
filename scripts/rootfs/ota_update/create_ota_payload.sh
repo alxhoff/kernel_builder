@@ -206,7 +206,7 @@ if ! $SKIP_BUILD; then
 		FLASH_OPTS=""
 	fi
 
-	run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS $FLASH_OPTS jetson-agx-orin-devkit $BASE_BSP_VERSION"
+	run_cmd "cd \"$TARGET_L4T\" && BASE_BSP=$BASE_BSP TARGET_BSP=$TARGET_BSP ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS $FLASH_OPTS jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
     # echo "$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
     # run_cmd "cd \"$TARGET_L4T\" && ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS jetson-agx-orin-devkit $BASE_BSP_VERSION"
