@@ -19,14 +19,18 @@ CREATE_DEB=true
 declare -A JETPACK_L4T_MAP=(
     [5.1.2]=35.4.1
     [5.1.3]=35.5.0
+	[5.1.4]=35.6.0
+	[5.1.5]=35.6.1
     [6.0DP]=36.2
     [6.2]=36.4.3
 )
 
 # Kernel source URLs
 declare -A KERNEL_URLS=(
-    [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
     [5.1.2]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2"
+    [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
+	[5.1.4]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/sources/public_sources.tbz2"
+	[5.1.5]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
     [6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
 )
