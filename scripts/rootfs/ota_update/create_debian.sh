@@ -10,7 +10,7 @@ show_help() {
     echo "  --otapayload <path>    Path to the OTA payload package."
     echo "  --kernel-version <ver> Kernel version."
     echo "  --repo-version <ver>   Repository version."
-    echo "  --target-bsp <ver>     Target BSP version (Only 5.1.3 supported currently)."
+    echo "  --target-bsp <ver>     Target BSP version"
     echo "  --base-bsp <ver>       Base BSP version."
     echo "  --help                 Show this help message and exit."
     echo
@@ -71,12 +71,21 @@ if [[ -n "$EXTLINUX_CONF" && ! -f "$EXTLINUX_CONF" ]]; then
     exit 1
 fi
 
-if [[ "$TARGET_BSP" != "5.1.3" && "$TARGET_BSP" != "5.1.2" ]]; then
-    echo "Error: Unsupported target BSP version. Currently, only 5.1.3 is supported."
-    exit 1
-fi
+case "$TARGET_BSP" in
+    5.1.2|5.1.3|5.1.4|5.1.5) ;;
+    *)
+        echo "Error: Unsupported target BSP version. Supported versions are 5.1.2, 5.1.3, 5.1.4, and 5.1.5."
+        exit 1
+        ;;
+esac
 
 case "$TARGET_BSP" in
+    "5.1.5")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/release/ota_tools_R35.6.1_aarch64.tbz2"
+        ;;
+    "5.1.4")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/release/ota_tools_R35.6.0_aarch64.tbz2"
+        ;;
     "5.1.3")
         OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/ota_tools_R35.5.0_aarch64.tbz2"
         ;;

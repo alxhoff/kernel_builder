@@ -21,6 +21,8 @@ SKIP_BUILD=false
 declare -A BSP_VERSION_MAP=(
     [5.1.2]="R35-4"
     [5.1.3]="R35-5"
+    [5.1.4]="R35-6"
+    [5.1.5]="R35-6"
     [6.0DP]="R36-2"
     [6.2]="R36-2"
 )
@@ -28,6 +30,8 @@ declare -A BSP_VERSION_MAP=(
 declare -A OTA_TOOL_URLS=(
     [5.1.2]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/ota_tools_r35.4.1_aarch64.tbz2"
     [5.1.3]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/ota_tools_R35.5.0_aarch64.tbz2"
+	[5.1.4]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/release/ota_tools_R35.6.0_aarch64.tbz2"
+	[5.1.5]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/release/ota_tools_R35.6.1_aarch64.tbz2"
     [6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/ota_tools_R36.3.0_aarch64.tbz2"
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/ota_tools_r36.4.3_aarch64.tbz2"
 )
