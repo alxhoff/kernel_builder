@@ -112,12 +112,13 @@ if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
     exit 1
 fi
 
+
 BASE_VERSION=$(basename "$BASE_BSP")
 TARGET_VERSION=$(basename "$TARGET_BSP")
 BASE_L4T="$BASE_BSP/Linux_for_Tegra"
 TARGET_L4T="$TARGET_BSP/Linux_for_Tegra"
-export BASE_BSP=$BASE_BSP_L4T
-export TARGET_BSP=$TARGET_BSP_L4T
+export BASE_BSP=$BASE_L4T
+export TARGET_BSP=$TARGET_L4T
 BASE_BSP_VERSION="${BSP_VERSION_MAP[$BASE_VERSION]}"
 
 echo "BASE L4T: $BASE_L4T"
@@ -206,6 +207,7 @@ if ! $SKIP_BUILD; then
 		FLASH_OPTS=""
 	fi
 
+	echo "cd \"$TARGET_L4T\" && BASE_BSP="$BASE_BSP" TARGET_BSP="$TARGET_BSP" ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS $FLASH_OPTS jetson-agx-orin-devkit $BASE_BSP_VERSION"
 	run_cmd "cd \"$TARGET_L4T\" && BASE_BSP=$BASE_BSP TARGET_BSP=$TARGET_BSP ./tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh $OTA_BUILD_ARGS $FLASH_OPTS jetson-agx-orin-devkit $BASE_BSP_VERSION"
 
     # echo "$TARGET_L4T/tools/ota_tools/version_upgrade/l4t_generate_ota_package.sh jetson-agx-orin-devkit $BASE_BSP_VERSION"
