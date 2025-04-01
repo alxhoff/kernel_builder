@@ -279,26 +279,26 @@ cd $TEGRA_DIR
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	echo "Building kernel"
 	sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+	echo "Building display driver"
+	echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src""
+	sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src"
+
+	DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
+	ROOTFS_DIR="$TEGRA_DIR/rootfs"
+	ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
+	KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
+	ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra"
+	echo "Copying display driver into our kernel"
+	mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
+	NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
+	echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
+	cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
+
+	depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
 else
 	echo "Skipping kernel build as requested."
 fi
 
-echo "Building display driver"
-echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src""
-sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src"
-
-DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
-ROOTFS_DIR="$TEGRA_DIR/rootfs"
-ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
-KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
-ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra"
-echo "Copying display driver into our kernel"
-mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
-NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
-echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
-cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
-
-depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
