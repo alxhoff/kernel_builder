@@ -5,12 +5,14 @@ set -e
 CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 TOOLCHAIN_PATH=""
 KERNEL_SOURCES_DIR=""
+TARGET_BSP=""
 
 show_help() {
     echo "Usage: $0 --toolchain <path> --kernel-sources <path> [--output-dir <path>]"
     echo "Options:"
     echo "  --toolchain PATH       Path to the cross-compilation toolchain, ie. path $TO_HERE/bin/aarch64... (required)"
     echo "  --kernel-sources PATH  Path to the kernel source directory (required)"
+	echo "  --target-bsp NAME      BSP identifier to append to LOCALVERSION (optional)"
     exit 0
 }
 
@@ -30,6 +32,10 @@ while [[ $# -gt 0 ]]; do
             REUSE_KERNEL=true
             shift
             ;;
+		--target-bsp)
+			TARGET_BSP="$2"
+			shift 2
+			;;
         -h|--help)
             show_help
             ;;
@@ -48,6 +54,7 @@ fi
 L4T_DIR="$KERNEL_SOURCES_DIR/.."
 WORK_DIR="$L4T_DIR/jetson_display_driver"
 KERNEL_OUT_DIR="$WORK_DIR/kernel_out"
+LOCALVERSION="-cartken${TARGET_BSP}"
 
 mkdir -p "$WORK_DIR"
 
@@ -89,7 +96,7 @@ if [[ "$REUSE_KERNEL" == "true" ]]; then
 	echo "Skipping kernel cleanup (mrproper) and reusing previous build..."
 else
 	echo "Cleaning kernel sources and output directory..."
-	make -C "$KERNEL_TARGET_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3" mrproper
+	make -C "$KERNEL_TARGET_DIR" -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="$LOCALVERSION" mrproper
 
 	if [[ -d "$KERNEL_OUT_DIR" ]]; then
 		rm -rf "$KERNEL_OUT_DIR"
@@ -98,16 +105,16 @@ else
 fi
 
 echo "Applying defconfig"
-make -C "$KERNEL_TARGET_DIR" O=$KERNEL_OUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3" defconfig
+make -C "$KERNEL_TARGET_DIR" O=$KERNEL_OUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="$LOCALVERSION" defconfig
 
 echo "Tegra defconfig applied, building kernel"
-make -C "$KERNEL_TARGET_DIR" O=$KERNEL_OUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="-cartken5.1.3"
+make -C "$KERNEL_TARGET_DIR" O=$KERNEL_OUT_DIR -j "$(nproc)" ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE_PATH} LOCALVERSION="$LOCALVERSION"
 
 echo "Kernel built. Building NVIDIA Jetson display driver..."
 
 IGNORE_MISSING_MODULE_SYMVERS=1 make VERBOSE=1 -C "$NVDISPLAY_SOURCE_DIR" modules \
 	TARGET_ARCH=aarch64 ARCH=arm64 \
-	LOCALVERSION="-cartken5.1.3" \
+	LOCALVERSION="$LOCALVERSION" \
 	CC="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}gcc" \
 	LD="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ld.bfd" \
 	AR="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}ar" \
