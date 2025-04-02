@@ -226,12 +226,6 @@ fi
 
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
-echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
-if [ ! -d "$TEGRA_DIR/toolchain" ]; then
-	sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
-fi
-echo "Toolchain cloned successfully."
-
 chroot_script="$TEGRA_DIR/jetson_chroot.sh"
 echo "Checking for chroot script..."
 if [ ! -f "$chroot_script" ]; then
@@ -287,6 +281,12 @@ chmod +x "$TEGRA_DIR/"*.sh
 cd $TEGRA_DIR
 
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
+	echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
+	if [ ! -d "$TEGRA_DIR/toolchain" ]; then
+		sudo git clone --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+	fi
+	echo "Toolchain cloned successfully."
+
 	echo "Building kernel"
 	sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 	echo "Building display driver"
