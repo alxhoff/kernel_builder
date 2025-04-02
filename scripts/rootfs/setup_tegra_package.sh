@@ -74,6 +74,7 @@ show_help() {
 	echo "  --skip-kernel-build		Skips building the kernel"
 	echo "  --skip-chroot-build		Skips updating and settup up the rootfs in a chroot"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
+	echo "  --just-clone		    Only pulls the sources, nothing more"
     echo "  -h, --help              Show this help message"
     exit 0
 }
@@ -101,6 +102,10 @@ while [[ $# -gt 0 ]]; do
             DOWNLOAD=false
             shift
             ;;
+		--just-clone)
+			JUST_CLONE=true
+			shift
+			;;
         --skip-kernel-build)
             SKIP_KERNEL_BUILD=true
             shift
@@ -270,6 +275,11 @@ done
 rm $TEGRA_DIR/setup_tegra_package.sh
 
 echo "All rootfs scripts downloaded successfully."
+
+if [[ "$JUST_CLONE" == true ]]; then
+    echo "--just-clone was specified. Exiting early after cloning rootfs scripts."
+    exit 0
+fi
 
 echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
