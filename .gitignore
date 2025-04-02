@@ -1,5 +1,5 @@
 !target_modules.txt
-filesystems
+vanilla_rootfs
 *.cap
 kernels/*
 !kernels/.gitkeep
