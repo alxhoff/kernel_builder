@@ -37,6 +37,7 @@ show_help() {
     echo "  --menuconfig          Run menuconfig before build"
     echo "  --localversion STR    Append local version string"
     echo "  --no-deb              Skip .deb package creation"
+	echo "  --output-dir		  If specified then the building and output will be done here instead of in /tmp"
     echo "  -h, --help            Show this help"
     exit 0
 }
@@ -134,7 +135,7 @@ fi
 
 KERNEL_SRC="$KERNEL_SRC_ROOT/kernel/kernel"
 cd "$KERNEL_SRC"
-make $MAKE_ARGS mrproper
+#make $MAKE_ARGS mrproper
 wget -O arch/arm64/configs/defconfig "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
 
 if $MENUCONFIG; then
@@ -211,13 +212,21 @@ for DRIVER in $THIRD_PARTY_DRIVERS; do
 
 done
 
+# Copy all built .ko files once
+for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
+    if [[ -f "$KO_FILE" ]]; then
+        echo "Copying $(basename "$KO_FILE") into module tree"
+        cp "$KO_FILE" "$DRIVER_OUTPUT_DIR/"
+    fi
+done
+
 echo "Building display driver"
 DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
 "$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR"
-echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR""
+echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --reuse"
 
 # Copy all built .ko files once
-for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
+for KO_FILE in "$TMP_DIR/jetson_display_driver/Linux_for_Tegra/source/public/nvdisplay/kernel-open"/*.ko; do
     if [[ -f "$KO_FILE" ]]; then
         echo "Copying $(basename "$KO_FILE") into module tree"
         cp "$KO_FILE" "$DRIVER_OUTPUT_DIR/"
