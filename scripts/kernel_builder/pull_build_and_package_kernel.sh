@@ -3,7 +3,6 @@
 set -e
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP_DIR=$(mktemp -d)
 TOOLCHAIN_ROOT_DIR="$TMP_DIR/toolchain"
 TOOLCHAIN_DIR="$TOOLCHAIN_ROOT_DIR/bin"
 KERNEL_SRC_ROOT="$TMP_DIR/kernel_src"
@@ -14,6 +13,7 @@ LOCALVERSION=""
 PATCH="5.1.3"
 PATCH_SOURCE=false
 CREATE_DEB=true
+OUTPUT_DIR=""
 
 # JetPack -> L4T version map
 declare -A JETPACK_L4T_MAP=(
@@ -56,6 +56,8 @@ while [[ $# -gt 0 ]]; do
             LOCALVERSION="$2"; shift 2;;
         --no-deb)
             CREATE_DEB=false; shift;;
+		--output-dir)
+			OUTPUT_DIR="$(realpath "$2")"; shift 2;;
         -h|--help)
             show_help;;
         *) echo "Unknown option: $1"; show_help;;
@@ -69,6 +71,14 @@ fi
 
 if [[ -z "${JETPACK_L4T_MAP[$PATCH]}" ]]; then
     echo "Unsupported JetPack version"; exit 1
+fi
+
+if [[ -n "$OUTPUT_DIR" ]]; then
+    mkdir -p "$OUTPUT_DIR"
+    TMP_DIR="$OUTPUT_DIR/tmp"
+    mkdir -p "$TMP_DIR"
+else
+    TMP_DIR=$(mktemp -d)
 fi
 
 if [ ! -d "$TOOLCHAIN_DIR" ]; then
