@@ -3,11 +3,6 @@
 set -e
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOOLCHAIN_ROOT_DIR="$TMP_DIR/toolchain"
-TOOLCHAIN_DIR="$TOOLCHAIN_ROOT_DIR/bin"
-KERNEL_SRC_ROOT="$TMP_DIR/kernel_src"
-CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
-MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 MENUCONFIG=false
 LOCALVERSION=""
 PATCH="5.1.3"
@@ -75,11 +70,16 @@ fi
 
 if [[ -n "$OUTPUT_DIR" ]]; then
     mkdir -p "$OUTPUT_DIR"
-    TMP_DIR="$OUTPUT_DIR/tmp"
-    mkdir -p "$TMP_DIR"
+    TMP_DIR="$OUTPUT_DIR"
 else
     TMP_DIR=$(mktemp -d)
 fi
+
+KERNEL_SRC_ROOT="$TMP_DIR/kernel_src"
+TOOLCHAIN_ROOT_DIR="$TMP_DIR/toolchain"
+TOOLCHAIN_DIR="$TOOLCHAIN_ROOT_DIR/bin"
+CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
+MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 
 if [ ! -d "$TOOLCHAIN_DIR" ]; then
     echo "Cloning toolchain..."
@@ -87,43 +87,50 @@ if [ ! -d "$TOOLCHAIN_DIR" ]; then
 fi
 
 KERNEL_TARBALL="$(basename ${KERNEL_URLS[$PATCH]})"
-echo "Downloading kernel source..."
-wget -c "${KERNEL_URLS[$PATCH]}" -O "$TMP_DIR/$KERNEL_TARBALL"
-echo "Extracting public sources..."
-tar -xjf "$TMP_DIR/$KERNEL_TARBALL" -C "$TMP_DIR"
-mkdir -p "$KERNEL_SRC_ROOT"
-tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$KERNEL_SRC_ROOT"
+KERNEL_TARBALL_PATH="$TMP_DIR/$KERNEL_TARBALL"
 
-# Rename kernel directory to 'kernel'
-KERNEL_PARENT="$KERNEL_SRC_ROOT/kernel"
-mkdir -p "$KERNEL_PARENT"
-KERNEL_ORIG_DIR=$(find "$KERNEL_PARENT" -mindepth 1 -maxdepth 1 -type d -name "kernel*" | head -n 1)
-if [[ -n "$KERNEL_ORIG_DIR" && "$KERNEL_ORIG_DIR" != "$KERNEL_PARENT/kernel" ]]; then
-    mv "$KERNEL_ORIG_DIR" "$KERNEL_PARENT/kernel"
+if [[ ! -d "$KERNEL_SRC_ROOT/kernel" ]]; then
+    echo "Downloading kernel source..."
+    wget -c "${KERNEL_URLS[$PATCH]}" -O "$KERNEL_TARBALL_PATH"
+    echo "Extracting public sources..."
+    tar -xjf "$KERNEL_TARBALL_PATH" -C "$TMP_DIR"
+    mkdir -p "$KERNEL_SRC_ROOT"
+    tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$KERNEL_SRC_ROOT"
+
+	# Rename kernel directory to 'kernel'
+	KERNEL_PARENT="$KERNEL_SRC_ROOT/kernel"
+	mkdir -p "$KERNEL_PARENT"
+	KERNEL_ORIG_DIR=$(find "$KERNEL_PARENT" -mindepth 1 -maxdepth 1 -type d -name "kernel*" | head -n 1)
+	if [[ -n "$KERNEL_ORIG_DIR" && "$KERNEL_ORIG_DIR" != "$KERNEL_PARENT/kernel" ]]; then
+		mv "$KERNEL_ORIG_DIR" "$KERNEL_PARENT/kernel"
+	fi
+
+	# Apply patches if enabled
+	GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patches/$PATCH"
+	if [ "$PATCH_SOURCE" = true ]; then
+		PATCH_DIR="$TMP_DIR/kernel_patches"
+		mkdir -p "$PATCH_DIR"
+		echo "Fetching patch list for $PATCH..."
+		PATCH_LIST=$(curl -s "$GIT_PATCH_URL")
+		if ! echo "$PATCH_LIST" | jq empty 2>/dev/null; then
+			echo "Invalid JSON from patch source"; exit 1
+		fi
+		echo "$PATCH_LIST" | jq -r '.[] | select(.name != ".gitkeep" and .name != ".gitignore") | .download_url' | grep -v '^$' | while read -r FILE_URL; do
+			[ -z "$FILE_URL" ] && continue
+			FILE_NAME=$(basename "$FILE_URL")
+			PATCH_FILE="$PATCH_DIR/$FILE_NAME"
+			echo "Downloading patch $FILE_NAME..."
+			wget -q -O "$PATCH_FILE" "$FILE_URL"
+			if [[ -f "$PATCH_FILE" ]]; then
+				echo "Applying patch $FILE_NAME..."
+				patch -p1 -d "$KERNEL_SRC_ROOT" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!"
+			fi
+		done
+	fi
+else
+    echo "Kernel source already extracted, skipping."
 fi
 
-# Apply patches if enabled
-GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patches/$PATCH"
-if [ "$PATCH_SOURCE" = true ]; then
-    PATCH_DIR="$TMP_DIR/kernel_patches"
-    mkdir -p "$PATCH_DIR"
-    echo "Fetching patch list for $PATCH..."
-    PATCH_LIST=$(curl -s "$GIT_PATCH_URL")
-    if ! echo "$PATCH_LIST" | jq empty 2>/dev/null; then
-        echo "Invalid JSON from patch source"; exit 1
-    fi
-    echo "$PATCH_LIST" | jq -r '.[] | select(.name != ".gitkeep" and .name != ".gitignore") | .download_url' | grep -v '^$' | while read -r FILE_URL; do
-        [ -z "$FILE_URL" ] && continue
-        FILE_NAME=$(basename "$FILE_URL")
-        PATCH_FILE="$PATCH_DIR/$FILE_NAME"
-        echo "Downloading patch $FILE_NAME..."
-        wget -q -O "$PATCH_FILE" "$FILE_URL"
-        if [[ -f "$PATCH_FILE" ]]; then
-            echo "Applying patch $FILE_NAME..."
-            patch -p1 -d "$KERNEL_SRC_ROOT" --batch --forward < "$PATCH_FILE" || echo "Warning: Some hunks failed!"
-        fi
-    done
-fi
 
 KERNEL_SRC="$KERNEL_SRC_ROOT/kernel/kernel"
 cd "$KERNEL_SRC"
