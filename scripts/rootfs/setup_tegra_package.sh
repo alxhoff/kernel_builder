@@ -267,18 +267,16 @@ for FILE in $FILE_URLS; do
 done
 
 rm $TEGRA_DIR/setup_tegra_package.sh
-
-echo "All rootfs scripts downloaded successfully."
-
-if [[ "$JUST_CLONE" == true ]]; then
-	sudo ./setup_rootfs.sh
-	exit 1
-fi
-
 echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
+echo "All rootfs scripts downloaded successfully."
 
 cd $TEGRA_DIR
+
+if [[ "$JUST_CLONE" == true ]]; then
+	sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
+	exit 1
+fi
 
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
@@ -288,7 +286,7 @@ if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	echo "Toolchain cloned successfully."
 
 	echo "Building kernel"
-	sudo ./build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+	sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 	echo "Building display driver"
 	echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION""
 	sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION"
@@ -310,12 +308,12 @@ else
 fi
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
-./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
-sudo cp -r packages rootfs/root/
+$TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
+sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 	echo "Setting up chroot environment for SoC: $SOC..."
-	sudo ./jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
 else
     echo "Skipping rootfs setup in chroot as requested."
 fi
