@@ -1,5 +1,3 @@
-sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
-echo "root:cartken" | chpasswd
 sudo apt-mark hold nvidia-l4t-bootloader nvidia-l4t-configs nvidia-l4t-display-kernel nvidia-l4t-initrd nvidia-l4t-kernel nvidia-l4t-kernel-dtbs nvidia-l4t-kernel-headers nvidia-l4t-tools nvidia-l4t-xusb-firmware || true
 sudo apt update
 sudo apt upgrade -y
@@ -23,7 +21,5 @@ dpkg -i /root/packages/cartken-jetson-debians/cartken-networking-base.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial-credentials.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-i2c-interface.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-can-interface.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-watchdog.deb
-
+sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
+echo "root:cartken" | chpasswd
