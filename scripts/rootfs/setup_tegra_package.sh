@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # Ensure script is run with sudo only for rootfs extraction
 if [[ $EUID -ne 0 ]]; then
@@ -272,9 +272,9 @@ chmod +x "$TEGRA_DIR/"*.sh
 echo "All rootfs scripts downloaded successfully."
 
 cd $TEGRA_DIR
+sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 
 if [[ "$JUST_CLONE" == true ]]; then
-	sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 	exit 1
 fi
 
@@ -295,13 +295,14 @@ if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	ROOTFS_DIR="$TEGRA_DIR/rootfs"
 	ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
 	KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
-	ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra"
-	echo "Copying display driver into our kernel"
+	ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra/opensrc-disp"
+	echo "Copying display driver into our kernel at $ROOTFS_TARGET_MODULES_DIR"
 	mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
 	NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
 	echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
 	cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
 
+	echo "Running depmod on $KERNEL_VERSION for rootfs: $ROOTFS_DIR"
 	depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
 else
 	echo "Skipping kernel build as requested."
