@@ -271,8 +271,8 @@ rm $TEGRA_DIR/setup_tegra_package.sh
 echo "All rootfs scripts downloaded successfully."
 
 if [[ "$JUST_CLONE" == true ]]; then
-    echo "--just-clone was specified. Exiting early after cloning rootfs scripts."
-    exit 0
+	sudo ./setup_rootfs.sh
+	exit 1
 fi
 
 echo "Setting execute permissions for scripts..."
@@ -309,12 +309,9 @@ else
 	echo "Skipping kernel build as requested."
 fi
 
-
 echo "Running get_packages.sh with access token and tag: $TAG..."
 ./get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r packages rootfs/root/
-
-sudo ./setup_rootfs.sh
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 	echo "Setting up chroot environment for SoC: $SOC..."
