@@ -196,8 +196,7 @@ chmod 0755 "$PKG_DIR/DEBIAN/postinst"
 # Build third-party drivers
 THIRD_PARTY_DRIVERS="rtl8192eu rtl88x2bu"
 DRIVER_SCRIPTS_DIR="$TEGRA_DIR/../rootfs"
-DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/kernel/drivers/net/wireless"
-mkdir -p "$DRIVER_OUTPUT_DIR"
+WIFI_DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/kernel/drivers/net/wireless"
 echo "Building third party drivers..."
 for DRIVER in $THIRD_PARTY_DRIVERS; do
     echo "Building and installing $DRIVER"
@@ -213,23 +212,26 @@ for DRIVER in $THIRD_PARTY_DRIVERS; do
 done
 
 # Copy all built .ko files once
+mkdir -p "$WIFI_DRIVER_OUTPUT_DIR"
 for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
     if [[ -f "$KO_FILE" ]]; then
         echo "Copying $(basename "$KO_FILE") into module tree"
-        cp "$KO_FILE" "$DRIVER_OUTPUT_DIR/"
+        cp "$KO_FILE" "$WIFI_DRIVER_OUTPUT_DIR/"
     fi
 done
 
 echo "Building display driver"
+DISPLAY_DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/extra/opensrc-disp"
 DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
 "$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR"
 echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --reuse"
 
 # Copy all built .ko files once
+mkdir -p "$DISPLAY_DRIVER_OUTPUT_DIR"
 for KO_FILE in "$TMP_DIR/jetson_display_driver/Linux_for_Tegra/source/public/nvdisplay/kernel-open"/*.ko; do
     if [[ -f "$KO_FILE" ]]; then
         echo "Copying $(basename "$KO_FILE") into module tree"
-        cp "$KO_FILE" "$DRIVER_OUTPUT_DIR/"
+        cp "$KO_FILE" "$DISPLAY_DRIVER_OUTPUT_DIR/"
     fi
 done
 

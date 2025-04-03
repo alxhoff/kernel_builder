@@ -141,11 +141,12 @@ DEB_PACKAGE="$(pwd)/${PACKAGE_NAME}.deb"
 
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR/DEBIAN"
-mkdir -p "$PACKAGE_DIR/lib/modules/${KERNEL_VERSION}/extra"
+DISP_MODULE_DIR="$PACKAGE_DIR/lib/modules/${KERNEL_VERSION}/extra/opensrc-disp"
+mkdir -p "$DISP_MODULE_DIR"
 
-cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia.ko" "$PACKAGE_DIR/lib/modules/${KERNEL_VERSION}/extra/"
-cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia-drm.ko" "$PACKAGE_DIR/lib/modules/${KERNEL_VERSION}/extra/"
-cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia-modeset.ko" "$PACKAGE_DIR/lib/modules/${KERNEL_VERSION}/extra/"
+cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia.ko" "$DISP_MODULE_DIR/"
+cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia-drm.ko" "$DISP_MODULE_DIR/"
+cp "$NVDISPLAY_SOURCE_DIR/kernel-open/nvidia-modeset.ko" "$DISP_MODULE_DIR/"
 
 cat <<EOF > "$PACKAGE_DIR/DEBIAN/control"
 Package: $PACKAGE_NAME
