@@ -169,7 +169,7 @@ export WORKDIR="/tmp/ota_tools"
 # Execute the OTA update
 cd "${WORKDIR}/Linux_for_Tegra/tools/ota_tools/version_upgrade"
 sudo ./nv_ota_start.sh /ota/ota_payload_package.tar.gz
-cartken-toggle-watchdog off
+cartken-toggle-watchdog off || true
 EOF
 
 chmod 755 "$DEBIAN_DIR/postinst"
