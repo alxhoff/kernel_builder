@@ -223,7 +223,7 @@ done
 echo "Building display driver"
 DISPLAY_DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/extra/opensrc-disp"
 DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
-"$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR"
+"$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --target-bsp "$PATCH"
 echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --reuse"
 
 # Copy all built .ko files once

@@ -12,7 +12,7 @@ show_help() {
     echo "Options:"
     echo "  --toolchain PATH       Path to the cross-compilation toolchain, ie. path $TO_HERE/bin/aarch64... (required)"
     echo "  --kernel-sources PATH  Path to the kernel source directory (required)"
-	echo "  --target-bsp NAME      BSP identifier to append to LOCALVERSION (optional)"
+	echo "  --target-bsp NAME      BSP identifier to append to LOCALVERSION (required)"
     exit 0
 }
 
@@ -46,8 +46,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$TOOLCHAIN_PATH" || -z "$KERNEL_SOURCES_DIR" ]]; then
-	echo "Error: --toolchain and --kernel-sources are required."
+if [[ -z "$TOOLCHAIN_PATH" || -z "$KERNEL_SOURCES_DIR" || -z "$TARGET_BSP" ]]; then
+	echo "Error: --toolchain, --kernel-sources, and --target-bsp are required."
 	exit 1
 fi
 
@@ -73,7 +73,24 @@ else
 	fi
 fi
 
-BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
+case "$TARGET_BSP" in
+    5.1.2)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2"
+        ;;
+    5.1.3)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
+        ;;
+    5.1.4)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/sources/public_sources.tbz2"
+        ;;
+    5.1.5)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
+        ;;
+    *)
+        echo "Unsupported target BSP: $TARGET_BSP"
+        exit 1
+        ;;
+esac
 BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
 NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
 NVDISPLAY_TAR="$NVDISPLAY_TAR_DIR/nvidia_kernel_display_driver_source.tbz2"
