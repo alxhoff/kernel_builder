@@ -1,0 +1,151 @@
+From 18b8039b269aa78ce965c9b0f7395fb71bebea1f Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 16 Apr 2025 17:04:27 +0200
+Subject: [PATCH] [D4XX] ds5_ctrl_gvd buffer length
+
+DS5_CAMERA_CID_GVD g_ctrl call has a buffer size mismatch to userspace
+call in v4l_uvc_device::get_mipi_device_pid. Buffer size is now matched
+as well as the handling of DS5_CAMERA_CID_GVD is now inline with other
+calls, correctly utilizing ds5_send_hwmc and ds5_get_hwmc.
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 85 +++++++++++++++-----------
+ 1 file changed, 49 insertions(+), 36 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 2df834697..4749ca3c1 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -1825,8 +1825,10 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 	int ret = 0;
+ 	u16 tmp_len = 0;
+ 
+-	if (!data)
++	if (!data){
++		dev_err(&state->client->dev, "%s(): data is NULL\n", __func__);
+ 		return -ENOBUFS;
++	}
+ 
+ 	memset(data, 0, cmdDataLen);
+ 	ret = ds5_get_hwmc_status(state);
+@@ -1845,11 +1847,18 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 
+ 	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
+ 			&tmp_len, sizeof(tmp_len));
+-	if (ret)
++	if (ret){
++		dev_err(&state->client->dev, "%s(): failed to read HWMC_RESP_LEN\n",
++			__func__);
+ 		return -EBADMSG;
++	}
+ 
+-	if (tmp_len > cmdDataLen)
++	if (tmp_len > cmdDataLen){
++		dev_err(&state->client->dev, "%s(): response too long for cmdData, "
++			"expected %d bytes, got %d\n",
++			__func__, cmdDataLen, tmp_len);
+ 		return -ENOBUFS;
++	}
+ 
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): HWMC read len: %d, lrs_len: %d\n",
+@@ -2308,37 +2317,6 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 	return 0;
+ }
+ 
+-static int ds5_gvd(struct ds5 *state, unsigned char *data)
+-{
+-	struct hwm_cmd cmd;
+-	int ret = -1;
+-	u16 length = 0;
+-	u16 status = 2;
+-	u8 retries = 3;
+-
+-	memcpy(&cmd, &gvd, sizeof(gvd));
+-	ds5_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 3)
+-			msleep_range(10);
+-
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (ret && retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev,
+-				"%s(): Failed to read GVD, HWM cmd status: %x\n",
+-				__func__, status);
+-		return status;
+-	}
+-
+-	ret = regmap_raw_read(state->regmap, 0x4908, &length, sizeof(length));
+-	ds5_raw_read_with_check(state, 0x4900, data, length);
+-
+-	return ret;
+-}
+-
+ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
+@@ -2511,7 +2489,38 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		*ctrl->p_new.p_u32 |= state->fw_build;
+ 		break;
+ 	case DS5_CAMERA_CID_GVD:
+-		ret = ds5_gvd(state, ctrl->p_new.p_u8);
++		if (ctrl->p_new.p_u8) {
++			u16 cmd_len = sizeof(struct hwm_cmd);
++			u16 buf_len = ctrl->elems * ctrl->elem_size;
++			u16 total_len = cmd_len + buf_len;
++			u16 actual_len = 0;
++
++			struct hwm_cmd *gvd_cmd = devm_kzalloc(&state->client->dev, total_len,
++					GFP_KERNEL);
++			if (!gvd_cmd){
++				ret = -ENOMEM;
++				break;
++			}
++
++			memcpy(gvd_cmd, &gvd, sizeof(struct hwm_cmd));
++
++			ret = ds5_send_hwmc(state, cmd_len, gvd_cmd);
++			if (ret){
++				dev_err(&state->client->dev, "%s(): failed to send hwmc\n",
++						__func__);
++				goto out;
++			}
++
++			ret = ds5_get_hwmc(state, gvd_cmd->Data, buf_len, &actual_len);
++			if (!ret && actual_len <= buf_len)
++				memcpy(ctrl->p_new.p_u8, gvd_cmd->Data, actual_len);
++			else
++				dev_err(&state->client->dev, "%s(): failed to get hwmc\n",
++						__func__);
++
++out:
++			devm_kfree(&state->client->dev, gvd_cmd);
++		}
+ 		break;
+ 	case DS5_CAMERA_CID_AE_ROI_GET:
+ 		if (ctrl->p_new.p_u16) {
+@@ -2608,6 +2617,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 	}
+ 		break;
+ #endif
++	default:
++		dev_err(&state->client->dev, "Invalid control id (%d) passed to %s",
++			ctrl->id, __func__);
++		break;
+ 	}
+ 	mutex_unlock(&state->lock);
+ 	return ret;
+@@ -2669,7 +2682,7 @@ static const struct v4l2_ctrl_config ds5_ctrl_gvd = {
+ 	.id = DS5_CAMERA_CID_GVD,
+ 	.name = "GVD",
+ 	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {239},
++	.dims = {276},
+ 	.elem_size = sizeof(u8),
+ 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+ 	.step = 1,
+-- 
+2.49.0
+
