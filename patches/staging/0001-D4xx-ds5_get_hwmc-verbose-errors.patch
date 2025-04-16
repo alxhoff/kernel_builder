@@ -1,0 +1,50 @@
+From d4f87726ddd45f620b2196b3b944dbc79ee67416 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 16 Apr 2025 18:31:48 +0200
+Subject: [PATCH 1/4] [D4xx] ds5_get_hwmc-verbose-errors
+
+Added more verbose dev_err to ds5_get_hwmc error handling
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 2df834697..e9e544bae 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -1825,8 +1825,10 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 	int ret = 0;
+ 	u16 tmp_len = 0;
+ 
+-	if (!data)
++	if (!data){
++		dev_err(&state->client->dev, "%s(): data is NULL\n", __func__);
+ 		return -ENOBUFS;
++	}
+ 
+ 	memset(data, 0, cmdDataLen);
+ 	ret = ds5_get_hwmc_status(state);
+@@ -1845,11 +1847,18 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 
+ 	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
+ 			&tmp_len, sizeof(tmp_len));
+-	if (ret)
++	if (ret){
++		dev_err(&state->client->dev, "%s(): failed to read HWMC_RESP_LEN\n",
++			__func__);
+ 		return -EBADMSG;
++	}
+ 
+-	if (tmp_len > cmdDataLen)
++	if (tmp_len > cmdDataLen){
++		dev_err(&state->client->dev, "%s(): response too long for cmdData, "
++			"expected %d bytes, got %d\n",
++			__func__, cmdDataLen, tmp_len);
+ 		return -ENOBUFS;
++	}
+ 
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): HWMC read len: %d, lrs_len: %d\n",
+-- 
+2.49.0
+

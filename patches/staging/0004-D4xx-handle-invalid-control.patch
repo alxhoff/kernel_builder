@@ -1,0 +1,27 @@
+From 91ee69bbb6ad9d71aa6abd867d27f5fc61aa2e12 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 16 Apr 2025 18:35:30 +0200
+Subject: [PATCH 4/4] [D4xx] handle invalid control
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index ffdd9a269..4749ca3c1 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -2617,6 +2617,10 @@ out:
+ 	}
+ 		break;
+ #endif
++	default:
++		dev_err(&state->client->dev, "Invalid control id (%d) passed to %s",
++			ctrl->id, __func__);
++		break;
+ 	}
+ 	mutex_unlock(&state->lock);
+ 	return ret;
+-- 
+2.49.0
+
