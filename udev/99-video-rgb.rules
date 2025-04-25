@@ -1,0 +1,5 @@
+KERNEL=="video0", SYMLINK+="video-rgb-0"
+KERNEL=="video2", SYMLINK+="video-rgb-1"
+KERNEL=="video4", SYMLINK+="video-rgb-2"
+KERNEL=="video5", SYMLINK+="video-rgb-3"
+
