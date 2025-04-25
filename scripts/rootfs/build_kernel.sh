@@ -185,26 +185,28 @@ fi
 # Define paths for kernel Image and DTB
 KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
-KERNEL_IMAGE_ROOTFS="$ROOTFS_ROOT_DIR/boot/"
+ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
 
 DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+TARGET_DTB_NAME="cartken_$DTB_NAME"
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
-KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
-BOOT_DIR="$ROOTFS_ROOT_DIR/boot"
-DTB_ROOTFS="$BOOT_DIR/dtb"
+KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$TARGET_DTB_NAME"
+ROOTFS_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
+ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$TARGET_DTB_NAME"
+
 
 # Ensure destination directories exist
 sudo mkdir -p "$KERNEL_IMAGE_DEST"
-sudo mkdir -p "$DTB_ROOTFS"
+sudo mkdir -p "$ROOTFS_DTB_DIR"
 
 # Copy kernel Image
 if [ -f "$KERNEL_IMAGE_SRC" ]; then
     echo "Copying kernel Image to $KERNEL_IMAGE_DEST..."
     sudo cp -v "$KERNEL_IMAGE_SRC" "$KERNEL_IMAGE_DEST"
 
-    echo "Copying kernel Image to $KERNEL_IMAGE_ROOTFS..."
-    sudo cp -v "$KERNEL_IMAGE_SRC" "$KERNEL_IMAGE_ROOTFS"
+    echo "Copying kernel Image to $ROOTFS_BOOT_DIR..."
+    sudo cp -v "$KERNEL_IMAGE_SRC" "$ROOTFS_BOOT_DIR"
 else
     echo "Error: Kernel Image not found at $KERNEL_IMAGE_SRC"
     exit 1
@@ -215,13 +217,8 @@ if [ -f "$DTB_SRC" ]; then
     echo "Copying DTB file to $KERNEL_DTB_FILE..."
     sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
 
-	echo "Copying DTB file to $DTB_ROOTFS..."
-    sudo cp -v "$DTB_SRC" "$BOOT_DIR/"
-
-    echo "Copying DTB file to $DTB_ROOTFS..."
-	# sudo rm "$KERNEL_DTB_DIR"/*
-    sudo cp -v "$DTB_SRC" "$DTB_ROOTFS/"
-    sudo cp -v "$DTB_SRC" "$KERNEL_DTB_DIR/"
+    echo "Copying DTB file to $ROOTFS_DTB_DIR..."
+    sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
 else
     echo "Error: DTB file not found at $DTB_SRC"
     exit 1
@@ -243,7 +240,7 @@ for DRIVER in $THIRD_PARTY_DRIVERS; do
 done
 
 # Extract the kernel version from the Image file
-KERNEL_VERSION=$(strings "$KERNEL_IMAGE_ROOTFS/Image" | grep -oP 'Linux version \K[0-9]+\.[0-9]+\.[0-9]+(?:-[\w\d\.]+)?' | head -n 1)
+KERNEL_VERSION=$(strings "$ROOTFS_BOOT_DIR/Image" | grep -oP 'Linux version \K[0-9]+\.[0-9]+\.[0-9]+(?:-[\w\d\.]+)?' | head -n 1)
 
 # Ensure kernel version is extracted
 if [[ -z "$KERNEL_VERSION" ]]; then

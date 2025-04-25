@@ -112,7 +112,6 @@ if [[ -z "$BASE_BSP" || -z "$TARGET_BSP" ]]; then
     exit 1
 fi
 
-
 BASE_VERSION=$(basename "$BASE_BSP")
 TARGET_VERSION=$(basename "$TARGET_BSP")
 BASE_L4T="$BASE_BSP/Linux_for_Tegra"
@@ -196,7 +195,7 @@ if $BUILD_ROOTFS; then
     OTA_BUILD_ARGS+=" -r"
 fi
 
-DTB_PATH="$TARGET_L4T/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+DTB_PATH="$TARGET_L4T/kernel/dtb/cartken_tegra234-p3701-0000-p3737-0000.dtb"
 
 # Generate OTA payload
 if ! $SKIP_BUILD; then

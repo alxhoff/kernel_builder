@@ -187,6 +187,5 @@ docker run --rm -it --privileged \
         $(if $SKIP_BUILD; then echo '--skip-build'; fi)
     "
 
-
 echo "OTA payload generation completed."
 
