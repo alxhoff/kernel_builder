@@ -191,10 +191,12 @@ DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
 TARGET_DTB_NAME="cartken_$DTB_NAME"
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
-KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$TARGET_DTB_NAME"
+KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
 ROOTFS_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
+ROOTFS_EXTLINUX_DIR="$ROOTFS_BOOT_DIR/extlinux"
 ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$TARGET_DTB_NAME"
-
+ROOTFS_ABS_DTB_FILE="/boot/dtb/$TARGET_DTB_NAME"
+ROOTFS_EXTLINUX_FILE="$ROOTFS_EXTLINUX_DIR/extlinux.conf"
 
 # Ensure destination directories exist
 sudo mkdir -p "$KERNEL_IMAGE_DEST"
@@ -222,6 +224,12 @@ if [ -f "$DTB_SRC" ]; then
 else
     echo "Error: DTB file not found at $DTB_SRC"
     exit 1
+fi
+
+if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
+    sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
+else
+    sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
 fi
 
 echo "Kernel build completed successfully!"
