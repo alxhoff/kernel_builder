@@ -62,8 +62,6 @@ fi
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
-BASE_BSP_ROOT="$SCRIPT_DIRECTORY/$BASE_BSP/Linux_for_Tegra"
-TARGET_BSP_ROOT="$TEGRA_DIR"
 L4T_DIR="$TEGRA_DIR"
 OTA_DIR="$SCRIPT_DIRECTORY/ota_update"
 ROOTFS="$TEGRA_DIR/rootfs"
@@ -127,20 +125,22 @@ run sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_F
 
 echo "Creating OTA payload (docker)..."
 run "$OTA_DIR/create_ota_payload_docker.sh" \
-    --base-bsp "$BASE_BSP_ROOT" \
-    --target-bsp "$TARGET_BSP_ROOT"
+    --base-bsp "$SCRIPT_DIRECTORY/$BASE_BSP" \
+    --target-bsp "$SCRIPT_DIRECTORY/$TARGET_BSP"
 
 echo "Extracting kernel version..."
 KERNEL_VERSION=$(strings "$L4T_DIR/kernel/Image" | grep -oP "Linux version \K[0-9.-]+-[^ ]+")
 
 echo "Building OTA update package..."
+ROBOT_SUFFIX=$(printf "cart%03d" "$ROBOT_NUMBER")
 run "$OTA_DIR/create_debian.sh" \
     --otapayload "$L4T_DIR/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz" \
     --kernel-version "$KERNEL_VERSION" \
     --repo-version "$TAG" \
-    --target-bsp="$TARGET_BSP" \
-    --base-bsp="$BASE_BSP" \
-    --extlinux-conf "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf"
+    --target-bsp "$TARGET_BSP" \
+    --base-bsp "$BASE_BSP" \
+    --extlinux-conf "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf" \
+	--package-suffix "$ROBOT_SUFFIX"
 
 echo "Done."
 

@@ -24,6 +24,7 @@ REPO_VERSION=""
 TARGET_BSP=""
 BASE_BSP=""
 EXTLINUX_CONF=""
+PACKAGE_SUFFIX=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -49,6 +50,10 @@ while [[ $# -gt 0 ]]; do
             ;;
 		--extlinux-conf)
             EXTLINUX_CONF="$2"
+            shift 2
+            ;;
+		--package-suffix)
+            PACKAGE_SUFFIX="$2"
             shift 2
             ;;
         --help)
@@ -101,6 +106,9 @@ esac
 rm -rf /tmp/ota_tools
 
 PKG_NAME="cartken-full-system-ota-from-${BASE_BSP}-to-${TARGET_BSP}-release-${REPO_VERSION}-kernel-${KERNEL_VERSION}"
+if [[ -n "$PACKAGE_SUFFIX" ]]; then
+    PKG_NAME="${PKG_NAME}-${PACKAGE_SUFFIX}"
+fi
 PKG_DIR="/tmp/${PKG_NAME}"
 DEBIAN_DIR="$PKG_DIR/DEBIAN"
 INSTALL_DIR="$PKG_DIR/usr/local/cartken/ota"
