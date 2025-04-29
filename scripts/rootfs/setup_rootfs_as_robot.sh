@@ -97,7 +97,7 @@ if [[ "$SKIP_VPN" -eq 0 ]]; then
 					echo "[dry-run] Would ping $ip"
 					ROBOT_IP="$ip"
 					break 2
-				elif ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+				elif ping -4 -c 1 -W 2 "$ip" >/dev/null 2>&1; then
 					echo "Selected $iface ($ip) as reachable."
 					ROBOT_IP="$ip"
 					break 2
