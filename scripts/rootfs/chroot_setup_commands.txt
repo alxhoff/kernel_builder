@@ -7,7 +7,7 @@ sudo dpkg --purge nvidia-l4t-kernel-dtbs nvidia-l4t-jetson-io nvidia-l4t-display
 sudo dpkg --purge nvidia-l4t-kernel-headers || true
 sudo dpkg --purge nvidia-l4t-kernel || true
 echo "Installing apt packages"
-apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim screen htop can-utils iptraf libqt5core5a cmake libssl-dev libc6-dev build-essential libudev-dev libqmi-utils
+apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim screen htop can-utils iptraf libqt5core5a cmake libssl-dev libc6-dev build-essential libudev-dev libqmi-utils uhubctl
 pip install -U sphinx
 echo "Installing viki"
 python3 -m pip install /root/packages/cartken-wheels/viki-*.whl

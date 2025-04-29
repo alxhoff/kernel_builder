@@ -2,6 +2,7 @@ dpkg -r cartken-vpn-initial
 dpkg -r cartken-vpn-initial-credentials
 dpkg -i /root/packages/cartken-jetson-debians/cartken-networking-base.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-modem-tools.deb
+dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-modem-manager.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-routing-tables.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-modem-routing-table-manager.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn.deb

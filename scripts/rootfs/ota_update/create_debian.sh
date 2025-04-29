@@ -109,7 +109,8 @@ PKG_NAME="cartken-full-system-ota-from-${BASE_BSP}-to-${TARGET_BSP}-release-${RE
 if [[ -n "$PACKAGE_SUFFIX" ]]; then
     PKG_NAME="${PKG_NAME}-${PACKAGE_SUFFIX}"
 fi
-PKG_DIR="/tmp/${PKG_NAME}"
+#PKG_DIR="/tmp/${PKG_NAME}"
+PKG_DIR="./${PKG_NAME}"
 DEBIAN_DIR="$PKG_DIR/DEBIAN"
 INSTALL_DIR="$PKG_DIR/usr/local/cartken/ota"
 OTA_INSTALL_DIR="$PKG_DIR/ota"
@@ -184,7 +185,7 @@ chmod 755 "$DEBIAN_DIR/postinst"
 
 dpkg-deb --build "$PKG_DIR"
 
-mv "/tmp/${PKG_NAME}.deb" "./${PKG_NAME}.deb"
+#mv "/tmp/${PKG_NAME}.deb" "./${PKG_NAME}.deb"
 
 echo "Debian package created: ${PKG_NAME}.deb"
 

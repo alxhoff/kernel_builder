@@ -12,6 +12,7 @@ Options:
   --target-bsp VERSION      Target JetPack version (also used to locate Linux_for_Tegra)
   --base-bsp VERSION        Base JetPack version
   --dry-run                 Print commands instead of executing
+  --skip-vpn			    Skips pulling and updaing the VPN certificates
   --help                    Show this help message
 EOF
 }
@@ -27,6 +28,7 @@ TAG=""
 TARGET_BSP=""
 BASE_BSP=""
 DRY_RUN=0
+SKIP_VPN=0
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
         --base-bsp) BASE_BSP="$2"; shift 2 ;;
         --base-bsp=*) BASE_BSP="${1#*=}"; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
+		--skip-vpn) SKIP_VPN=1; shift ;;
         --help) print_help; exit 0 ;;
         *) echo "Unknown argument: $1"; print_help; exit 1 ;;
     esac
@@ -67,61 +70,115 @@ OTA_DIR="$SCRIPT_DIRECTORY/ota_update"
 ROOTFS="$TEGRA_DIR/rootfs"
 CHROOT_CMD_FILE="chroot_configured_commands.txt"
 
+ROBOT_SUFFIX=$(printf "cart%03d" "$ROBOT_NUMBER")
+NEW_HOSTNAME="${ROBOT_SUFFIX}jetson"
+
 if [[ ! -d "$TEGRA_DIR" ]]; then
     echo "Error: Tegra directory '$TEGRA_DIR' does not exist."
     exit 1
 fi
 
-echo "Fetching robot IPs..."
-ROBOT_IPS=$(cartken r ip "$ROBOT_NUMBER" 2>&1)
+if [[ "$SKIP_VPN" -eq 0 ]]; then
 
-INTERFACES=(wlan0 modem1 modem2 modem3)
-ROBOT_IP=""
+	echo "Fetching robot IPs..."
+	ROBOT_IPS=$(cartken r ip "$ROBOT_NUMBER" 2>&1)
 
-echo "Trying to select a reachable IP from:"
-echo "$ROBOT_IPS"
+	INTERFACES=(wlan0 modem1 modem2 modem3)
+	ROBOT_IP=""
 
-while read -r iface ip _; do
-    for match_iface in "${INTERFACES[@]}"; do
-        if [[ "$iface" == "$match_iface" ]]; then
-            echo "Testing $iface ($ip)..."
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                echo "[dry-run] Would ping $ip"
-                ROBOT_IP="$ip"
-                break 2
-            elif ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
-                echo "Selected $iface ($ip) as reachable."
-                ROBOT_IP="$ip"
-                break 2
-            else
-                echo "$iface ($ip) not reachable, trying next..."
-            fi
-        fi
-    done
-done <<< "$ROBOT_IPS"
+	echo "Trying to select a reachable IP from:"
+	echo "$ROBOT_IPS"
 
-if [[ -z "$ROBOT_IP" ]]; then
-    echo "Failed to find a reachable IP for robot $ROBOT_NUMBER"
-    exit 1
-fi
+	while read -r iface ip _; do
+		for match_iface in "${INTERFACES[@]}"; do
+			if [[ "$iface" == "$match_iface" ]]; then
+				echo "Testing $iface ($ip)..."
+				if [[ "$DRY_RUN" -eq 1 ]]; then
+					echo "[dry-run] Would ping $ip"
+					ROBOT_IP="$ip"
+					break 2
+				elif ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+					echo "Selected $iface ($ip) as reachable."
+					ROBOT_IP="$ip"
+					break 2
+				else
+					echo "$iface ($ip) not reachable, trying next..."
+				fi
+			fi
+		done
+	done <<< "$ROBOT_IPS"
 
-REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
-LOCAL_DEST="$ROOTFS/etc/openvpn/cartken/2.0/crt"
-run mkdir -p "$LOCAL_DEST"
+	if [[ -z "$ROBOT_IP" ]]; then
+		echo "Failed to find a reachable IP for robot $ROBOT_NUMBER"
+		exit 1
+	fi
 
-echo "Copying certs from robot (will overwrite existing files)..."
-run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
-run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+	REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
+	LOCAL_DEST="$ROOTFS/etc/openvpn/cartken/2.0/crt"
+	run mkdir -p "$LOCAL_DEST"
 
-echo "Checksums after copy:"
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[dry-run] sha256sum $LOCAL_DEST/robot.crt $LOCAL_DEST/robot.key"
+	echo "Copying certs from robot (will overwrite existing files)..."
+	run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
+	run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+
+	echo "Checksums after copy:"
+	if [[ "$DRY_RUN" -eq 1 ]]; then
+		echo "[dry-run] sha256sum $LOCAL_DEST/robot.crt $LOCAL_DEST/robot.key"
+	else
+		sha256sum "$LOCAL_DEST/robot.crt" "$LOCAL_DEST/robot.key"
+	fi
 else
-    sha256sum "$LOCAL_DEST/robot.crt" "$LOCAL_DEST/robot.key"
+    echo "--skip-vpn active, skipping VPN certificate copy."
 fi
 
 echo "Running chroot..."
 run sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_FILE"
+
+echo "Setting hostname inside rootfs to: $NEW_HOSTNAME"
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] echo \"$NEW_HOSTNAME\" > \"$ROOTFS/etc/hostname\""
+else
+    echo "$NEW_HOSTNAME" > "$ROOTFS/etc/hostname"
+fi
+
+if grep -q "^127\.0\.1\.1" "$ROOTFS/etc/hosts"; then
+	if [[ "$DRY_RUN" -eq 1 ]]; then
+		echo "[dry-run] sed -i \"s/^127\\.0\\.1\\.1.*/127.0.1.1    $NEW_HOSTNAME/\" \"$ROOTFS/etc/hosts\""
+	else
+		sed -i "s/^127\.0\.1\.1.*/127.0.1.1    $NEW_HOSTNAME/" "$ROOTFS/etc/hosts"
+	fi
+else
+    echo "127.0.1.1    $NEW_HOSTNAME" >> "$ROOTFS/etc/hosts"
+fi
+
+echo "Setting CARTKEN_CART_NUMBER=$ROBOT_NUMBER in /etc/environment"
+
+if grep -q "^CARTKEN_CART_NUMBER=" "$ROOTFS/etc/environment"; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[dry-run] sed -i \"s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$ROBOT_NUMBER/\" \"$ROOTFS/etc/environment\""
+    else
+        sed -i "s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$ROBOT_NUMBER/" "$ROOTFS/etc/environment"
+    fi
+else
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[dry-run] echo \"CARTKEN_CART_NUMBER=$ROBOT_NUMBER\" >> \"$ROOTFS/etc/environment\""
+    else
+        echo "CARTKEN_CART_NUMBER=$ROBOT_NUMBER" >> "$ROOTFS/etc/environment"
+    fi
+fi
+
+HOTSPOT_FILE="$ROOTFS/etc/NetworkManager/system-connections/Hotspot.nmconnection"
+
+if [[ -f "$HOTSPOT_FILE" ]]; then
+    echo "Setting Hotspot SSID to $NEW_HOSTNAME in $HOTSPOT_FILE"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[dry-run] sed -i \"s/^ssid=.*/ssid=$NEW_HOSTNAME/\" \"$HOTSPOT_FILE\""
+    else
+        sed -i "s/^ssid=.*/ssid=$NEW_HOSTNAME/" "$HOTSPOT_FILE"
+    fi
+else
+    echo "Warning: Hotspot configuration file not found: $HOTSPOT_FILE"
+fi
 
 echo "Creating OTA payload (docker)..."
 run "$OTA_DIR/create_ota_payload_docker.sh" \
@@ -132,7 +189,6 @@ echo "Extracting kernel version..."
 KERNEL_VERSION=$(strings "$L4T_DIR/kernel/Image" | grep -oP "Linux version \K[0-9.-]+-[^ ]+")
 
 echo "Building OTA update package..."
-ROBOT_SUFFIX=$(printf "cart%03d" "$ROBOT_NUMBER")
 run "$OTA_DIR/create_debian.sh" \
     --otapayload "$L4T_DIR/bootloader/jetson-agx-orin-devkit/ota_payload_package.tar.gz" \
     --kernel-version "$KERNEL_VERSION" \
