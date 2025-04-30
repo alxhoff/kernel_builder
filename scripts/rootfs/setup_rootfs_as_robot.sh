@@ -205,6 +205,7 @@ else
     touch "$AUTH_KEYS_PATH"
     grep -qxF "$SSH_KEY" "$AUTH_KEYS_PATH" || echo "$SSH_KEY" >> "$AUTH_KEYS_PATH"
     chmod 600 "$AUTH_KEYS_PATH"
+	chown -R cartken:cartken "$(dirname "$AUTH_KEYS_PATH")"
 fi
 
 echo "Creating OTA payload (docker)..."
