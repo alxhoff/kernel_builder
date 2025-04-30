@@ -78,6 +78,16 @@ if [[ ! -d "$TEGRA_DIR" ]]; then
     exit 1
 fi
 
+echo "Guarenteeing that DTBs are available"
+ROOTFS_BOOT_DIR="$ROOTFS/boot"
+ROOTFS_BOOT_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
+DTB_NAME="cartken_tegra234-p3701-0000-p3737-0000.dtb"
+SOURCE_DTB_FILE="$ROOTFS_BOOT_DTB_DIR/$DTB_NAME"
+L4T_KERNEL_DTB_DIR="$L4T_DIR/kernel/dtb"
+TARGET_DTB_FILE="$L4T_KERNEL_DTB_DIR/$DTB_NAME"
+
+cp "$SOURCE_DTB_FILE" "$TARGET_DTB_FILE"
+
 if [[ "$SKIP_VPN" -eq 0 ]]; then
 
 	echo "Fetching robot IPs..."
