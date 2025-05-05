@@ -29,6 +29,8 @@ TARGET_BSP=""
 BASE_BSP=""
 DRY_RUN=0
 SKIP_VPN=0
+CERT_PATH=""
+KEY_PATH=""
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -52,6 +54,10 @@ while [[ $# -gt 0 ]]; do
         --base-bsp=*) BASE_BSP="${1#*=}"; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
 		--skip-vpn) SKIP_VPN=1; shift ;;
+		--cert) CERT_PATH="$2"; shift 2 ;;
+		--cert=*) CERT_PATH="${1#*=}"; shift ;;
+		--key) KEY_PATH="$2"; shift 2 ;;
+		--key=*) KEY_PATH="${1#*=}"; shift ;;
         --help) print_help; exit 0 ;;
         *) echo "Unknown argument: $1"; print_help; exit 1 ;;
     esac
@@ -95,8 +101,27 @@ for DTB_NAME in "${DTB_NAMES[@]}"; do
 	fi
 done
 
+LOCAL_DEST="$ROOTFS/etc/openvpn/cartken/2.0/crt"
+run mkdir -p "$LOCAL_DEST"
 
-if [[ "$SKIP_VPN" -eq 0 ]]; then
+NEED_CERT=0
+NEED_KEY=0
+
+if [[ -n "$CERT_PATH" ]]; then
+    echo "Copying local cert from $CERT_PATH..."
+    run cp "$CERT_PATH" "$LOCAL_DEST/robot.crt"
+else
+    NEED_CERT=1
+fi
+
+if [[ -n "$KEY_PATH" ]]; then
+    echo "Copying local key from $KEY_PATH..."
+    run cp "$KEY_PATH" "$LOCAL_DEST/robot.key"
+else
+    NEED_KEY=1
+fi
+
+if [[ "$SKIP_VPN" -eq 0 && ( "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ) ]]; then
 
 	echo "Fetching robot IPs..."
 	ROBOT_IPS=$(cartken r ip "$ROBOT_NUMBER" 2>&1)
@@ -132,8 +157,6 @@ if [[ "$SKIP_VPN" -eq 0 ]]; then
 	fi
 
 	REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
-	LOCAL_DEST="$ROOTFS/etc/openvpn/cartken/2.0/crt"
-	run mkdir -p "$LOCAL_DEST"
 
 	echo "Copying certs from robot (will overwrite existing files)..."
 	run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
@@ -145,9 +168,13 @@ if [[ "$SKIP_VPN" -eq 0 ]]; then
 	else
 		sha256sum "$LOCAL_DEST/robot.crt" "$LOCAL_DEST/robot.key"
 	fi
+elif [[ "$SKIP_VPN" -eq 1 && ( "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ) ]]; then
+    echo "Error: --key or --cert missing, and --skip-vpn prevents fallback."
+    exit 1
 else
     echo "--skip-vpn active, skipping VPN certificate copy."
 fi
+
 
 echo "Running chroot..."
 run sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_FILE"
