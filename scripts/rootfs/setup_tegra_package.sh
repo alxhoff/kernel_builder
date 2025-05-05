@@ -164,7 +164,7 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading requiredi kernel source files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
-		wget -c "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
+		wget "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
 	else
 		echo "Skipping download, using local files."
 		for FILE in "$KERNEL_FILE"; do
