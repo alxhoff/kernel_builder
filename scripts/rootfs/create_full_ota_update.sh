@@ -71,9 +71,6 @@ echo "Running setup_tegra_package_docker.sh with target Jetpack version: $TARGET
 run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
 
 if [[ "$BASE_JETPACK" != "$TARGET_JETPACK" ]]; then
-	echo "Removing all .tbz2 files from working directory"
-	run_command rm -f "$WORKDIR"/*.tbz2
-
 	echo "Running setup_tegra_package_docker.sh with base Jetpack version: $BASE_JETPACK"
 	run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$BASE_JETPACK" --skip-kernel-build --skip-chroot-build
 else

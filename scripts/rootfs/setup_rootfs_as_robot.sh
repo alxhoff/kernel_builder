@@ -13,6 +13,8 @@ Options:
   --base-bsp VERSION        Base JetPack version
   --dry-run                 Print commands instead of executing
   --skip-vpn			    Skips pulling and updaing the VPN certificates
+  --cert                    Provide the VPN certificate directly
+  --key                     Provide the VPN key directly
   --help                    Show this help message
 EOF
 }

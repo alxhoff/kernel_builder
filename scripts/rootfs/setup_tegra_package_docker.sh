@@ -61,6 +61,11 @@ else
     echo "Using existing Docker image: $DOCKER_TAG"
 fi
 
+if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
+    echo "Removing existing container: $CONTAINER_NAME"
+    docker rm -f "$CONTAINER_NAME"
+fi
+
 docker run --rm -it \
     --name "$CONTAINER_NAME" \
     --privileged \

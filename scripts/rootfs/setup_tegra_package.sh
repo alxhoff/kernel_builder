@@ -2,13 +2,6 @@
 
 set -ex
 
-# Ensure script is run with sudo only for rootfs extraction
-if [[ $EUID -ne 0 ]]; then
-    ROOTFS_SUDO="sudo"
-else
-    ROOTFS_SUDO=""
-fi
-
 # Ensure script is run as root
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root. Please use sudo."
@@ -138,41 +131,37 @@ ROOTFS_FILE="$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
 KERNEL_FILE="$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
 DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
 
-TEGRA_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
+TEGRA_BASE_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
+TEGRA_DIR="$TEGRA_BASE_DIR/Linux_for_Tegra"
 if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required BSP files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
 		wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
 	else
 		echo "Skipping download, using local files."
-		for FILE in "$DRIVER_FILE"; do
-			if [ ! -f "$FILE" ]; then
-				echo "Error: Expected file $FILE not found."
-				exit 1
-			fi
-		done
+		if [ ! -f "$DRIVER_FILE" ]; then
+			echo "Error: Expected file $DRIVER_FILE not found."
+			exit 1
+		fi
 	fi
 
-	sudo mkdir -p "$TEGRA_DIR"
-	echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
-	sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
+	sudo mkdir -p "$TEGRA_BASE_DIR"
+	echo "Extracting driver package: $DRIVER_FILE into $TEGRA_BASE_DIR..."
+	sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_BASE_DIR"
 	echo "Driver package extracted successfully."
 fi
-TEGRA_DIR="$TEGRA_DIR/Linux_for_Tegra"
 
 if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
 
 	if [ "$DOWNLOAD" = true ]; then
-		echo "Downloading requiredi kernel source files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
+		echo "Downloading required kernel source files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
 		wget "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
 	else
 		echo "Skipping download, using local files."
-		for FILE in "$KERNEL_FILE"; do
-			if [ ! -f "$FILE" ]; then
-				echo "Error: Expected file $FILE not found."
-				exit 1
-			fi
-		done
+		if [ ! -f "$KERNEL_FILE" ]; then
+			echo "Error: Expected file $KERNEL_FILE not found."
+			exit 1
+		fi
 	fi
 
 	TMP_DIR=$(sudo mktemp -d)
@@ -186,7 +175,7 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 			sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
 			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
-				if [ ! -d "$TEGRA_DIR/kernel_src" ]; then
+				if [ ! -d "$TEGRA_DIR/kernel_src/nvdisplay" ]; then
 					echo "Extracting NVIDIA kernel display driver source..."
 					sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
 					echo "Extraction completed."
@@ -200,7 +189,7 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 
 			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
 				echo "Extracting kernel out-of-tree modules..."
-				if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
+				if [ ! -d "$TEGRA_DIR/kernel_src/nvdisplay" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
 					sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 				fi
 			else
@@ -227,23 +216,20 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 	rm -rf "$TMP_DIR"
 fi
 
-echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
-
 if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); then
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required rootfs files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
 		wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
 	else
 		echo "Skipping download, using local files."
-		for FILE in "$ROOTFS_FILE"; do
-			if [ ! -f "$FILE" ]; then
-				echo "Error: Expected file $FILE not found."
-				exit 1
-			fi
-		done
+		if [ ! -f "$ROOTFS_FILE" ]; then
+			echo "Error: Expected file $ROOTFS_FILE not found."
+			exit 1
+		fi
 	fi
 
 	mkdir -p "$TEGRA_DIR/rootfs"
+	echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 	sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 	echo "Root filesystem extraction completed."
 fi
