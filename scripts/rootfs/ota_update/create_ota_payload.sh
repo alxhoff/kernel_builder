@@ -150,18 +150,18 @@ fi
 echo "Extracting OTA tools into "$TARGET_L4T"..."
 run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_L4T")\""
 
-OTA_BOARD_SPECS="$TARGET_L4T/tools/ota_tools/version_upgrade/ota_board_specs.conf"
-# Remove other board configs to speed up OTA generation ~x5
-#sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {/boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/!{/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/!{/^)/!d}}}' "$OTA_BOARD_SPECS"
-
-sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {
-  /boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/b
-  /boardid=3701;fab=300;boardsku=0000;.*rootdev=mmcblk0p1;/b
-  /boardid=3701;fab=300;boardsku=0005;.*rootdev=mmcblk0p1;/b
-  /^jetson_agx_orin_devkit_ota_emmc_r35_spec=/b
-  /^)/b
-  d
-}' "$OTA_BOARD_SPECS"
+# OTA_BOARD_SPECS="$TARGET_L4T/tools/ota_tools/version_upgrade/ota_board_specs.conf"
+# # Remove other board configs to speed up OTA generation ~x5
+# #sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {/boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/!{/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/!{/^)/!d}}}' "$OTA_BOARD_SPECS"
+#
+# sed -i '/^jetson_agx_orin_devkit_ota_emmc_r35_spec=/,/^)/ {
+#   /boardid=3701;fab=000;boardsku=0000;.*rootdev=mmcblk0p1;/b
+#   /boardid=3701;fab=300;boardsku=0000;.*rootdev=mmcblk0p1;/b
+#   /boardid=3701;fab=300;boardsku=0005;.*rootdev=mmcblk0p1;/b
+#   /^jetson_agx_orin_devkit_ota_emmc_r35_spec=/b
+#   /^)/b
+#   d
+# }' "$OTA_BOARD_SPECS"
 
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
