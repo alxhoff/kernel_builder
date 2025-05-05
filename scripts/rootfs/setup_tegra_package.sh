@@ -138,23 +138,21 @@ ROOTFS_FILE="$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
 KERNEL_FILE="$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
 DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
 
-if [ "$DOWNLOAD" = true ]; then
-	echo "Downloading required files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
-	wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
-	wget -c "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
-	wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
-else
-	echo "Skipping download, using local files."
-	for FILE in "$ROOTFS_FILE" "$KERNEL_FILE" "$DRIVER_FILE"; do
-		if [ ! -f "$FILE" ]; then
-			echo "Error: Expected file $FILE not found."
-			exit 1
-		fi
-	done
-fi
-
 TEGRA_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
 if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
+	if [ "$DOWNLOAD" = true ]; then
+		echo "Downloading required BSP files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
+		wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
+	else
+		echo "Skipping download, using local files."
+		for FILE in "$DRIVER_FILE"; do
+			if [ ! -f "$FILE" ]; then
+				echo "Error: Expected file $FILE not found."
+				exit 1
+			fi
+		done
+	fi
+
 	sudo mkdir -p "$TEGRA_DIR"
 	echo "Extracting driver package: $DRIVER_FILE into $TEGRA_DIR..."
 	sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_DIR"
@@ -163,6 +161,19 @@ fi
 TEGRA_DIR="$TEGRA_DIR/Linux_for_Tegra"
 
 if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
+
+	if [ "$DOWNLOAD" = true ]; then
+		echo "Downloading requiredi kernel source files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
+		wget -c "${KERNEL_URLS[$JETPACK_VERSION]}" -O "$KERNEL_FILE"
+	else
+		echo "Skipping download, using local files."
+		for FILE in "$KERNEL_FILE"; do
+			if [ ! -f "$FILE" ]; then
+				echo "Error: Expected file $FILE not found."
+				exit 1
+			fi
+		done
+	fi
 
 	TMP_DIR=$(sudo mktemp -d)
 	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
@@ -219,6 +230,19 @@ fi
 echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 
 if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); then
+	if [ "$DOWNLOAD" = true ]; then
+		echo "Downloading required rootfs files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
+		wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
+	else
+		echo "Skipping download, using local files."
+		for FILE in "$ROOTFS_FILE"; do
+			if [ ! -f "$FILE" ]; then
+				echo "Error: Expected file $FILE not found."
+				exit 1
+			fi
+		done
+	fi
+
 	mkdir -p "$TEGRA_DIR/rootfs"
 	sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 	echo "Root filesystem extraction completed."
