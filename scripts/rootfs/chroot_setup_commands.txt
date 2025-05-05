@@ -8,10 +8,12 @@ sudo dpkg --purge nvidia-l4t-kernel-headers || true
 sudo dpkg --purge nvidia-l4t-kernel || true
 echo "Installing apt packages"
 apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim screen htop can-utils iptraf libqt5core5a cmake libssl-dev libc6-dev build-essential libudev-dev libqmi-utils uhubctl
-pip install -U sphinx
+pip install -U sphinx python-can
 echo "Installing viki"
 python3 -m pip install /root/packages/cartken-wheels/viki-*.whl
 echo "Installing cartken debians"
+dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-can-setup.deb
+dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-can-interface.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-kernel-modules.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-access-point.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-modem-kernel-modules.deb
