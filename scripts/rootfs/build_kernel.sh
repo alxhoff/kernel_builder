@@ -187,15 +187,11 @@ KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
 ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
 
-DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb" "tegra234-p3701-0005-p3737-0000.dtb")
 DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
-TARGET_DTB_NAME="cartken_$DTB_NAME"
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
-KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
 ROOTFS_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
 ROOTFS_EXTLINUX_DIR="$ROOTFS_BOOT_DIR/extlinux"
-ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$TARGET_DTB_NAME"
-ROOTFS_ABS_DTB_FILE="/boot/dtb/$TARGET_DTB_NAME"
 ROOTFS_EXTLINUX_FILE="$ROOTFS_EXTLINUX_DIR/extlinux.conf"
 
 # Ensure destination directories exist
@@ -214,17 +210,23 @@ else
     exit 1
 fi
 
-# Copy DTB file
-if [ -f "$DTB_SRC" ]; then
-    echo "Copying DTB file to $KERNEL_DTB_FILE..."
-    sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
+for DTB_NAME in "${DTB_NAMES[@]}"; do
+    DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+    KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
+    ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
+    ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
 
-    echo "Copying DTB file to $ROOTFS_DTB_DIR..."
-    sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
-else
-    echo "Error: DTB file not found at $DTB_SRC"
-    exit 1
-fi
+    if [ -f "$DTB_SRC" ]; then
+        echo "Copying $DTB_NAME to $KERNEL_DTB_FILE..."
+        sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
+
+        echo "Copying $DTB_NAME to $ROOTFS_DTB_FILE..."
+        sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
+    else
+        echo "Error: $DTB_NAME not found at $DTB_SRC"
+        exit 1
+    fi
+done
 
 if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
     sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"

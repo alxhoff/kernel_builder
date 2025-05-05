@@ -81,12 +81,20 @@ fi
 echo "Guarenteeing that DTBs are available"
 ROOTFS_BOOT_DIR="$ROOTFS/boot"
 ROOTFS_BOOT_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
-DTB_NAME="cartken_tegra234-p3701-0000-p3737-0000.dtb"
-SOURCE_DTB_FILE="$ROOTFS_BOOT_DTB_DIR/$DTB_NAME"
+DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb" "tegra234-p3701-0005-p3737-0000.dtb")
 L4T_KERNEL_DTB_DIR="$L4T_DIR/kernel/dtb"
-TARGET_DTB_FILE="$L4T_KERNEL_DTB_DIR/$DTB_NAME"
 
-cp "$SOURCE_DTB_FILE" "$TARGET_DTB_FILE"
+for DTB_NAME in "${DTB_NAMES[@]}"; do
+	SOURCE_DTB_FILE="$ROOTFS_BOOT_DTB_DIR/$DTB_NAME"
+	TARGET_DTB_FILE="$L4T_KERNEL_DTB_DIR/$DTB_NAME"
+
+	if [[ -f "$SOURCE_DTB_FILE" ]]; then
+		cp "$SOURCE_DTB_FILE" "$TARGET_DTB_FILE"
+	else
+		echo "Warning: DTB $SOURCE_DTB_FILE not found!"
+	fi
+done
+
 
 if [[ "$SKIP_VPN" -eq 0 ]]; then
 
@@ -205,7 +213,7 @@ else
     touch "$AUTH_KEYS_PATH"
     grep -qxF "$SSH_KEY" "$AUTH_KEYS_PATH" || echo "$SSH_KEY" >> "$AUTH_KEYS_PATH"
     chmod 600 "$AUTH_KEYS_PATH"
-	chown -R cartken:cartken "$(dirname "$AUTH_KEYS_PATH")"
+	chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
 fi
 
 echo "Creating OTA payload (docker)..."
