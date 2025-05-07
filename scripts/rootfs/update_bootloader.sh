@@ -10,6 +10,7 @@ show_help() {
     cat <<EOF
 Usage: sudo $0 --target-bsp <folder> [--force]
        sudo $0 --check-var
+       sudo $0 --swap-slot
 
 This script updates the bootloader on a remote Jetson device.
 
@@ -20,6 +21,7 @@ Required:
 Optional:
   --force                 Regenerate the bootloader payload even if it already exists
   --check-var             Only print the current OsIndications variable via SSH and exit
+  --swap-slot             Swap to the other boot slot using nvbootctrl, then optionally reboot
 
 The target device IP must be provided in a file named 'device_ip' in the parent directory.
 
@@ -27,6 +29,21 @@ NOTE:
   The Tegra BSP package for the desired version must already be set up.
   See 'setup_tegra_package.sh' or 'setup_tegra_package_docker.sh' for details.
 EOF
+}
+
+ensure_ssh_key() {
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=3 root@"$DEVICE_IP" true 2>/dev/null; then
+        echo "🔑 SSH key not set up for root@$DEVICE_IP."
+        echo "Would you like to run ssh-copy-id to install your public key? [Y/n]: "
+        read -r confirm
+        if [[ "$confirm" =~ ^[Yy]?$ ]]; then
+            echo "Running ssh-copy-id..."
+            ssh-copy-id root@"$DEVICE_IP"
+        else
+            echo "Aborting: passwordless SSH is required to continue."
+            exit 1
+        fi
+    fi
 }
 
 # --- CHECK ROOT ---
@@ -38,6 +55,7 @@ fi
 # --- PARSE ARGS ---
 FORCE=0
 CHECK_VAR=0
+SWAP_SLOT=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target-bsp)
@@ -50,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --check-var)
             CHECK_VAR=1
+            shift
+            ;;
+        --swap-slot)
+            SWAP_SLOT=1
             shift
             ;;
         --help|-h)
@@ -71,6 +93,8 @@ if [[ -z "$DEVICE_IP" ]]; then
     exit 1
 fi
 
+ensure_ssh_key
+
 # --- ONLY CHECK OsIndications ---
 if [[ "$CHECK_VAR" -eq 1 ]]; then
     echo "--- Current OsIndications value on $DEVICE_IP ---"
@@ -81,9 +105,37 @@ if [[ "$CHECK_VAR" -eq 1 ]]; then
     exit 0
 fi
 
-# --- REQUIRE target-bsp unless in check-only mode ---
+# --- ONLY SWAP SLOT ---
+if [[ "$SWAP_SLOT" -eq 1 ]]; then
+    echo "--- Checking current boot slot on $DEVICE_IP ---"
+    CURRENT_SLOT=$(ssh root@"$DEVICE_IP" "nvbootctrl get-current-slot" 2>/dev/null)
+    if [[ "$CURRENT_SLOT" != "0" && "$CURRENT_SLOT" != "1" ]]; then
+        echo "Failed to get current boot slot (got '$CURRENT_SLOT')"
+        exit 1
+    fi
+    NEW_SLOT=$((1 - CURRENT_SLOT))
+    echo "Current slot: $CURRENT_SLOT"
+    echo "Switching to slot: $NEW_SLOT"
+
+    ssh root@"$DEVICE_IP" "nvbootctrl set-active-boot-slot $NEW_SLOT" || {
+        echo "Failed to set active boot slot to $NEW_SLOT"
+        exit 1
+    }
+
+    echo -n "Reboot device $DEVICE_IP now? [Y/n]: "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]?$ ]]; then
+        echo "Rebooting..."
+        ssh root@"$DEVICE_IP" "reboot"
+    else
+        echo "Reboot skipped."
+    fi
+    exit 0
+fi
+
+# --- REQUIRE target-bsp unless in check-only or swap-slot mode ---
 if [[ -z "$TARGET_BSP" ]]; then
-    echo "Error: --target-bsp is required unless using --check-var"
+    echo "Error: --target-bsp is required unless using --check-var or --swap-slot"
     show_help
     exit 1
 fi
