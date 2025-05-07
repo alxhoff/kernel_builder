@@ -162,6 +162,9 @@ if [[ "$BOTH_SLOTS" -eq 1 ]]; then
     echo "--- Step 1: Updating current slot ---"
     update_bootloader
 
+    echo "Slot info after first update:"
+    ssh root@"$DEVICE_IP" "nvbootctrl dump-slots-info" || echo "Warning: nvbootctrl failed"
+
     CURRENT_SLOT=$(ssh root@"$DEVICE_IP" "nvbootctrl get-current-slot")
     OTHER_SLOT=$((1 - CURRENT_SLOT))
 
