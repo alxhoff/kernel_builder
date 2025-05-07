@@ -3,9 +3,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-L4T_DIR="$SCRIPT_DIR/L4T_35_4_1"
-TBZ_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/jetson_linux_r35.4.1_aarch64.tbz2"
-TBZ_FILE="jetson_linux_r35.4.1_aarch64.tbz2"
+L4T_DIR="$SCRIPT_DIR/L4T_35_6_1"
+TBZ_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/release/jetson_linux_r35.6.1_aarch64.tbz2"
+TBZ_FILE="jetson_linux_r35.6.1_aarch64.tbz2"
 
 # --- CHECK ROOT ---
 if [[ "$EUID" -ne 0 ]]; then
@@ -28,8 +28,8 @@ else
     rm "$SCRIPT_DIR/$TBZ_FILE"
 
     # --- ROOTFS EXTRACTION ---
-    SAMPLE_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/tegra_linux_sample-root-filesystem_r35.4.1_aarch64.tbz2"
-    SAMPLE_FS_FILE="tegra_linux_sample-root-filesystem_r35.4.1_aarch64.tbz2"
+    SAMPLE_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/tegra_linux_sample-root-filesystem_r35.6.1_aarch64.tbz2"
+    SAMPLE_FS_FILE="tegra_linux_sample-root-filesystem_r35.6.1_aarch64.tbz2"
     ROOTFS_DIR="$L4T_DIR/Linux_for_Tegra/rootfs"
 
     echo "⬇️  Downloading sample root filesystem..."
