@@ -71,7 +71,8 @@ esp_uuid=$(lsblk -o name,partlabel,uuid | grep "mmcblk0" | awk '{ if($2 == "esp"
 mountpoint -q /opt/nvidia/esp || mount UUID=$esp_uuid /opt/nvidia/esp
 EOF
 
-    scp "$PAYLOAD" root@"$DEVICE_IP":/opt/nvidia/esp/
+    ssh root@"$DEVICE_IP" "mkdir -p /opt/nvidia/esp/EFI/UpdateCapsule"
+    scp "$PAYLOAD" root@"$DEVICE_IP":/opt/nvidia/esp/EFI/UpdateCapsule/
 
     ssh root@"$DEVICE_IP" <<'EOF'
 set -e
