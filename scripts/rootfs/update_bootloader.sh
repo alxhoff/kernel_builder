@@ -5,10 +5,11 @@ set -e
 # --- CONFIG ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEVICE_IP_FILE="$SCRIPT_DIR/../device_ip"
+REBOOT_TIMEOUT=120
 
 show_help() {
     cat <<EOF
-Usage: sudo $0 --target-bsp <folder> [--force]
+Usage: sudo $0 --target-bsp <folder> [--force] [--both-slots]
        sudo $0 --check-var
        sudo $0 --swap-slot
 
@@ -22,6 +23,7 @@ Optional:
   --force                 Regenerate the bootloader payload even if it already exists
   --check-var             Only print the current OsIndications variable via SSH and exit
   --swap-slot             Swap to the other boot slot using nvbootctrl, then optionally reboot
+  --both-slots            Update both A/B slots with a reboot in between (requires --target-bsp)
 
 The target device IP must be provided in a file named 'device_ip' in the parent directory.
 
@@ -33,11 +35,10 @@ EOF
 
 ensure_ssh_key() {
     if ! ssh -o BatchMode=yes -o ConnectTimeout=3 root@"$DEVICE_IP" true 2>/dev/null; then
-        echo "🔑 SSH key not set up for root@$DEVICE_IP."
+        echo "\n🔑 SSH key not set up for root@$DEVICE_IP."
         echo "Would you like to run ssh-copy-id to install your public key? [Y/n]: "
         read -r confirm
         if [[ "$confirm" =~ ^[Yy]?$ ]]; then
-            echo "Running ssh-copy-id..."
             ssh-copy-id root@"$DEVICE_IP"
         else
             echo "Aborting: passwordless SSH is required to continue."
@@ -46,153 +47,136 @@ ensure_ssh_key() {
     fi
 }
 
+wait_for_ssh() {
+    echo "⏳ Waiting for device $DEVICE_IP to become available (timeout ${REBOOT_TIMEOUT}s)..."
+    sleep 30  # Initial grace period after reboot
+    local start=$(date +%s)
+    while ! ssh -o BatchMode=yes -o ConnectTimeout=3 root@"$DEVICE_IP" true 2>/dev/null; do
+        sleep 2
+        [[ $(($(date +%s) - start)) -gt $REBOOT_TIMEOUT ]] && {
+            echo "❌ Timeout waiting for device to come back online."
+            exit 1
+        }
+    done
+    echo "✅ Device is back online."
+}
+
+update_bootloader() {
+    echo "--- Updating bootloader on current slot..."
+
+    ssh root@"$DEVICE_IP" bash <<'EOF'
+set -e
+mkdir -p /opt/nvidia/esp
+esp_uuid=$(lsblk -o name,partlabel,uuid | grep "mmcblk0" | awk '{ if($2 == "esp") print $3 }')
+mountpoint -q /opt/nvidia/esp || mount UUID=$esp_uuid /opt/nvidia/esp
+EOF
+
+    scp "$PAYLOAD" root@"$DEVICE_IP":/opt/nvidia/esp/
+
+    ssh root@"$DEVICE_IP" <<'EOF'
+set -e
+cd /sys/firmware/efi/efivars/
+echo "--- Current OsIndications value ---"
+cat OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c | hexdump -C
+
+printf "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00" > /tmp/var_tmp.bin
+dd if=/tmp/var_tmp.bin of=OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12
+sync
+
+echo "--- Updated OsIndications value ---"
+cat OsIndications-* | hexdump -C
+EOF
+}
+
 # --- CHECK ROOT ---
-if [[ "$EUID" -ne 0 ]]; then
-    echo "This script must be run with sudo or as root."
-    exit 1
-fi
+[[ "$EUID" -ne 0 ]] && { echo "This script must be run with sudo or as root."; exit 1; }
 
 # --- PARSE ARGS ---
 FORCE=0
 CHECK_VAR=0
 SWAP_SLOT=0
+BOTH_SLOTS=0
+TARGET_BSP=""
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --target-bsp)
-            TARGET_BSP="$2"
-            shift 2
-            ;;
-        --force)
-            FORCE=1
-            shift
-            ;;
-        --check-var)
-            CHECK_VAR=1
-            shift
-            ;;
-        --swap-slot)
-            SWAP_SLOT=1
-            shift
-            ;;
-        --help|-h)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1"
-            show_help
-            exit 1
-            ;;
+        --target-bsp) TARGET_BSP="$2"; shift 2;;
+        --force) FORCE=1; shift;;
+        --check-var) CHECK_VAR=1; shift;;
+        --swap-slot) SWAP_SLOT=1; shift;;
+        --both-slots) BOTH_SLOTS=1; shift;;
+        --help|-h) show_help; exit 0;;
+        *) echo "Unknown argument: $1"; show_help; exit 1;;
     esac
 done
 
-# --- CHECK DEVICE IP ---
 DEVICE_IP=$(cat "$DEVICE_IP_FILE" 2>/dev/null)
-if [[ -z "$DEVICE_IP" ]]; then
-    echo "Error: Missing IP address in $DEVICE_IP_FILE"
-    exit 1
-fi
+[[ -z "$DEVICE_IP" ]] && { echo "Error: Missing IP address in $DEVICE_IP_FILE"; exit 1; }
 
 ensure_ssh_key
 
-# --- ONLY CHECK OsIndications ---
 if [[ "$CHECK_VAR" -eq 1 ]]; then
     echo "--- Current OsIndications value on $DEVICE_IP ---"
-    ssh root@"$DEVICE_IP" "cat /sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c | hexdump -C" || {
-        echo "Failed to read OsIndications on device."
-        exit 1
-    }
+    ssh root@"$DEVICE_IP" "cat /sys/firmware/efi/efivars/OsIndications-* | hexdump -C"
     exit 0
 fi
 
-# --- ONLY SWAP SLOT ---
 if [[ "$SWAP_SLOT" -eq 1 ]]; then
-    echo "--- Checking current boot slot on $DEVICE_IP ---"
-    CURRENT_SLOT=$(ssh root@"$DEVICE_IP" "nvbootctrl get-current-slot" 2>/dev/null)
-    if [[ "$CURRENT_SLOT" != "0" && "$CURRENT_SLOT" != "1" ]]; then
-        echo "Failed to get current boot slot (got '$CURRENT_SLOT')"
-        exit 1
-    fi
+    CURRENT_SLOT=$(ssh root@"$DEVICE_IP" "nvbootctrl get-current-slot")
+    [[ "$CURRENT_SLOT" != "0" && "$CURRENT_SLOT" != "1" ]] && { echo "Invalid slot: $CURRENT_SLOT"; exit 1; }
     NEW_SLOT=$((1 - CURRENT_SLOT))
-    echo "Current slot: $CURRENT_SLOT"
-    echo "Switching to slot: $NEW_SLOT"
-
-    ssh root@"$DEVICE_IP" "nvbootctrl set-active-boot-slot $NEW_SLOT" || {
-        echo "Failed to set active boot slot to $NEW_SLOT"
-        exit 1
-    }
-
-    echo -n "Reboot device $DEVICE_IP now? [Y/n]: "
-    read -r answer
-    if [[ "$answer" =~ ^[Yy]?$ ]]; then
-        echo "Rebooting..."
-        ssh root@"$DEVICE_IP" "reboot"
-    else
-        echo "Reboot skipped."
-    fi
+    echo "Switching from slot $CURRENT_SLOT to $NEW_SLOT..."
+    ssh root@"$DEVICE_IP" "nvbootctrl set-active-boot-slot $NEW_SLOT"
+    echo -n "Reboot device now? [Y/n]: "; read -r ans
+    [[ "$ans" =~ ^[Yy]?$ ]] && ssh root@"$DEVICE_IP" reboot || echo "Reboot skipped."
     exit 0
 fi
 
-# --- REQUIRE target-bsp unless in check-only or swap-slot mode ---
 if [[ -z "$TARGET_BSP" ]]; then
     echo "Error: --target-bsp is required unless using --check-var or --swap-slot"
     show_help
     exit 1
 fi
 
-# --- SET ToT_BSP ---
 export ToT_BSP="$SCRIPT_DIR/$TARGET_BSP/Linux_for_Tegra"
 cd "$ToT_BSP"
-
 PAYLOAD="$ToT_BSP/bootloader/payloads_t23x/bl_only_payload"
 
-# --- GENERATE PAYLOAD IF NEEDED ---
-if [[ -f "$PAYLOAD" && "$FORCE" -eq 0 ]]; then
-    echo "Payload already exists at $PAYLOAD, skipping generation."
-else
-    echo "Generating payload..."
+if [[ ! -f "$PAYLOAD" || "$FORCE" -eq 1 ]]; then
+    echo "Generating bootloader payload..."
     ./l4t_generate_soc_bup.sh -e t23x_agx_bl_spec t23x
-    if [[ ! -f "$PAYLOAD" ]]; then
-        echo "Error: Payload generation failed or output not found at $PAYLOAD"
-        exit 1
-    fi
 fi
 
-# --- SHOW CURRENT DEVICE BOOT SLOT INFO ---
-echo
-echo "--- Current Boot Slot Info on Target Device ($DEVICE_IP) ---"
-ssh root@"$DEVICE_IP" "nvbootctrl dump-slots-info" || echo "Warning: nvbootctrl not available or failed."
+if [[ "$BOTH_SLOTS" -eq 1 ]]; then
+    echo "--- Step 1: Updating current slot ---"
+    update_bootloader
 
-# --- PREPARE TARGET DEVICE ---
-ssh root@"$DEVICE_IP" <<'EOF'
-set -e
-mkdir -p /opt/nvidia/esp
-esp_uuid=$(lsblk -o name,partlabel,uuid | grep "mmcblk0" | awk '{ if($2 == "esp") print $3 }')
-mount UUID=$esp_uuid /opt/nvidia/esp
-EOF
+    CURRENT_SLOT=$(ssh root@"$DEVICE_IP" "nvbootctrl get-current-slot")
+    OTHER_SLOT=$((1 - CURRENT_SLOT))
 
-# --- COPY PAYLOAD ---
-scp "$PAYLOAD" root@"$DEVICE_IP":/opt/nvidia/esp/
+    echo "Rebooting to other slot ($OTHER_SLOT)..."
+    ssh root@"$DEVICE_IP" "nvbootctrl set-active-boot-slot $OTHER_SLOT" || true
+    ssh root@"$DEVICE_IP" reboot || true
+    wait_for_ssh
 
-# --- MODIFY OsIndications ---
-ssh root@"$DEVICE_IP" <<'EOF'
-set -e
+    echo "--- Step 2: Updating new active slot ---"
+    update_bootloader
 
-echo
-echo "--- Current OsIndications value ---"
-cat /sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c | hexdump -C
+    echo "Waiting for device to reboot..."
+    ssh root@"$DEVICE_IP" reboot || true
+    wait_for_ssh
 
-cd /sys/firmware/efi/efivars/
-printf "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00" > /tmp/var_tmp.bin
-dd if=/tmp/var_tmp.bin of=OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12
-sync
+    echo "Final slot info after both updates:"
+    ssh root@"$DEVICE_IP" "nvbootctrl dump-slots-info" || echo "Warning: nvbootctrl failed"
+    echo "--- Done"
 
-echo
-echo "--- Updated OsIndications value ---"
-cat /sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c | hexdump -C
-EOF
+    echo "✅ Bootloader update applied to both slots."
+    exit 0
+fi
 
-echo
+ssh root@"$DEVICE_IP" "nvbootctrl dump-slots-info" || echo "Warning: nvbootctrl failed"
+update_bootloader
+
 echo "✅ Bootloader update complete on device $DEVICE_IP"
 echo "⚠️  A reboot is required for the changes to take effect."
 
