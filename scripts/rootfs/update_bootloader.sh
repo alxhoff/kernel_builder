@@ -146,11 +146,13 @@ fi
 
 export ToT_BSP="$SCRIPT_DIR/$TARGET_BSP/Linux_for_Tegra"
 cd "$ToT_BSP"
-PAYLOAD="$ToT_BSP/bootloader/payloads_t23x/bl_only_payload"
+BUP_PAYLOAD="$ToT_BSP/bootloader/payloads_t23x/bl_only_payload"
+PAYLOAD="$ToT_BSP/TEGRA_BL.Cap"
 
 if [[ ! -f "$PAYLOAD" || "$FORCE" -eq 1 ]]; then
     echo "Generating bootloader payload..."
     ./l4t_generate_soc_bup.sh -e t23x_agx_bl_spec t23x
+    ./generate_capsule/l4t_generate_soc_capsule.sh -i "$BUP_PAYLOAD" -o "$PAYLOAD" t234
 fi
 
 if [[ "$BUILD_ONLY" -eq 1 ]]; then
