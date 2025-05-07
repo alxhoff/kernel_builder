@@ -72,7 +72,8 @@ mountpoint -q /opt/nvidia/esp || mount UUID=$esp_uuid /opt/nvidia/esp
 EOF
 
     ssh root@"$DEVICE_IP" "mkdir -p /opt/nvidia/esp/EFI/UpdateCapsule"
-    scp "$PAYLOAD" root@"$DEVICE_IP":/opt/nvidia/esp/EFI/UpdateCapsule/
+    scp "$PAYLOAD" root@"$DEVICE_IP":/root/bl_only_payload
+    ssh root@"$DEVICE_IP" "mv /root/bl_only_payload /opt/nvidia/esp/EFI/UpdateCapsule/"
 
     ssh root@"$DEVICE_IP" <<'EOF'
 set -e
