@@ -9,6 +9,7 @@ DEVICE_IP_FILE="$SCRIPT_DIR/../device_ip"
 show_help() {
     cat <<EOF
 Usage: sudo $0 --target-bsp <folder> [--force]
+       sudo $0 --check-var
 
 This script updates the bootloader on a remote Jetson device.
 
@@ -18,6 +19,7 @@ Required:
 
 Optional:
   --force                 Regenerate the bootloader payload even if it already exists
+  --check-var             Only print the current OsIndications variable via SSH and exit
 
 The target device IP must be provided in a file named 'device_ip' in the parent directory.
 
@@ -35,6 +37,7 @@ fi
 
 # --- PARSE ARGS ---
 FORCE=0
+CHECK_VAR=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target-bsp)
@@ -43,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --force)
             FORCE=1
+            shift
+            ;;
+        --check-var)
+            CHECK_VAR=1
             shift
             ;;
         --help|-h)
@@ -57,16 +64,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$TARGET_BSP" ]]; then
-    echo "Error: --target-bsp is required"
-    show_help
-    exit 1
-fi
-
 # --- CHECK DEVICE IP ---
 DEVICE_IP=$(cat "$DEVICE_IP_FILE" 2>/dev/null)
 if [[ -z "$DEVICE_IP" ]]; then
     echo "Error: Missing IP address in $DEVICE_IP_FILE"
+    exit 1
+fi
+
+# --- ONLY CHECK OsIndications ---
+if [[ "$CHECK_VAR" -eq 1 ]]; then
+    echo "--- Current OsIndications value on $DEVICE_IP ---"
+    ssh root@"$DEVICE_IP" "cat /sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c | hexdump -C" || {
+        echo "Failed to read OsIndications on device."
+        exit 1
+    }
+    exit 0
+fi
+
+# --- REQUIRE target-bsp unless in check-only mode ---
+if [[ -z "$TARGET_BSP" ]]; then
+    echo "Error: --target-bsp is required unless using --check-var"
+    show_help
     exit 1
 fi
 
