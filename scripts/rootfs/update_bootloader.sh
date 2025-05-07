@@ -92,7 +92,9 @@ EOF
 [[ "$EUID" -ne 0 ]] && { echo "This script must be run with sudo or as root."; exit 1; }
 
 # --- PARSE ARGS ---
+BUILD_ONLY=0
 FORCE=0
+USER_IP=""
 CHECK_VAR=0
 SWAP_SLOT=0
 BOTH_SLOTS=0
@@ -106,11 +108,13 @@ while [[ $# -gt 0 ]]; do
         --swap-slot) SWAP_SLOT=1; shift;;
         --both-slots) BOTH_SLOTS=1; shift;;
         --help|-h) show_help; exit 0;;
+        --build-only) BUILD_ONLY=1; shift;;
+        --ip) USER_IP="$2"; shift 2;;
         *) echo "Unknown argument: $1"; show_help; exit 1;;
     esac
 done
 
-DEVICE_IP=$(cat "$DEVICE_IP_FILE" 2>/dev/null)
+DEVICE_IP=${USER_IP:-$(cat "$DEVICE_IP_FILE" 2>/dev/null)}
 [[ -z "$DEVICE_IP" ]] && { echo "Error: Missing IP address in $DEVICE_IP_FILE"; exit 1; }
 
 ensure_ssh_key
@@ -145,6 +149,11 @@ PAYLOAD="$ToT_BSP/bootloader/payloads_t23x/bl_only_payload"
 if [[ ! -f "$PAYLOAD" || "$FORCE" -eq 1 ]]; then
     echo "Generating bootloader payload..."
     ./l4t_generate_soc_bup.sh -e t23x_agx_bl_spec t23x
+fi
+
+if [[ "$BUILD_ONLY" -eq 1 ]]; then
+    echo "✅ Payload built at $PAYLOAD"
+    exit 0
 fi
 
 if [[ "$BOTH_SLOTS" -eq 1 ]]; then
