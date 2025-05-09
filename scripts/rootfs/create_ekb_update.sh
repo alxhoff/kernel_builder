@@ -45,19 +45,19 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ABS_L4T_DIR="$(realpath "$L4T_DIR")"
 cd "$ABS_L4T_DIR"
 echo "[*] Generating BUP payload..."
 BOARDID=3701 FAB=000 BOARDSKU=0004 ./build_l4t_bup.sh jetson-agx-orin-devkit mmcblk0p1
 
 PAYLOAD="$ABS_L4T_DIR/bootloader/payloads_t23x/bl_only_payload"
-
 if [[ ! -f "$PAYLOAD" ]]; then
     echo "Error: Payload not found at $PAYLOAD"
     exit 1
 fi
 
-DEB_DIR="$L4T_DIR/deb_pkg"
+DEB_DIR="$ABS_L4T_DIR/deb_pkg"
 mkdir -p "$DEB_DIR/DEBIAN" "$DEB_DIR/opt/ota_package"
 
 cat > "$DEB_DIR/DEBIAN/control" <<EOF
@@ -87,7 +87,7 @@ EOF
 
 chmod +x "$DEB_DIR/opt/ota_package/install_payload.sh"
 
-if \$BOTH_SLOTS; then
+if $BOTH_SLOTS; then
     cat > "$DEB_DIR/opt/ota_package/install_both_slots.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -137,6 +137,7 @@ EOF
     chmod +x "$DEB_DIR/DEBIAN/postinst"
 fi
 
-dpkg-deb --build "$DEB_DIR" "$L4T_DIR/jetson-5.1.5-ekb-update.deb"
-echo "[*] Debian package created at $L4T_DIR/jetson-5.1.5-ekb-update.deb"
+OUTPUT_DEB="$SCRIPT_DIR/jetson-5.1.5-ekb-update.deb"
+dpkg-deb --build "$DEB_DIR" "$OUTPUT_DEB"
+echo "[*] Debian package created at $OUTPUT_DEB"
 
