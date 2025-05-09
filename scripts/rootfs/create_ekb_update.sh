@@ -32,7 +32,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
     shift
-
 done
 
 if [[ -z "$L4T_DIR" ]]; then
@@ -78,11 +77,14 @@ set -euo pipefail
 
 UPDATE_ENGINE="/usr/sbin/nv_update_engine"
 
+echo "[*] Installing BUP payload to current slot..."
+
 if [[ ! -x "$UPDATE_ENGINE" ]]; then
+    echo "[*] Making nv_update_engine executable..."
     chmod +x "$UPDATE_ENGINE"
 fi
 
-$UPDATE_ENGINE --install /opt/ota_package/bl_only_payload
+"$UPDATE_ENGINE" --payload /opt/ota_package/bl_only_payload
 EOF
 
 chmod +x "$DEB_DIR/opt/ota_package/install_payload.sh"
@@ -94,23 +96,23 @@ set -euo pipefail
 
 UPDATE_ENGINE="/usr/sbin/nv_update_engine"
 
+echo "[*] Installing BUP payload to current slot..."
+
 if [[ ! -x "$UPDATE_ENGINE" ]]; then
+    echo "[*] Making nv_update_engine executable..."
     chmod +x "$UPDATE_ENGINE"
 fi
 
-# Install on current slot
-$UPDATE_ENGINE --install /opt/ota_package/bl_only_payload
+"$UPDATE_ENGINE" --payload /opt/ota_package/bl_only_payload
 
-# Mark to install on next slot after reboot
+echo "[*] Marking current slot as done, preparing reboot for second slot update..."
 touch /opt/ota_package/slot_a_done.flag
 
-# Switch slots and reboot
 nvbootctrl --set-active-boot-slot 1
 reboot
 EOF
     chmod +x "$DEB_DIR/opt/ota_package/install_both_slots.sh"
 
-    # Create systemd service for second-slot install
     mkdir -p "$DEB_DIR/etc/systemd/system"
     cat > "$DEB_DIR/etc/systemd/system/ota-second-slot.service" <<'EOF'
 [Unit]
@@ -122,6 +124,8 @@ Type=oneshot
 ExecStart=/opt/ota_package/install_payload.sh
 ConditionPathExists=/opt/ota_package/slot_a_done.flag
 ExecStartPost=/bin/rm -f /opt/ota_package/slot_a_done.flag
+StandardOutput=journal+console
+StandardError=journal+console
 
 [Install]
 WantedBy=multi-user.target
@@ -131,8 +135,19 @@ EOF
 #!/bin/bash
 set -e
 
-# Enable the systemd service for slot B update
-systemctl enable ota-second-slot.service
+if [ -f /opt/ota_package/slot_a_done.flag ]; then
+    echo "[*] Skipping current slot install, already done."
+else
+    echo "[*] Installing to current slot immediately..."
+    bash /opt/ota_package/install_payload.sh
+fi
+
+if systemctl list-unit-files | grep -q ota-second-slot.service; then
+    echo "[*] Service already exists, skipping registration."
+else
+    echo "[*] Enabling systemd service for second slot update..."
+    systemctl enable ota-second-slot.service
+fi
 EOF
     chmod +x "$DEB_DIR/DEBIAN/postinst"
 fi
