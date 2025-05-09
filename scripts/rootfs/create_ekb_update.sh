@@ -47,8 +47,15 @@ echo "[*] Generating BUP payload..."
 BOARDID=3701 FAB=000 BOARDSKU=0004 ./build_l4t_bup.sh jetson-agx-orin-devkit mmcblk0p1
 
 PAYLOAD="$ABS_L4T_DIR/bootloader/payloads_t23x/bl_only_payload"
-if [[ ! -f "$PAYLOAD" ]]; then
-    echo "Error: Payload not found at $PAYLOAD"
+CAPSULE="$ABS_L4T_DIR/TEGRA_BL.Cap"
+
+if [[ ! -f "$CAPSULE" ]]; then
+    echo "[*] Generating capsule image..."
+    ./generate_capsule/l4t_generate_soc_capsule.sh -i "$PAYLOAD" -o "$CAPSULE" t234
+fi
+
+if [[ ! -f "$CAPSULE" ]]; then
+    echo "Error: Capsule generation failed"
     exit 1
 fi
 
@@ -65,22 +72,26 @@ Maintainer: Auto Generated
 Description: OTA Update Payload for Jetson ${L4T_VERSION} with EKB
 EOF
 
-cp "$PAYLOAD" "$DEB_DIR/opt/ota_package/bl_only_payload"
+cp "$CAPSULE" "$DEB_DIR/opt/ota_package/TEGRA_BL.Cap"
 
 cat > "$DEB_DIR/opt/ota_package/install_payload.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-UPDATE_ENGINE="/usr/sbin/nv_update_engine"
+ESP_DIR="/opt/nvidia/esp"
+CAPSULE_PATH="/opt/ota_package/TEGRA_BL.Cap"
+UPDATE_DIR="EFI/UpdateCapsule"
 
-echo "[*] Installing BUP payload to current slot..."
+mkdir -p "$ESP_DIR"
+esp_uuid=$(lsblk -o name,partlabel,uuid | grep "esp" | awk '{print $3}')
+mountpoint -q "$ESP_DIR" || mount UUID=$esp_uuid "$ESP_DIR"
+mkdir -p "$ESP_DIR/$UPDATE_DIR"
+cp "$CAPSULE_PATH" "$ESP_DIR/$UPDATE_DIR/"
+sync
 
-if [[ ! -x "$UPDATE_ENGINE" ]]; then
-    echo "[*] Making nv_update_engine executable..."
-    chmod +x "$UPDATE_ENGINE"
-fi
-
-"$UPDATE_ENGINE" --payload /opt/ota_package/bl_only_payload
+# Set UEFI OsIndications to trigger capsule update
+printf "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00" > /tmp/var_tmp.bin
+dd if=/tmp/var_tmp.bin of=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12
 EOF
 
 chmod +x "$DEB_DIR/opt/ota_package/install_payload.sh"
@@ -89,7 +100,7 @@ cat > "$DEB_DIR/DEBIAN/postinst" <<'EOF'
 #!/bin/bash
 set -e
 
-echo "[*] Installing to current slot immediately..."
+echo "[*] Installing capsule update to current slot..."
 bash /opt/ota_package/install_payload.sh
 EOF
 
