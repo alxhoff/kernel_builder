@@ -1,5 +1,7 @@
 *.tbz2
 certs
+jetson_bsp
+*.deb
 *.ko
 5.1.*
 6.0DP*

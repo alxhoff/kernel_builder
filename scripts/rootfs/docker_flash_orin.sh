@@ -38,7 +38,8 @@ if [[ ! -d "$BSP_DIR" ]]; then
             echo 'Please ensure you are logged into Google if needed.'; \
             gdown --fuzzy 'https://drive.google.com/uc?id=17npAsBctuCWB7PHwYnPJXW-8GVQvMKCg' -O $ARCHIVE_NAME; \
             mkdir -p jetson_bsp && \
-            tar -xf $ARCHIVE_NAME -C jetson_bsp --strip-components=1"
+            tar -xf $ARCHIVE_NAME -C jetson_bsp --strip-components=1 \
+			rm $ARCHIVE_NAME"
 else
     echo "[*] BSP already extracted in $BSP_DIR."
 fi
