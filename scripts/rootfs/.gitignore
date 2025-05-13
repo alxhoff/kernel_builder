@@ -7,6 +7,7 @@ cartken_flash
 *.tar.gz
 *.iso
 ubuntu_iso_work
+*.txt
 *.ko
 5.1.*
 6.0DP*

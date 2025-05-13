@@ -2,19 +2,53 @@
 set -euo pipefail
 
 # --- Config ---
-FILE_ID="17npAsBctuCWB7PHwYnPJXW-8GVQvMKCg"
-TAR_NAME="jetson_sdmmc_qspi_bundle.tar.gz"
+FILE_ID="1-MEJNanz2eWXEhm5JC2tyiCAf8BLX_9h"
+TAR_NAME="cartken_flash.tar.gz"
 EXTRACT_DIR="cartken_flash"
-ROOTFS_PATH="$(realpath "$EXTRACT_DIR")/Linux_for_Tegra/rootfs"
-FLASH_SCRIPT="$(realpath "$EXTRACT_DIR")/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+EXTRACT_DIR="$(realpath "$EXTRACT_DIR")"
+ROOTFS_PATH="$EXTRACT_DIR/Linux_for_Tegra/rootfs"
+FLASH_SCRIPT="$EXTRACT_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+L4T_DIR="$EXTRACT_DIR/Linux_for_Tegra"
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 INTERFACES=(wlan0 modem1 modem2 modem3)
+
+# --- Help function ---
+show_help() {
+  cat <<EOF
+Usage: $0 [OPTIONS]
+
+This script prepares and flashes a Jetson device with a Cartken rootfs image.
+It can optionally pull certs and inject configuration for a specific robot.
+
+Options:
+  --tar <path>           Use a local tarball instead of downloading via gdown.
+  --robot-number <id>    Set robot number and fetch certs + inject hostname/env.
+  --dry-run              Simulate connectivity and cert fetch without execution.
+  --password             Password for pulling VPN credentials
+  -h, --help             Show this help message and exit.
+
+Examples:
+  $0 --robot-number 302
+  $0 --tar my_flash_bundle.tar.gz --robot-number 315
+  $0 --dry-run --robot-number 123
+
+Notes:
+- If --tar is not provided, a default tarball will be downloaded via gdown.
+- This script must be run as root.
+EOF
+}
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  show_help
+  exit 0
+fi
 
 # --- Parse args ---
 TAR_FILE=""
 ROBOT_NUMBER=""
 DRY_RUN=0
+PASSWORD=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -26,10 +60,18 @@ while [[ $# -gt 0 ]]; do
       ROBOT_NUMBER="$2"
       shift 2
       ;;
+	-h|--help)
+      show_help
+      exit 0
+      ;;
     --dry-run)
       DRY_RUN=1
       shift
       ;;
+	--password)
+	  PASSWORD="$2"
+	  shift 2
+	  ;;
     *)
       echo "Unknown option: $1"; exit 1
       ;;
@@ -42,17 +84,18 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
-# --- Download tar if not provided ---
-if [[ -z "$TAR_FILE" ]]; then
-  echo "Downloading bundle via gdown..."
-  gdown "$FILE_ID" -O "$TAR_NAME"
-  TAR_FILE="$TAR_NAME"
-fi
 
 # --- Extract ---
-if [[ -d "$EXTRACT_DIR/Linux_for_Tegra" ]]; then
-  echo "Skipping extraction, $EXTRACT_DIR/Linux_for_Tegra already exists."
+if [[ -d "$L4T_DIR" ]]; then
+  echo "Skipping extraction, $L4T_DIR already exists."
 else
+	# --- Download tar if not provided ---
+	if [[ -z "$TAR_FILE" ]]; then
+	  echo "Downloading bundle via gdown.."
+	  pip3 install --break-system-packages --upgrade gdown
+	  gdown "$FILE_ID" -O "$TAR_NAME"
+	  TAR_FILE="$TAR_NAME"
+	fi
   echo "Extracting archive: $TAR_FILE to $EXTRACT_DIR..."
   mkdir -p "$EXTRACT_DIR"
   if tar -xvzf "$TAR_FILE" -C "$EXTRACT_DIR"; then
@@ -100,8 +143,16 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   mkdir -p "$LOCAL_DEST"
 
   echo "Copying certs from robot..."
-  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
-  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+	if [[ -n "$PASSWORD" ]]; then
+	  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+		"cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
+	  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+		"cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+	else
+	  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
+	  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+	fi
+
 
   # --- Set hostname and env ---
   NEW_HOSTNAME="cart${ROBOT_NUMBER}jetson"
@@ -133,12 +184,13 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
 fi
 
+read -rp "✅ Rootfs is ready for flashing. Please put the robot in recovery mode and press [Enter] to continue..."
+
 # --- Flash ---
 echo "Running flash script: $FLASH_SCRIPT"
-if [[ -x "$FLASH_SCRIPT" ]]; then
-  "$FLASH_SCRIPT"
-else
-  echo "Error: flash script not found or not executable at $FLASH_SCRIPT"
-  exit 1
-fi
+curl -fsSL \
+https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/flash_jetson_ALL_sdmmc_partition_qspi.sh \
+-o "$FLASH_SCRIPT"
+chmod +x "$FLASH_SCRIPT"
+"$FLASH_SCRIPT" --l4t-dir "$(realpath "$L4T_DIR")"
 
