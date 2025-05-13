@@ -2,6 +2,11 @@
 certs
 jetson_bsp
 *.deb
+*.csv
+cartken_flash
+*.tar.gz
+*.iso
+ubuntu_iso_work
 *.ko
 5.1.*
 6.0DP*

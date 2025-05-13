@@ -5,7 +5,8 @@ set -euo pipefail
 FILE_ID="17npAsBctuCWB7PHwYnPJXW-8GVQvMKCg"
 TAR_NAME="jetson_sdmmc_qspi_bundle.tar.gz"
 EXTRACT_DIR="cartken_flash"
-ROOTFS_PATH="Linux_for_Tegra/rootfs"
+ROOTFS_PATH="$(realpath "$EXTRACT_DIR")/Linux_for_Tegra/rootfs"
+FLASH_SCRIPT="$(realpath "$EXTRACT_DIR")/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 INTERFACES=(wlan0 modem1 modem2 modem3)
@@ -49,8 +50,19 @@ if [[ -z "$TAR_FILE" ]]; then
 fi
 
 # --- Extract ---
-mkdir -p "$EXTRACT_DIR"
-tar -xzf "$TAR_FILE" -C "$EXTRACT_DIR"
+if [[ -d "$EXTRACT_DIR/Linux_for_Tegra" ]]; then
+  echo "Skipping extraction, $EXTRACT_DIR/Linux_for_Tegra already exists."
+else
+  echo "Extracting archive: $TAR_FILE to $EXTRACT_DIR..."
+  mkdir -p "$EXTRACT_DIR"
+  if tar -xvzf "$TAR_FILE" -C "$EXTRACT_DIR"; then
+    echo "Extraction (gzip) completed."
+  else
+    echo "Gzip extraction failed, trying plain tar..."
+    tar -xvf "$TAR_FILE" -C "$EXTRACT_DIR"
+    echo "Fallback extraction completed."
+  fi
+fi
 cd "$EXTRACT_DIR"
 
 # --- Pull certs ---
@@ -92,22 +104,25 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
 
   # --- Set hostname and env ---
-  NEW_HOSTNAME="robot$ROBOT_NUMBER"
-  echo "Setting hostname to $NEW_HOSTNAME"
+  NEW_HOSTNAME="cart${ROBOT_NUMBER}jetson"
+  echo "Setting hostname to $NEW_HOSTNAME in $ROOTFS_PATH/etc/hostname"
   echo "$NEW_HOSTNAME" > "$ROOTFS_PATH/etc/hostname"
 
-  if grep -q "^127\\.0\\.1\\.1" "$ROOTFS_PATH/etc/hosts"; then
-    sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1    $NEW_HOSTNAME/" "$ROOTFS_PATH/etc/hosts"
+  echo "Updating /etc/hosts to reflect new hostname"
+  if grep -q "^127\.0\.1\.1" "$ROOTFS_PATH/etc/hosts"; then
+    sed -i "s/^127\.0\.1\.1.*/127.0.1.1    $NEW_HOSTNAME/" "$ROOTFS_PATH/etc/hosts"
   else
     echo "127.0.1.1    $NEW_HOSTNAME" >> "$ROOTFS_PATH/etc/hosts"
   fi
 
+  echo "Writing CARTKEN_CART_NUMBER=$ROBOT_NUMBER to /etc/environment"
   if grep -q "^CARTKEN_CART_NUMBER=" "$ROOTFS_PATH/etc/environment"; then
     sed -i "s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$ROBOT_NUMBER/" "$ROOTFS_PATH/etc/environment"
   else
     echo "CARTKEN_CART_NUMBER=$ROBOT_NUMBER" >> "$ROOTFS_PATH/etc/environment"
   fi
 
+  echo "Injecting SSH key into $ROOTFS_PATH/home/cartken/.ssh/authorized_keys"
   # --- Inject SSH key ---
   AUTH_KEYS_PATH="$ROOTFS_PATH/home/cartken/.ssh/authorized_keys"
   mkdir -p "$(dirname "$AUTH_KEYS_PATH")"
@@ -119,5 +134,11 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
 fi
 
 # --- Flash ---
-./flash_jetson_ALL_sdmmc_partition_qspi.sh
+echo "Running flash script: $FLASH_SCRIPT"
+if [[ -x "$FLASH_SCRIPT" ]]; then
+  "$FLASH_SCRIPT"
+else
+  echo "Error: flash script not found or not executable at $FLASH_SCRIPT"
+  exit 1
+fi
 
