@@ -5,9 +5,10 @@ set -euo pipefail
 FILE_ID="1-MEJNanz2eWXEhm5JC2tyiCAf8BLX_9h"
 TAR_NAME="cartken_flash.tar.gz"
 EXTRACT_DIR="cartken_flash"
+EXTRACT_DIR="$(realpath "$EXTRACT_DIR")"
+ROOTFS_PATH="$EXTRACT_DIR/Linux_for_Tegra/rootfs"
+FLASH_SCRIPT="$EXTRACT_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 L4T_DIR="$EXTRACT_DIR/Linux_for_Tegra"
-ROOTFS_PATH="$(realpath "$EXTRACT_DIR")/Linux_for_Tegra/rootfs"
-FLASH_SCRIPT="$(realpath "$EXTRACT_DIR")/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 INTERFACES=(wlan0 modem1 modem2 modem3)
@@ -85,8 +86,8 @@ fi
 
 
 # --- Extract ---
-if [[ -d "$EXTRACT_DIR/Linux_for_Tegra" ]]; then
-  echo "Skipping extraction, $EXTRACT_DIR/Linux_for_Tegra already exists."
+if [[ -d "$L4T_DIR" ]]; then
+  echo "Skipping extraction, $L4T_DIR already exists."
 else
 	# --- Download tar if not provided ---
 	if [[ -z "$TAR_FILE" ]]; then
@@ -191,5 +192,5 @@ curl -fsSL \
 https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/flash_jetson_ALL_sdmmc_partition_qspi.sh \
 -o "$FLASH_SCRIPT"
 chmod +x "$FLASH_SCRIPT"
-"$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
+"$FLASH_SCRIPT" --l4t-dir "$(realpath "$L4T_DIR")"
 
