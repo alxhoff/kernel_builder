@@ -48,6 +48,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+L4T_DIR=$(to_absolute_path "$L4T_DIR")
+
 BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
 KERNEL_IMAGE="$L4T_DIR/kernel/Image"
 DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
