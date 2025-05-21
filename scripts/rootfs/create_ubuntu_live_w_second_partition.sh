@@ -91,9 +91,22 @@ if [[ -n "$ROBOT_LIST" ]]; then
   mkdir -p vpn
 
   for ROBOT in "${ROBOTS[@]}"; do
+	echo "[*] Running: cartken r ip $ROBOT"
+	cartken r ip "$ROBOT" || true
+
     echo "[*] Processing robot $ROBOT..."
-    ROBOT_IPS=$(cartken r ip "$ROBOT" 2>&1)
-    echo "$ROBOT_IPS"
+    #ROBOT_IPS=$(cartken r ip "$ROBOT" 2>&1)
+	ROBOT_IPS=$(timeout 5s cartken r ip "$ROBOT" 2>&1)
+
+	if [[ $? -ne 0 ]]; then
+	  echo "⚠️  cartken r ip failed or timed out for robot $ROBOT"
+	  echo "$ROBOT_IPS"
+	  continue
+	fi
+
+	echo "[*] IP output for robot $ROBOT:"
+	echo "$ROBOT_IPS"
+
     ROBOT_IP=""
 
     while read -r iface ip _; do
@@ -160,6 +173,12 @@ dd if="$ISO_NAME" of="$DEVICE" bs=4M status=progress conv=fsync
 
 # --- Wait for device to refresh ---
 sleep 5
+
+# --- Unmount any auto-mounted partitions ---
+echo "[*] Unmounting all partitions on $DEVICE..."
+for p in $(lsblk -ln -o NAME "$DEVICE" | tail -n +2); do
+  umount "/dev/$p" 2>/dev/null || true
+done
 
 # --- Create 2nd partition ---
 echo "[*] Creating 32GiB workspace partition at 8GiB offset using fdisk..."
