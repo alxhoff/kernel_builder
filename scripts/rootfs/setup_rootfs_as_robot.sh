@@ -71,6 +71,27 @@ if [[ -z "$ROBOT_NUMBER" || -z "$SOC" || -z "$TAG" || -z "$TARGET_BSP" || -z "$B
     exit 1
 fi
 
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -f /etc/arch-release ]]; then
+    echo "[*] Detected Arch Linux"
+    sudo pacman -Sy --noconfirm docker qemu-user-static
+    sudo systemctl enable --now docker
+
+elif [[ -f /etc/debian_version ]]; then
+    echo "[*] Detected Debian/Ubuntu"
+    sudo apt-get update
+    sudo apt-get install -y docker.io qemu-user-static
+    sudo systemctl enable --now docker
+
+else
+    echo "❌ Unsupported distribution"
+    exit 1
+fi
+
+echo "[✓] Docker and qemu-user-static installed"
+
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
 L4T_DIR="$TEGRA_DIR"
