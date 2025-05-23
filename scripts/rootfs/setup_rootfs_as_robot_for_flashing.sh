@@ -123,7 +123,7 @@ cd "$EXTRACT_DIR"
 # --- Pull certs ---
 if [[ -n "$ROBOT_NUMBER" ]]; then
   echo "Fetching robot IPs..."
-  ROBOT_IPS=$(cartken r ip "$ROBOT_NUMBER" 2>&1)
+  ROBOT_IPS=$(sudo -u "$SUDO_USER" bash -c "cartken r ip \"$ROBOT_NUMBER\" 2>&1")
   echo "$ROBOT_IPS"
   ROBOT_IP=""
 
