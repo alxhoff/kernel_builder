@@ -84,6 +84,18 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
+if grep -qi "arch" /etc/os-release; then
+  DISTRO="arch"
+elif grep -qi "ubuntu" /etc/os-release; then
+  DISTRO="ubuntu"
+else
+  DISTRO="unknown"
+fi
+
+if [[ "$DISTRO" == "ubuntu" ]]; then
+   sudo apt-get update
+   sudo apt-get install -y libxml2-utils sshpass
+fi
 
 # --- Extract ---
 if [[ -d "$L4T_DIR" ]]; then
