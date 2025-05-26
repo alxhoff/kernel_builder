@@ -12,6 +12,8 @@ L4T_DIR="$EXTRACT_DIR/Linux_for_Tegra"
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 INTERFACES=(wlan0 modem1 modem2 modem3)
+CERT_PATH=""
+KEY_PATH=""
 
 # --- Help function ---
 show_help() {
@@ -26,6 +28,8 @@ Options:
   --robot-number <id>    Set robot number and fetch certs + inject hostname/env.
   --dry-run              Simulate connectivity and cert fetch without execution.
   --password             Password for pulling VPN credentials
+  --cert                    Provide the VPN certificate directly
+  --key                     Provide the VPN key directly
   -h, --help             Show this help message and exit.
 
 Examples:
@@ -72,6 +76,14 @@ while [[ $# -gt 0 ]]; do
 	  PASSWORD="$2"
 	  shift 2
 	  ;;
+	--cert)
+      CERT_PATH="$2"
+      shift 2
+      ;;
+    --key)
+      KEY_PATH="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"; exit 1
       ;;
@@ -129,49 +141,54 @@ cd "$EXTRACT_DIR"
 
 # --- Pull certs ---
 if [[ -n "$ROBOT_NUMBER" ]]; then
-  echo "Fetching robot IPs..."
-  ROBOT_IPS=$(sudo -u "$SUDO_USER" bash -c "cartken r ip \"$ROBOT_NUMBER\" 2>&1")
-  echo "$ROBOT_IPS"
-  ROBOT_IP=""
-
-  while read -r iface ip _; do
-    for match_iface in "${INTERFACES[@]}"; do
-      if [[ "$iface" == "$match_iface" ]]; then
-        echo "Testing $iface ($ip)..."
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-          echo "[dry-run] Would ping $ip"
-          ROBOT_IP="$ip"
-          break 2
-        elif ping -4 -c 1 -W 2 "$ip" >/dev/null 2>&1; then
-          echo "Selected $iface ($ip) as reachable."
-          ROBOT_IP="$ip"
-          break 2
-        else
-          echo "$iface ($ip) not reachable, trying next..."
-        fi
-      fi
-    done
-  done <<< "$ROBOT_IPS"
-
-  if [[ -z "$ROBOT_IP" ]]; then
-    echo "Failed to find a reachable IP for robot $ROBOT_NUMBER"
-    exit 1
-  fi
-
   LOCAL_DEST="$ROOTFS_PATH/etc/openvpn/cartken/2.0/crt"
   mkdir -p "$LOCAL_DEST"
 
-  echo "Copying certs from robot..."
-	if [[ -n "$PASSWORD" ]]; then
-	  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-		"cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
-	  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-		"cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
-	else
-	  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
-	  scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
-	fi
+  if [[ -n "$CERT_PATH" && -n "$KEY_PATH" ]]; then
+    echo "Using provided cert and key."
+    cp "$CERT_PATH" "$LOCAL_DEST/robot.crt"
+    cp "$KEY_PATH" "$LOCAL_DEST/robot.key"
+  else
+    echo "Fetching robot IPs..."
+    ROBOT_IPS=$(sudo -u "$SUDO_USER" bash -c "cartken r ip \"$ROBOT_NUMBER\" 2>&1")
+    echo "$ROBOT_IPS"
+    ROBOT_IP=""
 
+    while read -r iface ip _; do
+      for match_iface in "${INTERFACES[@]}"; do
+        if [[ "$iface" == "$match_iface" ]]; then
+          echo "Testing $iface ($ip)..."
+          if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "[dry-run] Would ping $ip"
+            ROBOT_IP="$ip"
+            break 2
+          elif ping -4 -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+            echo "Selected $iface ($ip) as reachable."
+            ROBOT_IP="$ip"
+            break 2
+          else
+            echo "$iface ($ip) not reachable, trying next..."
+          fi
+        fi
+      done
+    done <<< "$ROBOT_IPS"
+
+    if [[ -z "$ROBOT_IP" ]]; then
+      echo "Failed to find a reachable IP for robot $ROBOT_NUMBER"
+      exit 1
+    fi
+
+    echo "Copying certs from robot..."
+    if [[ -n "$PASSWORD" ]]; then
+      sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
+      sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+    else
+      scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
+      scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
+    fi
+  fi
 
   # --- Set hostname and env ---
   NEW_HOSTNAME="cart${ROBOT_NUMBER}jetson"
