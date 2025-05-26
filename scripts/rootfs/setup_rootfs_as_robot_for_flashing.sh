@@ -104,7 +104,14 @@ else
 	# --- Download tar if not provided ---
 	if [[ -z "$TAR_FILE" ]]; then
 	  echo "Downloading bundle via gdown.."
-	  pip3 install --break-system-packages --upgrade gdown
+	  apt update
+	  apt install -y python3-pip
+	  PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+	  if python3 -c 'import sys; exit(0) if (sys.version_info.major, sys.version_info.minor) >= (3, 10) else exit(1)'; then
+		  pip install --break-system-packages --upgrade gdown
+	  else
+		  pip install --upgrade gdown
+	  fi
 	  gdown "$FILE_ID" -O "$TAR_NAME"
 	  TAR_FILE="$TAR_NAME"
 	fi
