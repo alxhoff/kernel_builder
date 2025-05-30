@@ -106,7 +106,7 @@ fi
 
 if [[ "$DISTRO" == "ubuntu" ]]; then
    sudo apt-get update
-   sudo apt-get install -y libxml2-utils sshpass
+   sudo apt-get install -y libxml2-utils sshpass curl
 fi
 
 # --- Extract ---

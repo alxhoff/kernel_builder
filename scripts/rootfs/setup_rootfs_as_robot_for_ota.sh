@@ -82,7 +82,7 @@ if [[ -f /etc/arch-release ]]; then
 elif [[ -f /etc/debian_version ]]; then
     echo "[*] Detected Debian/Ubuntu"
     sudo apt-get update
-    sudo apt-get install -y docker.io qemu-user-static
+    sudo apt-get install -y docker.io qemu-user-static curl
     sudo systemctl enable --now docker
 
 else
