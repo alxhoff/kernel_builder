@@ -40,7 +40,7 @@ done
 # restore images
 sudo ./restore_system_images.sh \
   --l4t-dir "$L4T_DIR" \
-  --target-images "$IMAGES_DIR/$ROBOT"
+  --robot $ROBOT
 
 # flash device
 sudo ./flash_jetson_ALL_sdmmc_partition_qspi.sh \
