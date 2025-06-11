@@ -43,7 +43,7 @@ sudo ./restore_system_images.sh \
   --robot $ROBOT
 
 # flash device
-sudo ./flash_jetson_ALL_sdmmc_partition_qspi.sh \
+sudo ./flash_jetson.sh \
   --l4t-dir "$L4T_DIR"
 
 echo "✓ robot $ROBOT flashed"
