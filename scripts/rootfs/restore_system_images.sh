@@ -1,47 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# must be root
-if [[ $EUID -ne 0 ]]; then
-  echo "❌ must be run as root" >&2
-  exit 1
-fi
+# defaults
+default_l4t_dir="cartken_flash/Linux_for_Tegra/rootfs"
+default_images_dir="robot_images"
+
+# initial values
+L4T_DIR="$default_l4t_dir"
+IMAGES_BASE="$default_images_dir"
+ROBOT_ID=""
 
 usage() {
   cat <<EOF
-Usage: $0 --l4t-dir DIR --target-images DIR
+Usage: sudo $0 \
+  [--l4t-dir DIR] \
+  [--images-dir DIR] \
+  --robot N
 
-  --l4t-dir       Root of L4T tree to restore .img files into
-  --target-images Backup folder containing .img files (with same structure)
+  --l4t-dir      Root of L4T tree (default: $default_l4t_dir)
+  --images-dir   Base directory where images live (default: $default_images_dir)
+  --robot        Robot number to restore
 EOF
   exit 1
 }
 
+# parse args
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --l4t-dir)       L4T_DIR="$2"; shift 2 ;;
-    --target-images) IMG_DIR="$2"; shift 2 ;;
-    -h|--help)       usage ;;
-    *)               echo "Unknown arg: $1" >&2; usage ;;
+    --l4t-dir)
+      L4T_DIR="$2"; shift 2;;
+    --images-dir)
+      IMAGES_BASE="$2"; shift 2;;
+    --robot)
+      ROBOT_ID="$2"; shift 2;;
+    -h|--help)
+      usage;;
+    *)
+      echo "Unknown arg: $1" >&2; usage;;
   esac
 done
 
-: "${L4T_DIR:?--l4t-dir required}"
-: "${IMG_DIR:?--target-images required}"
+# require args
+: "${ROBOT_ID:?--robot required}"
 
-[[ -d $L4T_DIR ]] || { echo "❌ L4T directory '$L4T_DIR' not found"; exit 1; }
-[[ -d $IMG_DIR ]] || { echo "❌ target-images directory '$IMG_DIR' not found"; exit 1; }
+# must run as root
+test "$EUID" -eq 0 || { echo "❌ must be run as root" >&2; exit 1; }
 
-# make paths absolute
-L4T_DIR=$(realpath "$L4T_DIR")
-IMG_DIR=$(realpath "$IMG_DIR")
+# validate directories
+[[ -d "$L4T_DIR" ]]    || { echo "❌ L4T dir '$L4T_DIR' not found" >&2; exit 1; }
 
-find "$IMG_DIR" -type f -name '*.img' -print0 | while IFS= read -r -d '' IMG; do
-  rel=${IMG#"$IMG_DIR"/}
-  dest="$L4T_DIR/$rel"
-  mkdir -p "$(dirname "$dest")"
-  cp -- "$IMG" "$dest"
+IMAGES_DIR="$IMAGES_BASE/$ROBOT_ID"
+[[ -d "$IMAGES_DIR" ]] || { echo "❌ images dir '$IMAGES_DIR' not found" >&2; exit 1; }
+
+# restore images
+echo "Restoring .img files from '$IMAGES_DIR' into '$L4T_DIR'..."
+find "$IMAGES_DIR" -type f -name '*.img' -print0 | while IFS= read -r -d '' img; do
+  rel_path="${img#${IMAGES_DIR}/}"
+  dest_path="$L4T_DIR/$rel_path"
+  mkdir -p "$(dirname "$dest_path")"
+  cp -- "$img" "$dest_path"
 done
 
-echo "✓ Restored all .img files from '$IMG_DIR' into '$L4T_DIR'"
+echo "✓ All .img files restored into '$L4T_DIR'"
 
