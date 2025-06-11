@@ -1,4 +1,5 @@
 *.tbz2
+robot_*
 certs
 jetson_bsp
 *.deb
