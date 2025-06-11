@@ -12,7 +12,23 @@ This downloads a tar of our BSP sources from google drive then reconfigures them
 
 The core script that pulls and build BSP sources, including kernel, display drivers etc.
 
-## get_robot_credentials.sh
+## Precompile Robot System Images
+
+### Create the images
+
+```bash
+sudo ./create_robot_images.sh --robots R1,R2,R3 --password $SSH_PASSWORD --l4t-dir 5.1.5/Linux_for_Tegra
+```
+
+### Flashing a single robot with images
+
+```bash
+sudo ./flash_single_robot_from_system_images.sh --robot $ROBOT_NUMBER --l4t-dir 5.1.5/Linux_for_Tegra
+```
+
+## The individual steps
+
+### get_robot_credentials.sh
 
 Gets the credentials of all robots listed in --robots, saving them to --output.
 
@@ -20,7 +36,7 @@ Gets the credentials of all robots listed in --robots, saving them to --output.
 ./get_robot_credentials.sh --output test_creds --password cartken --robots 302,305
 ```
 
-## setup_rootfs_with_robot_number.sh
+### setup_rootfs_with_robot_number.sh
 
 Sets up hostname, VPN and SSH for the rootfs to come online as target robot
 
@@ -28,7 +44,7 @@ Sets up hostname, VPN and SSH for the rootfs to come online as target robot
 sudo ./setup_rootfs_with_robot_number.sh --vpn-credentials test_creds --rootfs-dir 5.1.5/Linux_for_Tegra/rootfs --robot 302
 ```
 
-## save_system_images.sh
+### save_system_images.sh
 
 Finds and saves all .img in the --l4t-dir and saves them in a file structure inside --output
 
@@ -36,7 +52,7 @@ Finds and saves all .img in the --l4t-dir and saves them in a file structure ins
 sudo ./save_system_images.sh --l4t-dir 5.1.5/Linux_for_Tegra --output system_images/302
 ```
 
-## restore_system_images.sh
+### restore_system_images.sh
 
 Restores the .img files from the --target-images directory into the --l4t-dir ready for flashing
 
@@ -44,7 +60,7 @@ Restores the .img files from the --target-images directory into the --l4t-dir re
 sudo ./restore_system_images.sh --l4t-dir 5.1.5/Linux_for_Tegra --target-images system_images/302
 ```
 
-## flash_jetson_ALL_sdmmc_partition_qspi.sh
+### flash_jetson_ALL_sdmmc_partition_qspi.sh
 
 Flashes the jetson with ALL partitions on the sdmmc (on board storage) as well as the qspi bootloader memory.
 

@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# default
+# defaults
 IMAGES_DIR="robot_images"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_L4T_DIR="$SCRIPT_DIR/cartken_flash/Linux_for_Tegra"
+L4T_DIR="$DEFAULT_L4T_DIR"
 
 usage() {
   cat <<EOF
 Usage: $0 \
   --robot N \
-  --l4t-dir DIR \
+  [--l4t-dir DIR] \
   [--images-dir DIR]
 
   --robot       Robot ID to flash
-  --l4t-dir     Path to L4T tree (e.g. 5.1.5/Linux_for_Tegra)
-  --images-dir  (optional) Root dir where images live (default: $IMAGES_DIR)
+  --l4t-dir     Path to L4T tree (default: $DEFAULT_L4T_DIR)
+  --images-dir  Root dir where images live (default: $IMAGES_DIR)
 EOF
   exit 1
 }
@@ -29,7 +32,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 : "${ROBOT:?--robot required}"
-: "${L4T_DIR:?--l4t-dir required}"
+
+# ensure paths exist
+[[ -d $L4T_DIR ]]    || { echo "❌ L4T dir '$L4T_DIR' not found" >&2; exit 1; }
+[[ -d $IMAGES_DIR ]] || { echo "❌ images dir '$IMAGES_DIR' not found" >&2; exit 1; }
 
 # restore images
 sudo ./restore_system_images.sh \
