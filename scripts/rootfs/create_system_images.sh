@@ -2,7 +2,7 @@
 
 # Default values
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_L4T_DIR="$SCRIPT_DIR/Linux_for_Tegra"
+DEFAULT_L4T_DIR="$SCRIPT_DIR/cartken_flash/Linux_for_Tegra"
 
 # Functions
 show_help() {
