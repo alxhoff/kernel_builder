@@ -1,4 +1,3 @@
-```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -94,5 +93,5 @@ mkdir -p "$dest_dir"
 cp -- "$src_cert" "$dest_dir/robot.crt"
 cp -- "$src_key"  "$dest_dir/robot.key"
 
-echo "✓ rootfs at '$ROOTFS_DIR' configured for cart${ROBOT}"```
+echo "✓ rootfs at '$ROOTFS_DIR' configured for cart${ROBOT}"
 

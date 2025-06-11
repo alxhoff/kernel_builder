@@ -1,4 +1,3 @@
-```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -79,9 +78,9 @@ for R in "${RS[@]}"; do
   echo "=== saving system images for robot $R ==="
   sudo ./save_system_images.sh \
     --l4t-dir "$L4T_DIR" \
-    --output "$IMAGES_DIR/$R"
+    --output "$IMAGES_DIR" \
+	--robot "$R"
 done
 
 echo "✓ all images created under $IMAGES_DIR"
-```
 
