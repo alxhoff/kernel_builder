@@ -28,7 +28,7 @@ Usage: $0 \
   --l4t-dir          Path to L4T tree (default: $default_l4t_dir)
   --vpn-output       Where to put pulled credentials (default: $default_vpn_dir)
   --images-dir       Root dir for per-robot images (default: $default_images_dir)
-  --credentials-zip  Path to zip containing credentials; if set, unzip into --vpn-output and skip fetching
+  --credentials-zip  Zip containing credentials; if set, unzip into --vpn-output and skip fetching
 EOF
   exit 1
 }
@@ -61,12 +61,19 @@ if [[ ! -d $L4T_DIR ]]; then
   fi
 fi
 
-# prepare VPN_DIR
+# prepare credentials
 if [[ -n "$CRED_ZIP" ]]; then
   echo "Unpacking credentials from zip: $CRED_ZIP into $VPN_DIR"
   rm -rf "$VPN_DIR"
   mkdir -p "$VPN_DIR"
   unzip -o "$CRED_ZIP" -d "$VPN_DIR"
+  # flatten nested folder if present
+  mapfile -t entries < <(find "$VPN_DIR" -mindepth 1 -maxdepth 1)
+  if [[ ${#entries[@]} -eq 1 && -d "${entries[0]}" ]]; then
+    echo "Found nested directory, flattening contents..."
+    mv "${entries[0]}"/* "$VPN_DIR/"
+    rmdir "${entries[0]}"
+  fi
 else
   echo "Pulling credentials into: $VPN_DIR"
   ./get_robot_credentials.sh \
@@ -92,3 +99,4 @@ for R in "${RS[@]}"; do
 done
 
 echo "✓ all images created under $IMAGES_DIR"
+
