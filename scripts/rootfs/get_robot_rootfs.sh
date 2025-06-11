@@ -52,8 +52,10 @@ fi
 # download if needed
 if [[ -z "$TAR_FILE" ]]; then
   echo "No tarball provided; downloading via gdown..."
-  sudo apt-get update -y
-  sudo apt-get install -y python3-pip curl
+  if grep -qi ubuntu /etc/os-release; then
+	  sudo apt-get update -y
+	  sudo apt-get install -y python3-pip curl
+  fi
   # install gdown
   if python3 -c 'import sys; exit(0) if (sys.version_info.major, sys.version_info.minor) >= (3,10) else exit(1)'; then
     pip install --break-system-packages --upgrade gdown
