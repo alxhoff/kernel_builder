@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# must be root
-if [[ $EUID -ne 0 ]]; then
-  echo "❌ must be run as root" >&2
-  exit 1
-fi
+# defaults
+default_output_dir="system_images"
+
+tmp_output_dir="$default_output_dir"
+robot_id=""
 
 usage() {
   cat <<EOF
-Usage: $0 --l4t-dir DIR --output DIR
+Usage: $0 \
+  --l4t-dir DIR \
+  --output DIR \
+  --robot N
 
-  --l4t-dir   Root of L4T tree to search for .img files
-  --output    Directory to copy found .img files into, preserving structure
+  --l4t-dir    Root of L4T tree to search for .img files
+  --output     Base directory to save images (default: $default_output_dir)
+  --robot      Robot number (used to create subdir under --output)
 EOF
   exit 1
 }
@@ -20,26 +24,40 @@ EOF
 # parse args
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --l4t-dir) L4T_DIR="$2"; shift 2 ;;
-    --output)  OUT_DIR="$2"; shift 2 ;;
-    -h|--help) usage ;;
-    *)         echo "Unknown arg: $1" >&2; usage ;;
+    --l4t-dir)
+      L4T_DIR="$2"; shift 2;;
+    --output)
+      tmp_output_dir="$2"; shift 2;;
+    --robot)
+      robot_id="$2"; shift 2;;
+    -h|--help)
+      usage;;
+    *)
+      echo "Unknown arg: $1" >&2; usage;;
   esac
 done
 
 : "${L4T_DIR:?--l4t-dir required}"
-: "${OUT_DIR:?--output required}"
+: "${robot_id:?--robot required}"
 
-[[ -d $L4T_DIR ]] || { echo "❌ L4T directory '$L4T_DIR' not found"; exit 1; }
-mkdir -p "$OUT_DIR"
+output_dir="$tmp_output_dir/$robot_id"
 
-# find absolute .img files and copy while preserving relative structure
-find "$L4T_DIR" -type f -name '*.img' -print0 | while IFS= read -r -d '' IMG; do
-  rel="${IMG#"$L4T_DIR"/}"
-  dst="$OUT_DIR/$rel"
-  mkdir -p "$(dirname "$dst")"
-  cp -- "$IMG" "$dst"
-done
+# ensure L4T exists
+[[ -d "$L4T_DIR" ]] || { echo "❌ L4T directory '$L4T_DIR' not found" >&2; exit 1; }
 
-echo "✓ All .img files from '$L4T_DIR' saved under '$OUT_DIR' with original structure"
+# create output subdir
+mkdir -p "$output_dir"
+
+echo "Saving .img files from '$L4T_DIR' to '$output_dir'..."
+
+# find and copy preserving structure
+find "$L4T_DIR" -type f -name '*.img' -print0 | \
+  while IFS= read -r -d '' img; do
+    rel_path="${img#${L4T_DIR}/}"
+    dest_dir="${output_dir}/$(dirname "$rel_path")"
+    mkdir -p "$dest_dir"
+    cp -- "$img" "$dest_dir/"
+  done
+
+echo "✓ All .img files saved under '$output_dir'"
 
