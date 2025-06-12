@@ -76,5 +76,11 @@ else
   echo "Fallback extraction succeeded."
 fi
 
+if grep -qi ubuntu /etc/os-release; then
+  echo "Installing prerequisites"
+  chmod +x "$L4T_DIR/tools/l4t_flash_prerequisites.sh"
+  sudo bash "$L4T_DIR/tools/l4t_flash_prerequisites.sh"
+fi
+
 echo "Done. L4T directory is at: $L4T_DIR"
 
