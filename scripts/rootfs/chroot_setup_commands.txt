@@ -24,4 +24,4 @@ dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial-credentials.deb
 dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
 sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
-echo "root:cartken" | chpasswd
+echo "root:$(openssl passwd -6 cartken)" | chpasswd -e
