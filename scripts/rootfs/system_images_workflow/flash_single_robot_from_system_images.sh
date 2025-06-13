@@ -101,7 +101,7 @@ echo "Restoring system images into $dist_l4t_dir from $target_images_dir..."
 
 # flash
 echo "Flashing Jetson..."
-./flash_jetson_ALL_sdmmc_partition_qspi.sh \
+./flash_jetson.sh \
   --l4t-dir "$dist_l4t_dir"
 
 echo "✓ Robot $robot_id flash complete."

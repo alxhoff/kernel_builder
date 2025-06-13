@@ -286,7 +286,7 @@ echo "Setting up rootfs with nvidia binaries and default user"
 sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 
 echo "Getting pinmux files"
-such $TEGRA_DIR/get_pinmux.sh --l4r-dir $TEGRA_DIR
+sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR
 
 if [[ "$JUST_CLONE" == true ]]; then
 	exit 1
