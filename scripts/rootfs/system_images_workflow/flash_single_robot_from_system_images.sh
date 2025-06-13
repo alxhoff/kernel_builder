@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # defaults
-default_l4t_dir="cartken_flash/Linux_for_Tegra/rootfs"
+default_l4t_dir="cartken_flash/Linux_for_Tegra"
 default_images_dir="robot_images"
 default_user="cartken"
 INTERFACES=(wlan0 modem1 modem2 modem3)
