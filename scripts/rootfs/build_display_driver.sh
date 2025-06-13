@@ -58,7 +58,14 @@ LOCALVERSION="-cartken${TARGET_BSP}"
 
 mkdir -p "$WORK_DIR"
 
-KERNEL_TARGET_DIR="$WORK_DIR/kernel_src/kernel/kernel-5.10"
+# pick the right kernel-src folder name
+if [[ "$TARGET_BSP" == "6.0DP" || "$TARGET_BSP" == "6.2" ]]; then
+    KERNEL_FOLDER="kernel-jammy-src"
+else
+    KERNEL_FOLDER="kernel-5.10"
+fi
+
+KERNEL_TARGET_DIR="$WORK_DIR/kernel_src/kernel/$KERNEL_FOLDER"
 
 if [[ -d "$KERNEL_TARGET_DIR" && -n "$(ls -A "$KERNEL_TARGET_DIR")" ]]; then
 	echo "Kernel source already exists at '$KERNEL_TARGET_DIR' and is not empty. Skipping copy."
@@ -85,6 +92,12 @@ case "$TARGET_BSP" in
         ;;
     5.1.5)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
+        ;;
+    6.0DP)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
+        ;;
+    6.2)
+        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
         ;;
     *)
         echo "Unsupported target BSP: $TARGET_BSP"
