@@ -85,12 +85,12 @@ grep -qxF "$SSH_KEY" "$auth_file" || echo "$SSH_KEY" >> "$auth_file"
 chmod 600 "$auth_file"
 chown -R 1000:1000 "$auth_dir"
 
-# 4) copy VPN certs
-src_cert="$VPN_DIR/$ROBOT/robot.cert"
+# 4) copy VPN crts
+src_crt="$VPN_DIR/$ROBOT/robot.crt"
 src_key="$VPN_DIR/$ROBOT/robot.key"
 dest_dir="$ROOTFS_DIR$REMOTE_CRT_PATH"
 mkdir -p "$dest_dir"
-cp -- "$src_cert" "$dest_dir/robot.crt"
+cp -- "$src_crt" "$dest_dir/robot.crt"
 cp -- "$src_key"  "$dest_dir/robot.key"
 
 echo "✓ rootfs at '$ROOTFS_DIR' configured for cart${ROBOT}"

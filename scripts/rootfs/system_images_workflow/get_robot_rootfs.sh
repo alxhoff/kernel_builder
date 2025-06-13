@@ -57,7 +57,7 @@ if [[ -z "$TAR_FILE" ]]; then
 	  sudo apt-get install -y python3-pip curl
   fi
   # install gdown
-  if python3 -c 'import sys; exit(0) if (sys.version_info.major, sys.version_info.minor) >= (3,10) else exit(1)'; then
+  if pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
     pip install --break-system-packages --upgrade gdown
   else
     pip install --upgrade gdown

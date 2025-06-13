@@ -4,7 +4,7 @@ set -euo pipefail
 # defaults
 INTERFACES=(wlan0 modem1 modem2 modem3)
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
-TMP_CERT_DIR="robot_credentials"
+TMP_CRT_DIR="robot_credentials"
 
 usage() {
   cat <<EOF
@@ -12,10 +12,10 @@ Usage: $0 --robots R1,R2,... --password PASS [--output DIR]
 
   --robots    Comma-separated robot names/IDs
   --password  Password for sshpass
-  --output    Base directory to save certs (default: $TMP_CERT_DIR)
+  --output    Base directory to save crts (default: $TMP_CRT_DIR)
 
 Inside \$OUTPUT, each robot will get its own subfolder:
-  \$OUTPUT/<robot>/robot.cert
+  \$OUTPUT/<robot>/robot.crt
   \$OUTPUT/<robot>/robot.key
 EOF
   exit 1
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --robots)   ROBOT_LIST="$2"; shift 2;;
     --password) PASSWORD="$2";   shift 2;;
-    --output)   TMP_CERT_DIR="$2"; shift 2;;
+    --output)   TMP_CRT_DIR="$2"; shift 2;;
     -h|--help)  usage;;
     *)          echo "Unknown arg: $1" >&2; usage;;
   esac
@@ -35,7 +35,7 @@ done
 [[ -z "${ROBOT_LIST:-}" ]] && echo "--robots is required" >&2 && usage
 [[ -z "${PASSWORD:-}"   ]] && echo "--password is required" >&2 && usage
 
-mkdir -p "$TMP_CERT_DIR"
+mkdir -p "$TMP_CRT_DIR"
 
 IFS=',' read -ra ROBOTS <<< "$ROBOT_LIST"
 for ROBOT in "${ROBOTS[@]}"; do
@@ -68,15 +68,15 @@ for ROBOT in "${ROBOTS[@]}"; do
   fi
 
   # per-robot output dir
-  DEST_DIR="$TMP_CERT_DIR/$ROBOT"
+  DEST_DIR="$TMP_CRT_DIR/$ROBOT"
   mkdir -p "$DEST_DIR"
 
-  echo "[*] Pulling certs from $ROBOT ($ROBOT_IP)…"
+  echo "[*] Pulling crts from $ROBOT ($ROBOT_IP)…"
   sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$DEST_DIR/robot.cert"
+    "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$DEST_DIR/robot.crt"
   sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$DEST_DIR/robot.key"
 done
 
-echo "✓ All certs saved under ./$TMP_CERT_DIR/"
+echo "✓ All crts saved under ./$TMP_CRT_DIR/"
 
