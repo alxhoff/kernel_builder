@@ -71,7 +71,7 @@ if [[ -d "$KERNEL_TARGET_DIR" && -n "$(ls -A "$KERNEL_TARGET_DIR")" ]]; then
 	echo "Kernel source already exists at '$KERNEL_TARGET_DIR' and is not empty. Skipping copy."
 else
 	cp -r $KERNEL_SOURCES_DIR "$WORK_DIR/kernel_src"
-	SOURCE_DIR=$(find "$WORK_DIR/kernel_src/kernel/" -mindepth 1 -maxdepth 1 -type d -name "kernel*" ! -name "kernel-5.10" | head -n 1)
+	SOURCE_DIR=$(find "$WORK_DIR/kernel_src/kernel/" -mindepth 1 -maxdepth 1 -type d -name "kernel*" ! -name "$KERNEL_FOLDER" | head -n 1)
 	if [ -n "$SOURCE_DIR" ]; then
 		mv "$SOURCE_DIR" "$KERNEL_TARGET_DIR"
 		echo "Folder renamed to 'kernel-5.10'."
@@ -105,7 +105,11 @@ case "$TARGET_BSP" in
         ;;
 esac
 BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
-NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
+if [[ "$TARGET_BSP" == "6.0DP" || "$TARGET_BSP" == "6.2" ]]; then
+    NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source"
+else
+    NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
+fi
 NVDISPLAY_TAR="$NVDISPLAY_TAR_DIR/nvidia_kernel_display_driver_source.tbz2"
 NVDISPLAY_SOURCE_DIR="$NVDISPLAY_TAR_DIR/nvdisplay"
 
