@@ -187,8 +187,16 @@ KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
 ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
 
-DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb" "tegra234-p3701-0005-p3737-0000.dtb" "tegra234-p3701-0004-p3737-0000.dtb")
-DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+# Define DTBs based on JetPack version
+if [[ "$PATCH" == "6.0DP" || "$PATCH" == "6.2" ]]; then
+    DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb")
+else
+    DTB_NAMES=(
+      "tegra234-p3701-0000-p3737-0000.dtb"
+      "tegra234-p3701-0005-p3737-0000.dtb"
+      "tegra234-p3701-0004-p3737-0000.dtb"
+    )
+fi
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
 ROOTFS_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
 ROOTFS_EXTLINUX_DIR="$ROOTFS_BOOT_DIR/extlinux"
