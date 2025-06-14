@@ -3,7 +3,7 @@ sudo apt update
 sudo apt upgrade -y
 sudo apt autoremove -y
 sudo apt-mark unhold nvidia-l4t-bootloader nvidia-l4t-configs nvidia-l4t-tools nvidia-l4t-xusb-firmware || true
-sudo dpkg --purge nvidia-l4t-kernel-dtbs nvidia-l4t-jetson-io nvidia-l4t-display-kernel || true
+sudo dpkg --purge nvidia-l4t-kernel-dtbs nvidia-l4t-jetson-io nvidia-l4t-display-kernel nvidia-l4t-initrd || true
 sudo dpkg --purge nvidia-l4t-kernel-headers || true
 sudo dpkg --purge nvidia-l4t-kernel || true
 echo "Installing apt packages"
