@@ -12,6 +12,7 @@ VPN_DIR="$default_vpn_dir"
 IMAGES_DIR="$default_images_dir"
 L4T_DIR="$default_l4t_dir"
 CRED_ZIP=""
+HAVE_CREDENTIALS=false
 
 usage() {
   cat <<EOF
@@ -21,7 +22,8 @@ Usage: $0 \
   [--l4t-dir DIR] \
   [--vpn-output DIR] \
   [--images-dir DIR] \
-  [--credentials-zip ZIP]
+  [--credentials-zip ZIP] \
+  [--have-credentials]
 
   --robots           Comma-separated list of robot IDs (required)
   --password         Password for sshpass (required)
@@ -29,6 +31,7 @@ Usage: $0 \
   --vpn-output       Where to put pulled credentials (default: $default_vpn_dir)
   --images-dir       Root dir for per-robot images (default: $default_images_dir)
   --credentials-zip  Zip containing credentials; if set, unzip into --vpn-output and skip fetching
+  --have-credentials For the case that you have already added the robot's credentials to $default_vpn_dir
 EOF
   exit 1
 }
@@ -42,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --vpn-output)     VPN_DIR="$2";      shift 2;;
     --images-dir)     IMAGES_DIR="$2";   shift 2;;
     --credentials-zip)CRED_ZIP="$2";     shift 2;;
+	--have-credentials) HAVE_CREDENTIALS=true; shift 1;;
     -h|--help)        usage;;
     *)                echo "Unknown arg: $1" >&2; usage;;
   esac
@@ -50,6 +54,12 @@ done
 # validate required
 : "${ROBOTS:?--robots required}"
 : "${PASSWORD:?--password required}"
+
+# conflict: can't use both
+if [[ -n "$CRED_ZIP" && "$HAVE_CREDENTIALS" == true ]]; then
+  echo "❌ --credentials-zip and --have-credentials are mutually exclusive" >&2
+  exit 1
+fi
 
 # ensure L4T exists, else fetch it
 if [[ ! -d $L4T_DIR ]]; then
@@ -74,6 +84,9 @@ if [[ -n "$CRED_ZIP" ]]; then
     mv "${entries[0]}"/* "$VPN_DIR/"
     rmdir "${entries[0]}"
   fi
+elif [[ "$HAVE_CREDENTIALS" == true ]]; then
+  echo "Using existing credentials in $VPN_DIR"
+  # you may want to verify per-robot subdirs exist here
 else
   echo "Pulling credentials into: $VPN_DIR"
   ./get_robot_credentials.sh \
