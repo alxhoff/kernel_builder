@@ -75,6 +75,15 @@ else
   echo "CARTKEN_CART_NUMBER=$ROBOT" >> "$env_file"
 fi
 
+HOTSPOT_FILE="$ROOTFS_DIR/etc/NetworkManager/system-connections/Hotspot.nmconnection"
+
+if [[ -f "$HOTSPOT_FILE" ]]; then
+    echo "Setting Hotspot SSID to $NEW_HOSTNAME in $HOTSPOT_FILE"
+    sed -i "s/^ssid=.*/ssid=$NEW_HOSTNAME/" "$HOTSPOT_FILE"
+else
+    echo "Warning: Hotspot configuration file not found: $HOTSPOT_FILE"
+fi
+
 # 3) inject SSH key
 auth_dir="$ROOTFS_DIR/home/cartken/.ssh"
 auth_file="$auth_dir/authorized_keys"
