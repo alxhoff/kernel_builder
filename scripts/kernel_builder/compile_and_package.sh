@@ -22,6 +22,7 @@ DEPLOY_SCRIPT="$SCRIPT_DIR/kernel_builder/deploy_debian.sh"
 
 # Parse arguments
 CONFIG_ARG=""
+DTB_NAME_ARG=""
 LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
@@ -39,6 +40,7 @@ show_help() {
     --localversion <str> Set a custom local version string during kernel compilation.
     --dry-run            Simulate the compilation and packaging processes without executing them.
     --threads <number>   Specify the number of threads to use during kernel compilation.
+	--dtb-name <name>    Specify a DTB filename to build.
 
   Examples:
     1. Compile and package the kernel with a custom configuration file:
@@ -95,6 +97,15 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+	--dtb-name)
+      if [ -n "$2" ]; then
+        DTB_NAME_ARG="--dtb-name $2"
+        shift 2
+      else
+        echo "Error: --dtb-name requires a value"
+        exit 1
+      fi
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -108,7 +119,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARGi $DTB_NAME_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi
