@@ -1,0 +1,49 @@
+diff --git a/nvidia-oot/drivers/media/i2c/d4xx.c b/nvidia-oot/drivers/media/i2c/d4xx.c
+index 8e90711d8..1c40f5876 100644
+--- a/nvidia-oot/drivers/media/i2c/d4xx.c
++++ b/nvidia-oot/drivers/media/i2c/d4xx.c
+@@ -516,6 +516,8 @@ static int ds5_write_8(struct ds5 *state, u16 reg, u8 val)
+ 			dev_dbg(&state->client->dev, "%s(): i2c write 0x%04x: 0x%x\n",
+ 				 __func__, reg, val);
+ 
++	usleep_range(100,110);
++
+ 	return ret;
+ }
+ #endif
+@@ -542,6 +544,8 @@ static int ds5_write(struct ds5 *state, u16 reg, u16 val)
+ 			dev_dbg(&state->client->dev, "%s(): i2c write 0x%04x: 0x%x\n",
+ 				__func__, reg, val);
+ 
++	usleep_range(100,110);
++
+ 	return ret;
+ }
+ 
+@@ -558,7 +562,7 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
+ 			dev_dbg(&state->client->dev,
+ 					"%s(): i2c raw write 0x%04x: %d bytes\n",
+ 					__func__, reg, (int)val_len);
+-
++	usleep_range(100,110);
+ 	return ret;
+ }
+ 
+@@ -573,7 +577,7 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
+ 			dev_dbg(&state->client->dev, "%s(): i2c read 0x%04x: 0x%x\n",
+ 					__func__, reg, *val);
+ 	}
+-
++	usleep_range(100,110);
+ 	return ret;
+ }
+ 
+@@ -584,6 +588,8 @@ static int ds5_raw_read(struct ds5 *state, u16 reg, void *val, size_t val_len)
+ 		dev_err(&state->client->dev, "%s(): i2c read failed %d, 0x%04x\n",
+ 			__func__, ret, reg);
+ 
++	usleep_range(100,110);
++
+ 	return ret;
+ }
+ 
