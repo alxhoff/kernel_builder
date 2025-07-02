@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-def create_deb_package(kernel_name, localversion=None):
+def create_deb_package(kernel_name, localversion=None, dtb_name="tegra234-p3701-0000-p3737-0000.dtb"):
     import shutil
     import tempfile
 
@@ -15,12 +15,35 @@ def create_deb_package(kernel_name, localversion=None):
     kernel_version = next((version for version in kernel_versions if version.endswith(localversion)), kernel_versions[-1]) if localversion else kernel_versions[0]
 
     kernel_image = os.path.join(modules_base_dir, "boot", f"Image.{localversion}") if localversion else os.path.join(modules_base_dir, "boot", "Image")
-    dtb_file = os.path.join(modules_base_dir, "boot", f"tegra234-p3701-0000-p3737-0000{localversion}.dtb") if localversion else os.path.join(modules_base_dir, "boot", "tegra234-p3701-0000-p3737-0000.dtb")
+
+    dtb_base = dtb_name[:-4] if dtb_name.endswith(".dtb") else dtb_name
+    print(f"DTB base: {dtb_base}")
+
+    #  if localversion:
+    #      dtb_filename = f"{dtb_base}-{localversion}.dtb"
+    #  else:
+    #      dtb_filename = f"{dtb_base}.dtb"
+
+    dtb_filename = (
+        f"{dtb_base}{localversion}.dtb"
+        if localversion
+        else f"{dtb_name}"
+    )
+    print(f"DTB filename: {dtb_filename}")
+    dtb_file = os.path.join(modules_base_dir, "boot", dtb_filename)
+    print(f"DTB file: {dtb_file}")
+
     modules_dir = os.path.join(modules_base_dir, "lib", "modules", kernel_version)
 
     # Ensure required files exist
-    if not os.path.exists(kernel_image) or not os.path.exists(dtb_file) or not os.path.exists(modules_dir):
+    if not os.path.exists(kernel_image):
         print("Error: Required kernel files are missing.")
+        return None
+    elif not os.path.exists(dtb_file):
+        print("Error: Required dtb files are missing.")
+        return None
+    elif not os.path.exists(modules_dir):
+        print("Error: Required modules dir missing.")
         return None
 
     # Define a persistent output directory for the .deb package
@@ -63,7 +86,7 @@ update-initramfs -c -k {kernel_version}
 # Update extlinux.conf
 sed -i 's|LINUX .*|LINUX /boot/Image|' /boot/extlinux/extlinux.conf
 sed -i 's|INITRD .*|INITRD /boot/initrd.img-{kernel_version}|' /boot/extlinux/extlinux.conf
-sed -i 's|FDT .*|FDT /boot/dtb/tegra234-p3701-0000-p3737-0000{localversion}.dtb|' /boot/extlinux/extlinux.conf
+sed -i 's|FDT .*|FDT /boot/dtb/{dtb_filename}|' /boot/extlinux/extlinux.conf
 """
         with open(os.path.join(debian_control_dir, "postinst"), "w") as postinst_file:
             postinst_file.write(postinst_content)
@@ -391,6 +414,9 @@ def main():
     deploy_debian_parser = subparsers.add_parser("deploy-debian")
     deploy_debian_parser.add_argument("--kernel-name", required=True, help="Name of the kernel subfolder to package")
     deploy_debian_parser.add_argument("--localversion", help="Specify the LOCALVERSION string to package the correct kernel")
+    deploy_debian_parser.add_argument(
+    "--dtb-name", default="tegra234-p3701-0000-p3737-0000",
+    help="DTB filename prefix (without .dtb) to include in the package")
 
     # Deploy to Jetson command
     deploy_jetson_parser = subparsers.add_parser("deploy-jetson")
@@ -425,7 +451,7 @@ def main():
     elif args.command == "deploy-targeted-modules":
         deploy_targeted_modules(kernel_name=args.kernel_name, device_ip=args.ip, user=args.user, dry_run=args.dry_run)
     elif args.command == "deploy-debian":
-        deb_file = create_deb_package(kernel_name=args.kernel_name, localversion=args.localversion)
+        deb_file = create_deb_package(kernel_name=args.kernel_name, localversion=args.localversion, dtb_name=args.dtb_name)
     else:
         print("Failed to create Debian package.")
 
