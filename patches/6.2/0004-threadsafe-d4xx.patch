@@ -1,5 +1,5 @@
 diff --git a/nvidia-oot/drivers/media/i2c/d4xx.c b/nvidia-oot/drivers/media/i2c/d4xx.c
-index e9c4ce382..8e90711d8 100644
+index e9c4ce382..ca47c67c2 100644
 --- a/nvidia-oot/drivers/media/i2c/d4xx.c
 +++ b/nvidia-oot/drivers/media/i2c/d4xx.c
 @@ -174,7 +174,7 @@ enum ds5_mux_pad {
@@ -19,7 +19,20 @@ index e9c4ce382..8e90711d8 100644
  #endif
  #ifdef CONFIG_VIDEO_INTEL_IPU6
  #define NR_OF_CSI2_BE_SOC_STREAMS	16
-@@ -2107,7 +2108,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+@@ -495,12 +496,6 @@ struct ds5_counters {
+ #define ds5_from_depth_sd(sd) container_of(sd, struct ds5, depth.sd)
+ #define ds5_from_ir_sd(sd) container_of(sd, struct ds5, ir.sd)
+ #define ds5_from_rgb_sd(sd) container_of(sd, struct ds5, rgb.sd)
+-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 15, 136)
+-static inline void msleep_range(unsigned int delay_base)
+-{
+-	usleep_range(delay_base * 1000, delay_base * 1000 + 500);
+-}
+-#endif
+ #ifdef CONFIG_VIDEO_INTEL_IPU6
+ static int ds5_write_8(struct ds5 *state, u16 reg, u8 val)
+ {
+@@ -2107,7 +2102,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
  					"requested size: %d, actual size: %d\n",
  					__func__, ret, erb_cmd->param2, size);
  				devm_kfree(&state->client->dev, erb_cmd);
@@ -29,7 +42,7 @@ index e9c4ce382..8e90711d8 100644
  			}
  
  			// Actual size returned from FW
-@@ -2166,7 +2168,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2166,7 +2162,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
  					"requested size: %d, actual size: %d\n",
  					__func__, ret, ewb_cmd->param2, size);
  				devm_kfree(&state->client->dev, ewb_cmd);
@@ -39,7 +52,7 @@ index e9c4ce382..8e90711d8 100644
  			}
  
  			devm_kfree(&state->client->dev, ewb_cmd);
-@@ -2366,17 +2369,22 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2366,17 +2363,22 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  	dev_dbg(&state->client->dev, "%s(): %s - ctrl: %s \n",
  		__func__, ds5_get_sensor_name(state), ctrl->name);
  
@@ -67,7 +80,7 @@ index e9c4ce382..8e90711d8 100644
  		ds5_read(state, base | DS5_AUTO_EXPOSURE_MODE, &reg);
  		*ctrl->p_new.p_u16 = reg;
  		/* see ds5_hw_set_auto_exposure */
-@@ -2393,8 +2401,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2393,8 +2395,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  		break;
  
  	case V4L2_CID_EXPOSURE_ABSOLUTE:
@@ -80,7 +93,7 @@ index e9c4ce382..8e90711d8 100644
  		/* see ds5_hw_set_exposure */
  		ds5_read(state, base | DS5_MANUAL_EXPOSURE_MSB, &reg);
  		data = ((u32)reg << 16) & 0xffff0000;
-@@ -2422,12 +2432,12 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2422,12 +2426,12 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  		ret = regmap_raw_write(state->regmap, 0x4900,
  				log_prepare, sizeof(log_prepare));
  		if (ret < 0)
@@ -97,7 +110,7 @@ index e9c4ce382..8e90711d8 100644
  
  		for (i = 0; i < DS5_MAX_LOG_POLL; i++) {
  			ret = regmap_raw_read(state->regmap, 0x4904,
-@@ -2435,8 +2445,8 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2435,8 +2439,8 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  			dev_dbg(&state->client->dev, "%s(): log ready 0x%x\n",
  				 __func__, data);
  			if (ret < 0)
@@ -108,7 +121,7 @@ index e9c4ce382..8e90711d8 100644
  				break;
  			msleep_range(5);
  		}
-@@ -2447,13 +2457,16 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2447,13 +2451,16 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  		ret = regmap_raw_read(state->regmap, 0x4908, &data, sizeof(data));
  		dev_dbg(&state->client->dev, "%s(): log size 0x%x\n", __func__, data);
  		if (ret < 0)
@@ -132,7 +145,7 @@ index e9c4ce382..8e90711d8 100644
  		break;
  	case DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
  		ret = ds5_get_calibration_data(state, DEPTH_CALIBRATION_ID,
-@@ -2489,7 +2502,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2489,7 +2496,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_roi_cmd);
  			if (ret) {
  				devm_kfree(&state->client->dev, ae_roi_cmd);
@@ -141,7 +154,7 @@ index e9c4ce382..8e90711d8 100644
  			}
  			ret = ds5_get_hwmc(state, ae_roi_cmd->Data, len, &dataLen);
  			if (!ret && dataLen <= ctrl->dims[0])
-@@ -2514,7 +2527,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2514,7 +2521,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_setpoint_cmd);
  		if (ret) {		
  			devm_kfree(&state->client->dev, ae_setpoint_cmd);
@@ -150,7 +163,7 @@ index e9c4ce382..8e90711d8 100644
  		}
  		ret = ds5_get_hwmc(state, ae_setpoint_cmd->Data, len, &dataLen);
  		memcpy(ctrl->p_new.p_s32, ae_setpoint_cmd->Data + 4, 4);
-@@ -2562,6 +2575,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+@@ -2562,6 +2569,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
  		break;
  #endif
  	}
@@ -158,7 +171,7 @@ index e9c4ce382..8e90711d8 100644
  	return ret;
  }
  
-@@ -2861,19 +2875,6 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
+@@ -2861,19 +2869,6 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
  
  #ifdef CONFIG_VIDEO_D4XX_SERDES
  
@@ -178,7 +191,7 @@ index e9c4ce382..8e90711d8 100644
  #ifdef CONFIG_OF
  static int ds5_board_setup(struct ds5 *state)
  {
-@@ -2887,32 +2888,28 @@ static int ds5_board_setup(struct ds5 *state)
+@@ -2887,32 +2882,28 @@ static int ds5_board_setup(struct ds5 *state)
  	int value = 0xFFFF;
  	const char *str_value;
  	int err;
@@ -219,7 +232,7 @@ index e9c4ce382..8e90711d8 100644
  	if (err < 0) {
  		dev_err(dev, "serializer reg not found\n");
  		goto error;
-@@ -2925,8 +2922,10 @@ static int ds5_board_setup(struct ds5 *state)
+@@ -2925,8 +2916,10 @@ static int ds5_board_setup(struct ds5 *state)
  		err = -EPROBE_DEFER;
  		goto error;
  	}
@@ -230,7 +243,7 @@ index e9c4ce382..8e90711d8 100644
  		goto error;
  	}
  
-@@ -3026,24 +3025,29 @@ static int ds5_board_setup(struct ds5 *state)
+@@ -3026,24 +3019,29 @@ static int ds5_board_setup(struct ds5 *state)
  		dev_err(dev, "No num-lanes info\n");
  		goto error;
  	}
@@ -271,7 +284,7 @@ index e9c4ce382..8e90711d8 100644
  // ds5mux i2c ser des
  // mux a - 2 0x42 0x48
  // mux b - 2 0x44 0x4a
-@@ -3101,10 +3105,9 @@ static int ds5_board_setup(struct ds5 *state)
+@@ -3101,10 +3099,9 @@ static int ds5_board_setup(struct ds5 *state)
  	}
  	if (state->aggregated)
  		suffix += 4;
@@ -285,7 +298,7 @@ index e9c4ce382..8e90711d8 100644
  
  	if (!state->dser_i2c)
  		state->dser_i2c = i2c_new_client_device(adapter, &i2c_info_des);
-@@ -3190,60 +3193,55 @@ error:
+@@ -3190,60 +3187,55 @@ error:
  
  #endif
  static const struct regmap_config ds5_regmap_max9296 = {
@@ -362,7 +375,7 @@ index e9c4ce382..8e90711d8 100644
  	return err;
  }
  
-@@ -3261,7 +3259,7 @@ static short serdes_bus[4] = {2, 2, 4, 4};
+@@ -3261,7 +3253,7 @@ static short serdes_bus[4] = {2, 2, 4, 4};
  #endif
  module_param_array(serdes_bus, ushort, NULL, 0444);
  MODULE_PARM_DESC(serdes_bus, "max9295/6 deserializer i2c bus\n"
@@ -371,7 +384,7 @@ index e9c4ce382..8e90711d8 100644
  
  // Deserializer addresses can be 0x40 0x48 0x4a
  #ifdef PLATFORM_AXIOMTEK
-@@ -3296,76 +3294,81 @@ static int ds5_i2c_addr_setting(struct i2c_client *c, struct ds5 *state)
+@@ -3296,76 +3288,81 @@ static int ds5_i2c_addr_setting(struct i2c_client *c, struct ds5 *state)
  static int ds5_serdes_setup(struct ds5 *state)
  {
  	int ret = 0;
@@ -510,7 +523,7 @@ index e9c4ce382..8e90711d8 100644
  }
  #endif
  enum state_sid {
-@@ -4176,6 +4179,8 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+@@ -4176,6 +4173,8 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
  	restore_val = sensor->streaming;
  	sensor->streaming = on;
  
@@ -519,7 +532,7 @@ index e9c4ce382..8e90711d8 100644
  	if (on) {
  #ifdef CONFIG_VIDEO_D4XX_SERDES
  #ifdef CONFIG_VIDEO_INTEL_IPU6
-@@ -4270,6 +4275,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
+@@ -4270,6 +4269,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
  			(on)?"START":"STOP",
  			stream_status_base, streaming,
  			config_status_base, status, ret);
@@ -527,7 +540,7 @@ index e9c4ce382..8e90711d8 100644
  
  	return ret;
  
-@@ -4288,6 +4294,7 @@ restore_s_state:
+@@ -4288,6 +4288,7 @@ restore_s_state:
  			ds5_get_sensor_name(state), restore_val, status);
  
  	sensor->streaming = restore_val;
@@ -535,7 +548,7 @@ index e9c4ce382..8e90711d8 100644
  
  	return ret;
  }
-@@ -5425,11 +5432,12 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+@@ -5425,11 +5426,12 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
  	int ret, retry, err = 0;
  #ifdef CONFIG_OF
  	const char *str;
@@ -549,7 +562,7 @@ index e9c4ce382..8e90711d8 100644
  
  	state->client = c;
  	dev_warn(&c->dev, "Probing driver for D45x\n");
-@@ -5450,20 +5458,42 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+@@ -5450,20 +5452,42 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
  			return ret;
  		}
  	}
@@ -600,7 +613,7 @@ index e9c4ce382..8e90711d8 100644
  	retry = 5;
  	do {
  		ret = ds5_read(state, 0x5020, &rec_state);
-@@ -5495,7 +5525,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+@@ -5495,7 +5519,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
  	}
  #else
  	state->is_depth = 1;
@@ -609,7 +622,7 @@ index e9c4ce382..8e90711d8 100644
  	/* create DFU chardev once */
  	if (state->is_depth) {
  		ret = ds5_chrdev_init(c, state);
-@@ -5514,7 +5544,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+@@ -5514,7 +5538,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
  		dev_info(&c->dev, "%s(): D4XX recovery state\n", __func__);
  		state->dfu_dev.dfu_state_flag = DS5_DFU_RECOVERY;
  		/* Override I2C drvdata with state for use in remove function */
@@ -618,7 +631,7 @@ index e9c4ce382..8e90711d8 100644
  		return 0;
  	}
  
-@@ -5566,44 +5596,38 @@ e_regulator:
+@@ -5566,44 +5590,38 @@ e_regulator:
  static int ds5_remove(struct i2c_client *c)
  {
  #ifdef CONFIG_VIDEO_D4XX_SERDES
@@ -688,7 +701,7 @@ index e9c4ce382..8e90711d8 100644
  	if (state->ser_i2c)
  		i2c_unregister_device(state->ser_i2c);
  	if (state->dser_i2c)
-@@ -5667,7 +5691,8 @@ MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
+@@ -5667,7 +5685,8 @@ MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
  				Xin Zhang <xin.x.zhang@intel.com>,\n\
  				Qingwu Zhang <qingwu.zhang@intel.com>,\n\
  				Evgeni Raikhel <evgeni.raikhel@intel.com>,\n\
@@ -699,10 +712,36 @@ index e9c4ce382..8e90711d8 100644
  MODULE_LICENSE("GPL v2");
  MODULE_VERSION("1.0.1.27");
 diff --git a/nvidia-oot/drivers/media/i2c/max9295.c b/nvidia-oot/drivers/media/i2c/max9295.c
-index e7c77845c..e0e8bf49b 100644
+index e7c77845c..f2e65e4bd 100644
 --- a/nvidia-oot/drivers/media/i2c/max9295.c
 +++ b/nvidia-oot/drivers/media/i2c/max9295.c
-@@ -96,14 +96,15 @@ struct max9295_client_ctx {
+@@ -1,11 +1,21 @@
+-// SPDX-License-Identifier: GPL-2.0
+-// Copyright (c) 2018-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ /*
+  * max9295.c - max9295 GMSL Serializer driver
++ *
++ * Copyright (c) 2018-2022, NVIDIA CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
+-#include <nvidia/conftest.h>
+-
+ #include <media/camera_common.h>
+ #include <linux/module.h>
+ #include <media/max9295.h>
+@@ -96,14 +106,15 @@ struct max9295_client_ctx {
  struct max9295 {
  	struct i2c_client *i2c_client;
  	struct regmap *regmap;
@@ -720,12 +759,12 @@ index e7c77845c..e0e8bf49b 100644
  
  struct map_ctx {
  	u8 dt;
-@@ -112,6 +113,35 @@ struct map_ctx {
+@@ -112,6 +123,35 @@ struct map_ctx {
  	u8 st_id;
  };
  
 +struct regmap *
-+max9295_sensor_regmap_init(struct device *dev, struct i2c_client *c, 
++max9295_sensor_regmap_init(struct device *dev, struct i2c_client *c,
 +		const struct regmap_config *rm_config) {
 +	struct max9295 *priv;
 +	struct regmap *ret;
@@ -756,21 +795,7 @@ index e7c77845c..e0e8bf49b 100644
  static int max9295_write_reg(struct device *dev, u16 addr, u8 val)
  {
  	struct max9295 *priv = dev_get_drvdata(dev);
-@@ -119,10 +149,10 @@ static int max9295_write_reg(struct device *dev, u16 addr, u8 val)
- 
- 	err = regmap_write(priv->regmap, addr, val);
- 	if (err)
--		dev_err(dev, "%s:i2c write failed, 0x%x = %x\n",
--			__func__, addr, val);
-+          dev_err(dev, "%s:i2c@%d write failed, 0x%x = %x\n", 
-+				  __func__, priv->i2c_client->addr, addr, val);
- 
--	/* delay before next i2c command as required for SERDES link */
-+        /* delay before next i2c command as required for SERDES link */
- 	usleep_range(100, 110);
- 
- 	return err;
-@@ -291,8 +321,18 @@ int max9295_setup_control(struct device *dev)
+@@ -291,8 +331,18 @@ int max9295_setup_control(struct device *dev)
  		0xC4, 0x02, 0x03,
  	};
  
@@ -789,7 +814,7 @@ index e7c77845c..e0e8bf49b 100644
  	if (!priv->g_client.g_ctx) {
  		dev_err(dev, "%s: no sensor dev client found\n", __func__);
  		err = -EINVAL;
-@@ -301,11 +341,9 @@ int max9295_setup_control(struct device *dev)
+@@ -301,11 +351,9 @@ int max9295_setup_control(struct device *dev)
  
  	g_ctx = priv->g_client.g_ctx;
  
@@ -804,7 +829,7 @@ index e7c77845c..e0e8bf49b 100644
  
  	if (g_ctx->serdes_csi_link == GMSL_SERDES_CSI_LINK_A)
  		err = max9295_write_reg(dev, MAX9295_CTRL0_ADDR, 0x21);
-@@ -340,16 +378,13 @@ int max9295_setup_control(struct device *dev)
+@@ -340,16 +388,13 @@ int max9295_setup_control(struct device *dev)
  		i2c_ovrd[i+1] += (i < 4) ? offset1 : offset2;
  
  		/* i2c passthrough2 must be configured once for all devices */
@@ -812,10 +837,8 @@ index e7c77845c..e0e8bf49b 100644
 -				prim_priv__->pst2_ref)
 +		if ((i2c_ovrd[i] == 0x8B) && priv->prim_priv->pst2_ref)
  			continue;
--
--		max9295_write_reg(dev, i2c_ovrd[i], i2c_ovrd[i+1]);
-+  
-+		max9295_write_reg(dev, i2c_ovrd[i], i2c_ovrd[i + 1]);
+ 
+ 		max9295_write_reg(dev, i2c_ovrd[i], i2c_ovrd[i+1]);
  	}
  
 -	/* dev addr pass-through2 ref */
@@ -825,7 +848,7 @@ index e7c77845c..e0e8bf49b 100644
  
  	max9295_write_reg(dev, MAX9295_I2C4_ADDR, (g_ctx->sdev_reg << 1));
  	max9295_write_reg(dev, MAX9295_I2C5_ADDR, (g_ctx->sdev_def << 1));
-@@ -361,6 +396,7 @@ int max9295_setup_control(struct device *dev)
+@@ -361,6 +406,7 @@ int max9295_setup_control(struct device *dev)
  	g_ctx->serdev_found = true;
  
  error:
@@ -833,7 +856,7 @@ index e7c77845c..e0e8bf49b 100644
  	mutex_unlock(&priv->lock);
  	return err;
  }
-@@ -371,6 +407,12 @@ int max9295_reset_control(struct device *dev)
+@@ -371,6 +417,12 @@ int max9295_reset_control(struct device *dev)
  	struct max9295 *priv = dev_get_drvdata(dev);
  	int err = 0;
  
@@ -846,7 +869,39 @@ index e7c77845c..e0e8bf49b 100644
  	mutex_lock(&priv->lock);
  	if (!priv->g_client.g_ctx) {
  		dev_err(dev, "%s: no sdev client found\n", __func__);
-@@ -399,7 +441,6 @@ EXPORT_SYMBOL(max9295_reset_control);
+@@ -380,18 +432,25 @@ int max9295_reset_control(struct device *dev)
+ 
+ 	priv->g_client.st_done = false;
+ 
+-	if (prim_priv__) {
+-		prim_priv__->pst2_ref--;
++	if (!priv->prim_priv) {
++		dev_err(dev, "%s prim_priv doesn't exist\n", __func__);
++		goto error;
++	}
+ 
+-		max9295_write_reg(dev, MAX9295_DEV_ADDR,
+-					(prim_priv__->def_addr << 1));
++	mutex_lock(&priv->prim_priv->lock);
+ 
+-		max9295_write_reg(&prim_priv__->i2c_client->dev,
+-					MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
++	priv->prim_priv->pst2_ref--;
++	max9295_write_reg(dev, MAX9295_DEV_ADDR,
++			(priv->prim_priv->def_addr << 1));
++	if (priv->prim_priv->pst2_ref == 0) {
++		max9295_write_reg(&priv->prim_priv->i2c_client->dev,
++				MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
+ 	}
+ 
++	mutex_unlock(&priv->prim_priv->lock);
+ error:
+ 	mutex_unlock(&priv->lock);
++ret:
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9295_reset_control);
+@@ -399,7 +458,6 @@ EXPORT_SYMBOL(max9295_reset_control);
  int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
  {
  	struct max9295 *priv;
@@ -854,7 +909,7 @@ index e7c77845c..e0e8bf49b 100644
  
  	if (!dev || !g_ctx || !g_ctx->s_dev) {
  		dev_err(dev, "%s: invalid input params\n", __func__);
-@@ -407,15 +448,18 @@ int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
+@@ -407,15 +465,18 @@ int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
  	}
  
  	priv = dev_get_drvdata(dev);
@@ -876,22 +931,20 @@ index e7c77845c..e0e8bf49b 100644
  	priv->g_client.g_ctx = g_ctx;
  
  error:
-@@ -459,10 +503,10 @@ error:
+@@ -459,10 +520,10 @@ error:
  }
  EXPORT_SYMBOL(max9295_sdev_unpair);
  
 -static  struct regmap_config max9295_regmap_config = {
--	.reg_bits = 16,
--	.val_bits = 8,
--	.cache_type = REGCACHE_RBTREE,
 +static struct regmap_config max9295_regmap_config = {
-+		.reg_bits = 16,
-+		.val_bits = 8,
-+		.cache_type = REGCACHE_NONE,
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
+-	.cache_type = REGCACHE_RBTREE,
++	.cache_type = REGCACHE_NONE,
  };
  
  struct reg_pair {
-@@ -563,15 +607,16 @@ int max9295_init_settings(struct device *dev)
+@@ -563,6 +624,9 @@ int max9295_init_settings(struct device *dev)
  		{MAX9295_START_PIPE_ADDR, 0xF0},
  	};
  
@@ -900,54 +953,152 @@ index e7c77845c..e0e8bf49b 100644
 +
  	mutex_lock(&priv->lock);
  
--	// Init control
--	err |= max9295_set_registers(dev, map_pipe_opt,
--				     ARRAY_SIZE(map_pipe_opt));
-+	err |= max9295_set_registers(dev, map_pipe_opt, ARRAY_SIZE(map_pipe_opt));
- 
- 	for (i = 0; i < MAX9295_MAX_PIPES; i++)
- 		err |= __max9295_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
--					  GMSL_CSI_DT_EMBED, i);
-+						GMSL_CSI_DT_EMBED, i);
- 
- 	mutex_unlock(&priv->lock);
- 
-@@ -579,20 +624,19 @@ int max9295_init_settings(struct device *dev)
+ 	// Init control
+@@ -604,20 +668,21 @@ int max9295_set_pipe(struct device *dev, int pipe_id,
  }
- EXPORT_SYMBOL(max9295_init_settings);
+ EXPORT_SYMBOL(max9295_set_pipe);
  
--int max9295_set_pipe(struct device *dev, int pipe_id,
--		     u8 data_type1, u8 data_type2, u32 vc_id)
--{
-+int max9295_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
-+		u8 data_type2, u32 vc_id) {
- 	struct max9295 *priv = dev_get_drvdata(dev);
+-#if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG) /* Linux 6.3 */
+-static int max9295_probe(struct i2c_client *client)
+-#else
+ static int max9295_probe(struct i2c_client *client,
+ 				const struct i2c_device_id *id)
+-#endif
+ {
+ 	struct max9295 *priv;
  	int err = 0;
+ 	struct device_node *node = client->dev.of_node;
++	struct device_node *prim_node;
++	struct i2c_client *prim_client;
  
- 	if (pipe_id > (MAX9295_MAX_PIPES - 1)) {
- 		dev_info(dev, "%s, input pipe_id: %d exceed max9295 max pipes\n",
--			 __func__, pipe_id);
-+				__func__, pipe_id);
- 		return -EINVAL;
+ 	dev_info(&client->dev, "[MAX9295]: probing GMSL Serializer\n");
+ 
+ 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
++	if (!priv)
++		return -EINVAL;
++
+ 	priv->i2c_client = client;
+ 	priv->regmap = devm_regmap_init_i2c(priv->i2c_client,
+ 				&max9295_regmap_config);
+@@ -630,34 +695,41 @@ static int max9295_probe(struct i2c_client *client,
+ 	mutex_init(&priv->lock);
+ 
+ 	if (of_get_property(node, "is-prim-ser", NULL)) {
+-		if (prim_priv__) {
+-			dev_err(&client->dev,
+-				"prim-ser already exists\n");
+-				return -EEXIST;
+-		}
+-
+-		err = of_property_read_u32(node, "reg", &priv->def_addr);
++		 err = of_property_read_u32(node, "reg", &priv->def_addr);
+ 		if (err < 0) {
+ 			dev_err(&client->dev, "reg not found\n");
+ 			return -EINVAL;
+ 		}
++	} else {
++		prim_node = of_parse_phandle(node, "prim-ser", 0);
++		if (!prim_node) {
++			dev_err(&client->dev, "Failed to get primary serializer phandle");
++			return -EINVAL;
++		}
++
++		prim_client = of_find_i2c_device_by_node(prim_node);
++		of_node_put(prim_node);
++		if (!prim_client) {
++			dev_err(&client->dev, "Failed to get primary i2c client");
++			return -EPROBE_DEFER; // Try again later
++		}
+ 
+-		prim_priv__ = priv;
++		priv->prim_priv = i2c_get_clientdata(prim_client);
++		if (!priv->prim_priv) {
++			dev_err(&client->dev, "Primary devdata not available yet");
++			return -EPROBE_DEFER;
++		}
  	}
  
- 	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
--		__func__, pipe_id, data_type1, data_type2, vc_id);
-+			__func__, pipe_id, data_type1, data_type2, vc_id);
+ 	dev_set_drvdata(&client->dev, priv);
  
- 	mutex_lock(&priv->lock);
+ 	/* dev communication gets validated when GMSL link setup is done */
+-	dev_info(&client->dev, "%s: success\n", __func__);
++	dev_info(&client->dev, "%s:  success\n", __func__);
  
-@@ -698,4 +742,5 @@ module_i2c_driver(max9295_i2c_driver);
+ 	return err;
+ }
+ 
+-#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
+ static int max9295_remove(struct i2c_client *client)
+-#else
+-static void max9295_remove(struct i2c_client *client)
+-#endif
+ {
+ 	struct max9295 *priv;
+ 
+@@ -667,9 +739,8 @@ static void max9295_remove(struct i2c_client *client)
+ 		i2c_unregister_device(client);
+ 		client = NULL;
+ 	}
+-#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
++
+ 	return 0;
+-#endif
+ }
+ 
+ static const struct i2c_device_id max9295_id[] = {
+@@ -694,8 +765,20 @@ static struct i2c_driver max9295_i2c_driver = {
+ 	.id_table = max9295_id,
+ };
+ 
+-module_i2c_driver(max9295_i2c_driver);
++static int __init max9295_init(void)
++{
++	return i2c_add_driver(&max9295_i2c_driver);
++}
++
++static void __exit max9295_exit(void)
++{
++	i2c_del_driver(&max9295_i2c_driver);
++}
++
++module_init(max9295_init);
++module_exit(max9295_exit);
  
  MODULE_DESCRIPTION("GMSL Serializer driver max9295");
  MODULE_AUTHOR("Sudhir Vyas <svyas@nvidia.com>");
 +MODULE_AUTHOR("Alex Hoffman <alxhoff@cartken.com>");
  MODULE_LICENSE("GPL v2");
 diff --git a/nvidia-oot/drivers/media/i2c/max9296.c b/nvidia-oot/drivers/media/i2c/max9296.c
-index 97559460a..80ffef5ab 100644
+index 97559460a..5ae622f5a 100644
 --- a/nvidia-oot/drivers/media/i2c/max9296.c
 +++ b/nvidia-oot/drivers/media/i2c/max9296.c
-@@ -106,9 +106,11 @@ struct max9296 {
+@@ -1,11 +1,21 @@
+-// SPDX-License-Identifier: GPL-2.0
+-// Copyright (c) 2018-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ /*
+  * max9296.c - max9296 GMSL Deserializer driver
++ *
++ * Copyright (c) 2018-2022, NVIDIA CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
+-#include <nvidia/conftest.h>
+-
+ #include <linux/gpio.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -106,9 +116,11 @@ struct max9296 {
  	bool splitter_enabled;
  	struct max9296_source_ctx sources[MAX9296_MAX_SOURCES];
  	struct mutex lock;
@@ -959,7 +1110,7 @@ index 97559460a..80ffef5ab 100644
  	struct pipe_ctx pipe[MAX9296_MAX_PIPES];
  	u8 csi_mode;
  	u8 lane_mp1;
-@@ -118,6 +120,26 @@ struct max9296 {
+@@ -118,6 +130,26 @@ struct max9296 {
  	struct regulator *vdd_cam_1v2;
  };
  
@@ -986,19 +1137,7 @@ index 97559460a..80ffef5ab 100644
  static int max9296_write_reg(struct device *dev,
  	u16 addr, u8 val)
  {
-@@ -128,9 +150,8 @@ static int max9296_write_reg(struct device *dev,
- 
- 	err = regmap_write(priv->regmap, addr, val);
- 	if (err)
--		dev_err(dev,
--		"%s:i2c write failed, 0x%x = %x\n",
--		__func__, addr, val);
-+		dev_err(dev, "%s:i2c@%d  write failed, 0x%x = %x\n", __func__,
-+				priv->i2c_client->addr, addr, val);
- 
- 	/* delay before next i2c command as required for SERDES link */
- 	usleep_range(100, 110);
-@@ -195,6 +216,7 @@ static void max9296_reset_ctx(struct max9296 *priv)
+@@ -195,6 +227,7 @@ static void max9296_reset_ctx(struct max9296 *priv)
  
  	priv->link_setup = false;
  	priv->lane_setup = false;
@@ -1006,7 +1145,25 @@ index 97559460a..80ffef5ab 100644
  	priv->num_src_found = 0;
  	priv->src_link = 0;
  	priv->splitter_enabled = false;
-@@ -249,6 +271,9 @@ void max9296_power_off(struct device *dev)
+@@ -211,7 +244,7 @@ int max9296_power_on(struct device *dev)
+ 	mutex_lock(&priv->lock);
+ 	if (priv->pw_ref == 0) {
+ 		usleep_range(1, 2);
+-		if (priv->reset_gpio)
++		if (gpio_is_valid(priv->reset_gpio))
+ 			gpio_set_value(priv->reset_gpio, 0);
+ 
+ 		usleep_range(30, 50);
+@@ -225,7 +258,7 @@ int max9296_power_on(struct device *dev)
+ 		usleep_range(30, 50);
+ 
+ 		/*exit reset mode: XCLR */
+-		if (priv->reset_gpio) {
++		if (gpio_is_valid(priv->reset_gpio)) {
+ 			gpio_set_value(priv->reset_gpio, 0);
+ 			usleep_range(30, 50);
+ 			gpio_set_value(priv->reset_gpio, 1);
+@@ -249,6 +282,9 @@ void max9296_power_off(struct device *dev)
  {
  	struct max9296 *priv = dev_get_drvdata(dev);
  
@@ -1016,7 +1173,16 @@ index 97559460a..80ffef5ab 100644
  	mutex_lock(&priv->lock);
  	priv->pw_ref--;
  
-@@ -322,6 +347,11 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
+@@ -258,7 +294,7 @@ void max9296_power_off(struct device *dev)
+ 	if (priv->pw_ref == 0) {
+ 		/* enter reset mode: XCLR */
+ 		usleep_range(1, 2);
+-		if (priv->reset_gpio)
++		if (gpio_is_valid(priv->reset_gpio))
+ 			gpio_set_value(priv->reset_gpio, 0);
+ 
+ 		if (priv->vdd_cam_1v2)
+@@ -322,6 +358,11 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
  	int err = 0;
  	unsigned int i = 0;
  
@@ -1028,49 +1194,30 @@ index 97559460a..80ffef5ab 100644
  	err = max9296_get_sdev_idx(dev, s_dev, &i);
  	if (err)
  		return err;
-@@ -340,9 +370,8 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
+@@ -340,9 +381,8 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
  	}
  
  	/* Enable splitter mode */
 -	if ((priv->max_src > 1U) &&
 -		(priv->num_src_found > 0U) &&
 -		(priv->splitter_enabled == false)) {
-+	if ((priv->max_src > 1U) && (priv->num_src_found > 1U) && 
++	if ((priv->max_src > 1U) && (priv->num_src_found > 1U) &&
 +			(priv->splitter_enabled == false)) {
  		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x03);
  		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x23);
  
-@@ -352,16 +381,14 @@ int max9296_setup_control(struct device *dev, struct device *s_dev)
- 		msleep(100);
- 	}
- 
--	max9296_write_reg(dev,
--			MAX9296_PWDN_PHYS_ADDR, MAX9296_ALLPHYS_NOSTDBY);
-+	max9296_write_reg(dev, MAX9296_PWDN_PHYS_ADDR, MAX9296_ALLPHYS_NOSTDBY);
- 
- 	priv->sdev_ref++;
- 
- 	/* Reset splitter mode if all devices are not found */
--	if ((priv->sdev_ref == priv->max_src) &&
--		(priv->splitter_enabled == true) &&
--		(priv->num_src_found > 0U) &&
--		(priv->num_src_found < priv->max_src)) {
-+	if ((priv->sdev_ref == priv->max_src) && (priv->splitter_enabled == true) && 
-+			(priv->num_src_found > 0U) && 
-+			(priv->num_src_found < priv->max_src)) {
- 		err = max9296_write_link(dev, priv->src_link);
- 		if (err)
- 			goto error;
-@@ -379,10 +406,16 @@ int max9296_reset_control(struct device *dev, struct device *s_dev)
+@@ -378,11 +418,18 @@ EXPORT_SYMBOL(max9296_setup_control);
+ int max9296_reset_control(struct device *dev, struct device *s_dev)
  {
  	struct max9296 *priv = dev_get_drvdata(dev);
- 
++	int err = 0;
++
 +	if (!priv) {
 +		dev_err(dev, "Couldn't get drvdata\n");
 +		err = -EINVAL;
 +		goto ret;
 +	}
-+
+ 
  	mutex_lock(&priv->lock);
  	if (!priv->sdev_ref) {
  		dev_info(dev, "%s: dev is already in reset state\n", __func__);
@@ -1079,7 +1226,7 @@ index 97559460a..80ffef5ab 100644
  	}
  
  	priv->sdev_ref--;
-@@ -390,13 +423,15 @@ int max9296_reset_control(struct device *dev, struct device *s_dev)
+@@ -390,14 +437,16 @@ int max9296_reset_control(struct device *dev, struct device *s_dev)
  		max9296_reset_ctx(priv);
  		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, MAX9296_RESET_ALL);
  
@@ -1093,20 +1240,30 @@ index 97559460a..80ffef5ab 100644
 +unlock:
  	mutex_unlock(&priv->lock);
 -
+-	return 0;
 +ret:
- 	return 0;
++	return err;
  }
  EXPORT_SYMBOL(max9296_reset_control);
-@@ -843,7 +878,7 @@ void max9296_reset_oneshot(struct device *dev)
- EXPORT_SYMBOL(max9296_reset_oneshot);
  
- static int __max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
--			      u8 data_type2, u32 vc_id)
-+		u8 data_type2, u32 vc_id)
+@@ -724,7 +773,7 @@ int max9296_setup_streaming(struct device *dev, struct device *s_dev)
+ 		goto ret;
+ 
+ 	/* Derive CSI lane map register */
+-	switch (g_ctx->dst_csi_port) {
++	switch(g_ctx->dst_csi_port) {
+ 	case GMSL_CSI_PORT_A:
+ 	case GMSL_CSI_PORT_D:
+ 		lane_ctrl_addr = MAX9296_LANE_CTRL1_ADDR;
+@@ -915,7 +964,6 @@ static int __max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
+ 
+ 	return err;
+ }
+-
+ int max9296_init_settings(struct device *dev)
  {
  	int err = 0;
- 	int i = 0;
-@@ -924,9 +959,13 @@ int max9296_init_settings(struct device *dev)
+@@ -924,9 +972,13 @@ int max9296_init_settings(struct device *dev)
  
  	mutex_lock(&priv->lock);
  
@@ -1123,50 +1280,24 @@ index 97559460a..80ffef5ab 100644
  
  	mutex_unlock(&priv->lock);
  
-@@ -934,8 +973,8 @@ int max9296_init_settings(struct device *dev)
- }
- EXPORT_SYMBOL(max9296_init_settings);
- 
--int max9296_set_pipe(struct device *dev, int pipe_id,
--		     u8 data_type1, u8 data_type2, u32 vc_id)
-+int max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
-+		u8 data_type2, u32 vc_id)
- {
- 	struct max9296 *priv = dev_get_drvdata(dev);
- 	int err = 0;
-@@ -1033,9 +1072,9 @@ static int max9296_parse_dt(struct max9296 *priv,
- }
- 
+@@ -1035,15 +1087,11 @@ static int max9296_parse_dt(struct max9296 *priv,
  static struct regmap_config max9296_regmap_config = {
--	.reg_bits = 16,
--	.val_bits = 8,
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
 -	.cache_type = REGCACHE_RBTREE,
-+		.reg_bits = 16,
-+		.val_bits = 8,
-+		.cache_type = REGCACHE_NONE,
++	.cache_type = REGCACHE_NONE,
  };
  
- #if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG) /* Linux 6.3 */
-@@ -1048,15 +1087,15 @@ static int max9296_probe(struct i2c_client *client,
+-#if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG) /* Linux 6.3 */
+-static int max9296_probe(struct i2c_client *client)
+-#else
+ static int max9296_probe(struct i2c_client *client,
+ 				const struct i2c_device_id *id)
+-#endif
+ {
  	struct max9296 *priv;
  	int err = 0;
- 
--	dev_info(&client->dev, "[MAX9296]: probing GMSL Deserializer\n");
-+	dev_info(&client->dev, "[MAX9296]: %s GMSL Deserializer\n", __func__);
- 
- 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
- 	priv->i2c_client = client;
- 	priv->regmap = devm_regmap_init_i2c(priv->i2c_client,
--				&max9296_regmap_config);
-+					&max9296_regmap_config);
- 	if (IS_ERR(priv->regmap)) {
- 		dev_err(&client->dev,
--			"regmap init failed: %ld\n", PTR_ERR(priv->regmap));
-+				"regmap init failed: %ld\n", PTR_ERR(priv->regmap));
- 		return -ENODEV;
- 	}
- 
-@@ -1075,11 +1114,12 @@ static int max9296_probe(struct i2c_client *client,
+@@ -1075,20 +1123,18 @@ static int max9296_probe(struct i2c_client *client,
  	}
  
  	mutex_init(&priv->lock);
@@ -1175,11 +1306,52 @@ index 97559460a..80ffef5ab 100644
  	dev_set_drvdata(&client->dev, priv);
  
  	/* dev communication gets validated when GMSL link setup is done */
--	dev_info(&client->dev, "%s:  success\n", __func__);
-+	dev_info(&client->dev, "[MAX9296]: %s success\n", __func__);
+ 	dev_info(&client->dev, "%s:  success\n", __func__);
  
- 	return 0;
+-	return 0;
++	return err;
  }
+ 
+-#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
++
+ static int max9296_remove(struct i2c_client *client)
+-#else
+-static void max9296_remove(struct i2c_client *client)
+-#endif
+ {
+ 	struct max9296 *priv;
+ 
+@@ -1098,9 +1144,8 @@ static void max9296_remove(struct i2c_client *client)
+ 		i2c_unregister_device(client);
+ 		client = NULL;
+ 	}
+-#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
++
+ 	return 0;
+-#endif
+ }
+ 
+ static const struct i2c_device_id max9296_id[] = {
+@@ -1121,7 +1166,18 @@ static struct i2c_driver max9296_i2c_driver = {
+ 	.id_table = max9296_id,
+ };
+ 
+-module_i2c_driver(max9296_i2c_driver);
++static int __init max9296_init(void)
++{
++	return i2c_add_driver(&max9296_i2c_driver);
++}
++
++static void __exit max9296_exit(void)
++{
++	i2c_del_driver(&max9296_i2c_driver);
++}
++
++module_init(max9296_init);
++module_exit(max9296_exit);
+ 
+ MODULE_DESCRIPTION("Dual GMSL Deserializer driver max9296");
+ MODULE_AUTHOR("Sudhir Vyas <svyas@nvidia.com");
 diff --git a/nvidia-oot/include/media/max9295.h b/nvidia-oot/include/media/max9295.h
 index c576e3e5d..c678a5dc0 100644
 --- a/nvidia-oot/include/media/max9295.h
