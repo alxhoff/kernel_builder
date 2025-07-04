@@ -119,14 +119,14 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARGi $DTB_NAME_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi
 
 # Build the Debian package
 echo "Building Debian package for kernel: $KERNEL_NAME (localversion: $LOCALVERSION_ARG)"
-CMD="\"$DEPLOY_SCRIPT\" \"$KERNEL_NAME\" --localversion \"$LOCALVERSION_ARG\""
+CMD="\"$DEPLOY_SCRIPT\" \"$KERNEL_NAME\" --localversion \"$LOCALVERSION_ARG\" $DTB_NAME_ARG"
 
 echo "Running command: $CMD"
 
