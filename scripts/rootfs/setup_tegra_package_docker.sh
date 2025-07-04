@@ -66,7 +66,7 @@ if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
     docker rm -f "$CONTAINER_NAME"
 fi
 
-docker run --rm -it \
+docker run --rm -i \
     --name "$CONTAINER_NAME" \
     --privileged \
     --network=host \
