@@ -283,6 +283,9 @@ echo "All rootfs scripts downloaded successfully."
 
 cd $TEGRA_DIR
 echo "Setting up rootfs with nvidia binaries and default user"
+echo "Removing existing device nodes before setup..."
+sudo rm -f "$TEGRA_DIR/rootfs/dev/random"
+sudo rm -f "$TEGRA_DIR/rootfs/dev/urandom"
 sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 
 echo "Getting pinmux files"
