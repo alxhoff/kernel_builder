@@ -109,15 +109,15 @@ fi
 echo "Checking git status in kernel source..."
 # Add the kernel source directory to Git's safe.directory list for the root user
 # This is necessary when running git commands as root on directories owned by another user.
-sudo git config --global --add safe.directory "$KERNEL_SRC"
-if [ ! -d "$KERNEL_SRC/.git" ]; then
+sudo git config --global --add safe.directory "$KERNEL_SRC_ROOT"
+if [ ! -d "$KERNEL_SRC_ROOT/.git" ]; then
     echo "Initializing git repository for patch management..."
-    (cd "$KERNEL_SRC" && git init && git add . && git commit -m "Initial kernel source")
+    (cd "$KERNEL_SRC_ROOT" && git init && git add . && git commit -m "Initial kernel source")
 else
     # Check if there are any commits before attempting to reset
-    if (cd "$KERNEL_SRC" && git rev-parse --verify HEAD &>/dev/null); then
+    if (cd "$KERNEL_SRC_ROOT" && git rev-parse --verify HEAD &>/dev/null); then
         echo "Resetting kernel source to clean state..."
-        (cd "$KERNEL_SRC" && git reset --hard HEAD && git clean -fdx)
+        (cd "$KERNEL_SRC_ROOT" && git reset --hard HEAD && git clean -fdx)
     else
         echo "No commits found in kernel source. Skipping git reset."
     fi
