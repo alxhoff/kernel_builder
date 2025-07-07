@@ -112,7 +112,7 @@ echo "Checking git status in kernel source..."
 sudo git config --global --add safe.directory "$KERNEL_SRC_ROOT"
 if [ ! -d "$KERNEL_SRC_ROOT/.git" ]; then
     echo "Initializing git repository for patch management..."
-    (cd "$KERNEL_SRC_ROOT" && git init && git add . && git commit -m "Initial kernel source")
+    (cd "$KERNEL_SRC_ROOT" && git init && git config user.name "KernelBuilder" && git config user.email "builder@localhost" && git add . && git commit --no-gpg-sign -m "Initial kernel source")
 else
     # Check if there are any commits before attempting to reset
     if (cd "$KERNEL_SRC_ROOT" && git rev-parse --verify HEAD &>/dev/null); then
