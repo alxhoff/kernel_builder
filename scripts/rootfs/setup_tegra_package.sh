@@ -276,12 +276,12 @@ for FILE in $FILE_URLS; do
 	wget --show-progress -P "$TEGRA_DIR/" "$FILE"
 done
 
-if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-	echo "Setting up chroot environment for SoC: $SOC..."
-	sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
-else
-    echo "Skipping rootfs setup in chroot as requested."
-fi
+# if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+#     echo "Setting up chroot environment for SoC: $SOC..."
+#     sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
+# else
+#     echo "Skipping rootfs setup in chroot as requested."
+# fi
 
 rm $TEGRA_DIR/setup_tegra_package.sh
 echo "Setting execute permissions for scripts..."
