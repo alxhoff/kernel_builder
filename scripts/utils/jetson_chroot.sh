@@ -65,14 +65,19 @@ cleanup() {
         rm -rf "$ROOTFS_DIR/proc/device-tree"
     fi
 
+    # Clean up the dummy nv_boot_control.conf file if it exists
+    if [ -f "$ROOTFS_DIR/etc/nv_boot_control.conf" ]; then
+        rm -f "$ROOTFS_DIR/etc/nv_boot_control.conf"
+    fi
+
     echo "Cleanup completed."
 }
 
 # Ensure cleanup runs on script exit
 trap 'cleanup "$ROOTFS_DIR"' EXIT SIGINT SIGTERM
 
-# Function to set up the dummy device-tree file
-setup_device_tree() {
+# Function to set up Orin-specific files
+setup_orin_specific_files() {
     ROOTFS_DIR=$1
     SOC_TYPE=$2
 
@@ -80,6 +85,18 @@ setup_device_tree() {
         echo "Creating dummy device-tree compatible file for Orin..."
         mkdir -p "$ROOTFS_DIR/proc/device-tree"
         printf "nvidia,p3737-0000+p3701-0000\0nvidia,p3701-0000\0nvidia,tegra234\0nvidia,tegra23x\0" > "$ROOTFS_DIR/proc/device-tree/compatible"
+
+        echo "Creating /etc/nv_boot_control.conf for Orin..."
+        cat <<EOF > "$ROOTFS_DIR/etc/nv_boot_control.conf"
+TNSPEC 3700-500-0000-M.0-1-1-jetson-agx-orin-devkit-
+COMPATIBLE_SPEC 3701-300-0000--1--jetson-agx-orin-devkit-
+TEGRA_LEGACY_UPDATE false
+TEGRA_BOOT_STORAGE mmcblk0
+TEGRA_EMMC_ONLY false
+TEGRA_CHIPID 0x23
+TEGRA_OTA_BOOT_DEVICE /dev/mtdblock0
+TEGRA_OTA_GPT_DEVICE /dev/mtdblock0
+EOF
     fi
 }
 
@@ -122,7 +139,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Set up the dummy device-tree file before entering chroot
-setup_device_tree "$ROOTFS_DIR" "$SOC_TYPE"
+setup_orin_specific_files "$ROOTFS_DIR" "$SOC_TYPE"
 
 echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 
