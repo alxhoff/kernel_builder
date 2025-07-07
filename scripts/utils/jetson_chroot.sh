@@ -60,11 +60,28 @@ cleanup() {
         fi
     done
 
+    # Clean up the dummy device-tree file if it exists
+    if [ -f "$ROOTFS_DIR/proc/device-tree/compatible" ]; then
+        rm -rf "$ROOTFS_DIR/proc/device-tree"
+    fi
+
     echo "Cleanup completed."
 }
 
 # Ensure cleanup runs on script exit
 trap 'cleanup "$ROOTFS_DIR"' EXIT SIGINT SIGTERM
+
+# Function to set up the dummy device-tree file
+setup_device_tree() {
+    ROOTFS_DIR=$1
+    SOC_TYPE=$2
+
+    if [ "$SOC_TYPE" == "orin" ]; then
+        echo "Creating dummy device-tree compatible file for Orin..."
+        mkdir -p "$ROOTFS_DIR/proc/device-tree"
+        printf "nvidia,p3737-0000+p3701-0000\0nvidia,p3701-0000\0nvidia,tegra234\0nvidia,tegra23x\0" > "$ROOTFS_DIR/proc/device-tree/compatible"
+    fi
+}
 
 # Handle cleanup argument
 if [ "$1" == "cleanup" ]; then
@@ -103,6 +120,9 @@ if [ "$EUID" -ne 0 ]; then
     echo "Error: This script must be run as root."
     exit 1
 fi
+
+# Set up the dummy device-tree file before entering chroot
+setup_device_tree "$ROOTFS_DIR" "$SOC_TYPE"
 
 echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 
