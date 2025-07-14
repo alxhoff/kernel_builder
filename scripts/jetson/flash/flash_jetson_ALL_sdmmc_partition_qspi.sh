@@ -60,32 +60,33 @@ to_absolute_path() {
   fi
 }
 
-# Locate Kernel Image
-KERNEL_IMAGE=$(find "$FLASH_KERNEL_DIR" -type f -name "Image.*" | head -n 1)
-if [[ -z "$KERNEL_IMAGE" ]]; then
-  echo "Error: No kernel image (Image.*) found in $FLASH_KERNEL_DIR"
-  exit 1
-fi
-KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
-
-# Locate DTB file
-DTB_FILE=$(find "$FLASH_KERNEL_DIR" -type f -name "*.dtb" | head -n 1)
-if [[ -z "$DTB_FILE" ]]; then
-  echo "Error: No DTB file (*.dtb) found in $FLASH_KERNEL_DIR"
-  exit 1
-fi
-DTB_FILE=$(to_absolute_path "$DTB_FILE")
-
-# Locate Kernel Modules Directory
-MODULES_DIR=$(find "$FLASH_KERNEL_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-if [[ -z "$MODULES_DIR" ]]; then
-  echo "Error: No kernel modules directory found in $FLASH_KERNEL_DIR"
-  exit 1
-fi
-MODULES_DIR=$(to_absolute_path "$MODULES_DIR")
 
 # If --kernel is set, copy files to L4T directory and rootfs
 if [[ "$COPY_KERNEL_FILES" == true ]]; then
+	# Locate Kernel Image
+	KERNEL_IMAGE=$(find "$FLASH_KERNEL_DIR" -type f -name "Image.*" | head -n 1)
+	if [[ -z "$KERNEL_IMAGE" ]]; then
+	  echo "Error: No kernel image (Image.*) found in $FLASH_KERNEL_DIR"
+	  exit 1
+	fi
+	KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
+
+	# Locate DTB file
+	DTB_FILE=$(find "$FLASH_KERNEL_DIR" -type f -name "*.dtb" | head -n 1)
+	if [[ -z "$DTB_FILE" ]]; then
+	  echo "Error: No DTB file (*.dtb) found in $FLASH_KERNEL_DIR"
+	  exit 1
+	fi
+	DTB_FILE=$(to_absolute_path "$DTB_FILE")
+
+	# Locate Kernel Modules Directory
+	MODULES_DIR=$(find "$FLASH_KERNEL_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+	if [[ -z "$MODULES_DIR" ]]; then
+	  echo "Error: No kernel modules directory found in $FLASH_KERNEL_DIR"
+	  exit 1
+	fi
+	MODULES_DIR=$(to_absolute_path "$MODULES_DIR")
+
   echo "Copying kernel files to $L4T_DIR and rootfs..."
 
   # Ensure destination directories exist
@@ -119,7 +120,7 @@ fi
 
 # Run the flash command
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
-CMD="./flash.sh -c $BOOTLOADER_PARTITION_XML -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
+CMD="./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit mmcblk0p1"
 
 echo "Flash command: $CMD"
 if [[ "$DRY_RUN" == false ]]; then
