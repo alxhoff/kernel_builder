@@ -79,19 +79,71 @@ cat > "$DEB_DIR/opt/ota_package/install_payload.sh" <<'EOF'
 set -euo pipefail
 
 ESP_DIR="/opt/nvidia/esp"
+
+# Function to unmount the ESP directory
+unmount_esp() {
+    if mountpoint -q "$ESP_DIR"; then
+        echo "[*] Unmounting ESP partition..."
+        umount "$ESP_DIR"
+    fi
+}
+
+# Set a trap to unmount on exit
+trap unmount_esp EXIT
+
+echo "[*] Starting EKB update installation..."
+
 CAPSULE_PATH="/opt/ota_package/TEGRA_BL.Cap"
 UPDATE_DIR="EFI/UpdateCapsule"
 
+echo "[*] Creating ESP directory at $ESP_DIR"
 mkdir -p "$ESP_DIR"
+
+echo "[*] Finding ESP partition..."
 esp_uuid=$(lsblk -o name,partlabel,uuid | grep "esp" | awk '{print $3}')
-mountpoint -q "$ESP_DIR" || mount UUID=$esp_uuid "$ESP_DIR"
+if [[ -z "$esp_uuid" ]]; then
+    echo "Error: ESP partition not found."
+    exit 1
+fi
+echo "[*] Found ESP partition with UUID: $esp_uuid"
+
+echo "[*] Mounting ESP partition..."
+if mountpoint -q "$ESP_DIR"; then
+    echo "[*] ESP partition already mounted at $ESP_DIR."
+else
+    mount UUID=$esp_uuid "$ESP_DIR"
+    echo "[*] Mounted ESP partition at $ESP_DIR."
+fi
+
+echo "[*] Creating update directory at $ESP_DIR/$UPDATE_DIR"
 mkdir -p "$ESP_DIR/$UPDATE_DIR"
+
+echo "[*] Copying capsule from $CAPSULE_PATH to $ESP_DIR/$UPDATE_DIR/"
 cp "$CAPSULE_PATH" "$ESP_DIR/$UPDATE_DIR/"
 sync
+echo "[*] Capsule copied successfully."
 
-# Set UEFI OsIndications to trigger capsule update
+echo "[*] Setting UEFI OsIndications to trigger capsule update on reboot..."
 printf "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00" > /tmp/var_tmp.bin
-dd if=/tmp/var_tmp.bin of=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12
+dd if=/tmp/var_tmp.bin of=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12 >/dev/null 2>&1
+rm /tmp/var_tmp.bin
+echo "[*] UEFI OsIndications set."
+
+echo "[*] Verifying UEFI OsIndications..."
+actual_hex=$(dd if=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12 2>/dev/null | xxd -p -c 24)
+expected_hex="070000000400000000000000"
+
+echo "Expected value (hex): $expected_hex"
+echo "Actual value (hex):   $actual_hex"
+
+if [ "$expected_hex" == "$actual_hex" ]; then
+    echo "[*] UEFI OsIndications successfully verified."
+else
+    echo "Error: UEFI OsIndications verification failed."
+    exit 1
+fi
+
+echo "[*] EKB update installation complete. Please reboot for the update to take effect."
 EOF
 
 chmod +x "$DEB_DIR/opt/ota_package/install_payload.sh"
@@ -102,6 +154,7 @@ set -e
 
 echo "[*] Installing capsule update to current slot..."
 bash /opt/ota_package/install_payload.sh
+echo "[*] Successfully installed capsule update."
 EOF
 
 chmod +x "$DEB_DIR/DEBIAN/postinst"
