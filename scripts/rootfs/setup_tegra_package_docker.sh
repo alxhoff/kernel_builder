@@ -54,8 +54,9 @@ if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" || "$REBUILD" == tr
     docker build -t "$DOCKER_TAG" - <<EOF
     FROM $IMAGE
     RUN apt-get update && \
-        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static unzip build-essential kmod && \
-        apt-get install -y flex bison libssl-dev libelf-dev bc dwarves ccache libncurses5-dev vim-common
+        apt-get install -y sudo tar bzip2 git wget curl jq qemu-user-static \
+		binfmt-support unzip build-essential kmod flex bison libssl-dev \
+		libelf-dev bc dwarves ccache libncurses5-dev vim-common
 EOF
 else
     echo "Using existing Docker image: $DOCKER_TAG"
