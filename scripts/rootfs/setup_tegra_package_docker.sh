@@ -6,6 +6,43 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
+# --- Host Dependency Installation ---
+echo "Checking for and installing host dependencies for cross-architecture container support..."
+
+# Detect OS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$NAME
+else
+    echo "Cannot determine the operating system."
+    exit 1
+fi
+
+# Install dependencies based on OS
+if [[ "$OS" == "Ubuntu" || "$OS" == "Debian GNU/Linux" ]]; then
+    if ! dpkg -l | grep -q "qemu-user-static" || ! dpkg -l | grep -q "binfmt-support"; then
+        echo "Installing QEMU and binfmt support for Debian/Ubuntu..."
+        apt-get update
+        apt-get install -y qemu-user-static binfmt-support
+    else
+        echo "QEMU and binfmt support are already installed."
+    fi
+elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" ]]; then
+    if ! pacman -Q | grep -q "qemu-user-static" || ! pacman -Q | grep -q "binfmt-support"; then
+        echo "Installing QEMU and binfmt support for Arch Linux..."
+        pacman -Syu --noconfirm qemu-user-static binfmt-support
+    else
+        echo "QEMU and binfmt support are already installed."
+    fi
+else
+    echo "Unsupported operating system: $OS"
+    exit 1
+fi
+
+# Register QEMU handlers with the kernel
+# This is crucial for running ARM64 binaries inside the x86 container
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
+
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
