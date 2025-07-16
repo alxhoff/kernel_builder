@@ -5,7 +5,9 @@
 
 # --- Configuration ---
 # List of memory addresses to check
-ADDRESSES="0x02430020 0x0c303040 0x0c302048 0x0c302070 0x02430080 0x02430090 0x0243d028 0x0243d018 0x0243d040 0x0243d008"
+ADDRESSES=("0x0243d020" "0x0c303040" "0x0c302048" "0x0c302070" "0x02430080" "0x02430090" "0x0243d028" "0x0243d018" "0x0243d040" "0x0243d008" "0x0243d038")
+NAMES=("SW-CS0-Pin22" "SW-CS1-Pin32" "IRQ2-Pin16" "IRQ0-Pin7" "IRQ1-Pin13" "IRQ3-Pin36" "SPI1-SCK-Pin23" "SPI1-MISO-Pin21" "SPI1-MOSI-Pin19" "SPI1-CS0-Pin24" "SPI1-CS1-Pin26")
+
 # SSH user
 SSH_USER="root"
 
@@ -22,11 +24,14 @@ IP2=$2
 
 echo "Comparing register values between $IP1 and $IP2"
 
-printf "%-12s | %-18s | %-18s | %-11s | %s\n" "Register" "$IP1" "$IP2" "Full Match" "Partial Match (LSB)"
-echo "------------------------------------------------------------------------------------------"
+printf "%-20s | %-12s | %-18s | %-18s | %-11s | %s
+" "Name" "Register" "$IP1" "$IP2" "Full Match" "Partial Match (LSB)"
+echo "----------------------------------------------------------------------------------------------------------------"
 
 # Loop through each address and compare
-for ADDR in $ADDRESSES; do
+for i in "${!ADDRESSES[@]}"; do
+    ADDR=${ADDRESSES[$i]}
+    NAME=${NAMES[$i]}
     # Fetch value from the first device
     VAL1=$(ssh "${SSH_USER}@${IP1}" "busybox devmem ${ADDR}" 2>/dev/null)
     # Fetch value from the second device
@@ -64,9 +69,10 @@ for ADDR in $ADDRESSES; do
     fi
 
     # Print the results
-    printf "%-12s | %-18s | %-18s | %-11s | %s\n" "$ADDR" "$VAL1_CLEAN" "$VAL2_CLEAN" "$FULL_RESULT" "$PARTIAL_RESULT"
+    printf "%-20s | %-12s | %-18s | %-18s | %-11s | %s
+" "$NAME" "$ADDR" "$VAL1_CLEAN" "$VAL2_CLEAN" "$FULL_RESULT" "$PARTIAL_RESULT"
 
 done
 
-echo "------------------------------------------------------------------------------------------"
+echo "----------------------------------------------------------------------------------------------------------------"
 echo "Comparison finished."
