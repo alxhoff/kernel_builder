@@ -44,7 +44,7 @@ L4T_DIR="$L4T_VERSION/Linux_for_Tegra"
 ABS_L4T_DIR="$(realpath "$L4T_DIR")"
 cd "$ABS_L4T_DIR"
 echo "[*] Generating BUP payload..."
-BOARDID=3701 FAB=000 BOARDSKU=0004 ./build_l4t_bup.sh jetson-agx-orin-devkit mmcblk0p1
+BOARDID=3701 FAB=500 BOARDSKU=0000 ./build_l4t_bup.sh jetson-agx-orin-devkit mmcblk0p1
 
 PAYLOAD="$ABS_L4T_DIR/bootloader/payloads_t23x/bl_only_payload"
 CAPSULE="$ABS_L4T_DIR/TEGRA_BL.Cap"
