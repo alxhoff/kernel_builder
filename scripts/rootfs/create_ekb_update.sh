@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euxo pipefail
 
 show_help() {
     echo "Usage: $0 --l4t-version <version>"
@@ -49,10 +49,10 @@ BOARDID=3701 FAB=000 BOARDSKU=0004 ./build_l4t_bup.sh jetson-agx-orin-devkit mmc
 PAYLOAD="$ABS_L4T_DIR/bootloader/payloads_t23x/bl_only_payload"
 CAPSULE="$ABS_L4T_DIR/TEGRA_BL.Cap"
 
-if [[ ! -f "$CAPSULE" ]]; then
-    echo "[*] Generating capsule image..."
-    ./generate_capsule/l4t_generate_soc_capsule.sh -i "$PAYLOAD" -o "$CAPSULE" t234
-fi
+# if [[ ! -f "$CAPSULE" ]]; then
+echo "[*] Generating capsule image..."
+./generate_capsule/l4t_generate_soc_capsule.sh -i "$PAYLOAD" -o "$CAPSULE" t234
+# fi
 
 if [[ ! -f "$CAPSULE" ]]; then
     echo "Error: Capsule generation failed"
@@ -76,7 +76,7 @@ cp "$CAPSULE" "$DEB_DIR/opt/ota_package/TEGRA_BL.Cap"
 
 cat > "$DEB_DIR/opt/ota_package/install_payload.sh" <<'EOF'
 #!/bin/bash
-set -euo pipefail
+set -euxo pipefail
 
 ESP_DIR="/opt/nvidia/esp"
 
@@ -125,6 +125,8 @@ echo "[*] Capsule copied successfully."
 
 echo "[*] Setting UEFI OsIndications to trigger capsule update on reboot..."
 printf "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00" > /tmp/var_tmp.bin
+echo "[*] Validate bytes prepared for OsIndiations"
+xxd /tmp/var_tmp.bin
 dd if=/tmp/var_tmp.bin of=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=12 >/dev/null 2>&1
 rm /tmp/var_tmp.bin
 echo "[*] UEFI OsIndications set."
