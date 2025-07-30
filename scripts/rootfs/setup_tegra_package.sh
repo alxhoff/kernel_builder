@@ -189,15 +189,16 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 
 			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" ]]; then
 				echo "Extracting kernel out-of-tree modules..."
-				if [ ! -d "$TEGRA_DIR/kernel_src/nvdisplay" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
+				if [ ! -d "$TEGRA_DIR/kernel_src/nvidia-oot" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
 					sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_oot_modules_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+					echo "OOT Modules extracted"
 				fi
 			else
 				echo "Warning: kernel_oot_modules_src.tbz2 not found!"
 			fi
 
 			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" ]]; then
-				if [ ! -d "$TEGRA_DIR/kernel_src" ]; then
+				if [ ! -d "$TEGRA_DIR/kernel_src/nvdisplay" ]; then
 					echo "Extracting NVIDIA kernel display driver source..."
 					sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
 					echo "Extraction completed."
@@ -311,6 +312,7 @@ if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 
 	echo "Building kernel"
 	sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+
 	echo "Building display driver"
 	echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION""
 	sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION"
