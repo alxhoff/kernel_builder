@@ -71,18 +71,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-KERNEL_SRC_DIR="$TEGRA_DIR/kernel_src/kernel"
-KERNEL_SRC="$KERNEL_SRC_DIR/kernel"
+KERNEL_SRC_DIR_BASE="$TEGRA_DIR/kernel_src/kernel"
+# Find the actual kernel source directory, e.g., kernel-jammy-src
+KERNEL_SRC_SUBDIR=$(find "$KERNEL_SRC_DIR_BASE" -mindepth 1 -maxdepth 1 -type d -name "kernel*" | head -n 1)
+if [ -z "$KERNEL_SRC_SUBDIR" ]; then
+    echo "Error: Could not find kernel source subdirectory in $KERNEL_SRC_DIR_BASE"
+    exit 1
+fi
 
-# Check if the kernel directory already exists
-if [[ ! -d "$KERNEL_SRC" ]]; then
-    # Find the first matching kernel* directory
-    KERNEL_SRC_OG=$(find "$KERNEL_SRC_DIR" -mindepth 1 -maxdepth 1 -type d -name "kernel*" | head -n 1)
-
-    # Ensure a valid directory was found before moving
-    if [[ -n "$KERNEL_SRC_OG" && "$KERNEL_SRC_OG" != "$KERNEL_SRC" ]]; then
-        mv "$KERNEL_SRC_OG" "$KERNEL_SRC"
+# For older JetPack, we rename the directory for compatibility with the build process.
+# For JetPack 6+, nvbuild.sh expects the original directory name.
+if [[ "$PATCH" != "6.0DP" && "$PATCH" != "6.2" ]]; then
+    KERNEL_SRC="$KERNEL_SRC_DIR_BASE/kernel"
+    if [[ "$KERNEL_SRC_SUBDIR" != "$KERNEL_SRC" ]]; then
+        echo "Renaming kernel source directory to $KERNEL_SRC"
+        sudo mv "$KERNEL_SRC_SUBDIR" "$KERNEL_SRC"
     fi
+else
+    KERNEL_SRC="$KERNEL_SRC_SUBDIR"
+    echo "Using kernel source at $KERNEL_SRC"
 fi
 
 # Validate JetPack version
@@ -127,13 +134,29 @@ GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patc
 
 if [ "$PATCH_SOURCE" = true ]; then
     sudo mkdir -p "$TEGRA_DIR/kernel_patches"
+    # Check for jq
+    if ! command -v jq &> /dev/null; then
+        echo "Error: jq is not installed. Please install jq to proceed."
+        exit 1
+    fi
+
     echo "Fetching list of patches for $PATCH kernel..."
 
-    # Fetch the list of files and check if it's valid JSON
-    PATCH_LIST=$(curl -s "$GIT_PATCH_URL")
+    # Fetch the list of files and check if curl was successful
+    CURL_RESPONSE=$(curl -s -w "%{http_code}" "$GIT_PATCH_URL")
+    HTTP_CODE=${CURL_RESPONSE: -3}
+    PATCH_LIST=${CURL_RESPONSE:0:-3}
 
-    if ! echo "$PATCH_LIST" | jq empty 2>/dev/null; then
-        echo "Error: Failed to retrieve patch list or invalid JSON response."
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "Error: Failed to retrieve patch list from GitHub (HTTP code: $HTTP_CODE)."
+        echo "Response: $PATCH_LIST"
+        exit 1
+    fi
+
+    # Check if it's a valid JSON array. The GitHub API returns an array for a directory listing.
+    # If it's not an array, it's likely an error object (e.g., for a 404), even if the HTTP code was 200 for some reason.
+    if ! echo "$PATCH_LIST" | jq -e 'type=="array"' > /dev/null 2>&1; then
+        echo "Error: Invalid JSON response from GitHub (not an array)."
         echo "Response: $PATCH_LIST"
         exit 1
     fi
@@ -178,26 +201,54 @@ echo "Downloading cartken defconfig..."
 sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
 echo "cartken_defconfig downloaded successfully."
 
-sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
+if [[ "$PATCH" == "6.0DP" || "$PATCH" == "6.2" ]]; then
+    echo "Building kernel for JetPack $PATCH using nvbuild.sh..."
 
-# Run menuconfig if requested
-if [ "$MENUCONFIG" = true ]; then
-	echo "Running menuconfig..."
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
-fi
+    NVBUILD_SCRIPT="$KERNEL_SRC_ROOT/nvbuild.sh"
+    if [ ! -f "$NVBUILD_SCRIPT" ]; then
+        echo "Error: nvbuild.sh not found at $NVBUILD_SCRIPT"
+        exit 1
+    fi
 
-if [ -n "$LOCALVERSION" ]; then
-	echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
+    # Set environment variables for nvbuild.sh
+    export CROSS_COMPILE
+    export ARCH=arm64
+    export INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
 
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
+    # nvbuild.sh needs to be run from its containing directory
+    pushd "$KERNEL_SRC_ROOT" > /dev/null
+
+    # Build the kernel and modules
+    echo "Running nvbuild.sh to build kernel and modules..."
+    sudo -E "./nvbuild.sh"
+
+    # Install the kernel and modules
+    echo "Running nvbuild.sh to install kernel and modules..."
+    sudo -E "./nvbuild.sh" -i
+
+    popd > /dev/null
 else
-	echo "Building kernel using cartken_defconfig..."
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS
+    sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
 
-	sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
+    # Run menuconfig if requested
+    if [ "$MENUCONFIG" = true ]; then
+        echo "Running menuconfig..."
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
+    fi
+
+    if [ -n "$LOCALVERSION" ]; then
+        echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
+
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
+    else
+        echo "Building kernel using cartken_defconfig..."
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS
+
+        sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
+    fi
 fi
 
 # Define paths for kernel Image and DTB
