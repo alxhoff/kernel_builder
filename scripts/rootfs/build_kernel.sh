@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTFS_ROOT_DIR="$TEGRA_DIR/rootfs"
@@ -252,14 +252,12 @@ else
 fi
 
 # Define paths for kernel Image and DTB
-KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
-KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
-ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
-
-# Define DTBs based on JetPack version
 if [[ "$PATCH" == "6.0DP" || "$PATCH" == "6.2" ]]; then
+    KERNEL_OUT_DIR="$KERNEL_SRC_ROOT/kernel_out"
+    KERNEL_IMAGE_SRC="$KERNEL_OUT_DIR/kernel/Image"
     DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb")
 else
+    KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
     DTB_NAMES=(
       "tegra234-p3701-0000-p3737-0000.dtb"
       "tegra234-p3701-0005-p3737-0000.dtb"
