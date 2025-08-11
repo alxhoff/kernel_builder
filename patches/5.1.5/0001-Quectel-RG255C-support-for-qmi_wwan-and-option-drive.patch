@@ -1,0 +1,73 @@
+From 6313b122a0c7a49872b10cabb7ea685ef21c4a9c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 11 Aug 2025 12:17:09 +0200
+Subject: [PATCH] Quectel RG255C support for qmi_wwan and option drivers
+
+Patch for adding RG255C to qmi_wwan.c from
+https://github.com/torvalds/linux/commit/5c964c8a97c12145104f5d2782aa1ffccf3a93dd
+as well as support for the RG255C in the option USB driver
+---
+ kernel/kernel/drivers/net/usb/qmi_wwan.c  |  1 +
+ kernel/kernel/drivers/usb/serial/option.c | 20 ++++++++++++++++++++
+ 2 files changed, 21 insertions(+)
+
+diff --git a/kernel/kernel/drivers/net/usb/qmi_wwan.c b/kernel/kernel/drivers/net/usb/qmi_wwan.c
+index 3d342908f..3ee026797 100644
+--- a/kernel/kernel/drivers/net/usb/qmi_wwan.c
++++ b/kernel/kernel/drivers/net/usb/qmi_wwan.c
+@@ -1353,6 +1353,7 @@ static const struct usb_device_id products[] = {
+ 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0195, 4)},	/* Quectel EG95 */
+ 	{QMI_FIXED_INTF(0x2c7c, 0x0296, 4)},	/* Quectel BG96 */
+ 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x030e, 4)},	/* Quectel EM05GV2 */
++	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0316, 3)},	/* Quectel RG255C */
+ 	{QMI_QUIRK_SET_DTR(0x2cb7, 0x0104, 4)},	/* Fibocom NL678 series */
+ 	{QMI_FIXED_INTF(0x0489, 0xe0b4, 0)},	/* Foxconn T77W968 LTE */
+ 	{QMI_FIXED_INTF(0x0489, 0xe0b5, 0)},	/* Foxconn T77W968 LTE with eSIM support*/
+diff --git a/kernel/kernel/drivers/usb/serial/option.c b/kernel/kernel/drivers/usb/serial/option.c
+index 400e3e10b..958e0f637 100644
+--- a/kernel/kernel/drivers/usb/serial/option.c
++++ b/kernel/kernel/drivers/usb/serial/option.c
+@@ -263,6 +263,7 @@ static void option_instat_callback(struct urb *urb);
+ #define QUECTEL_PRODUCT_EG95			0x0195
+ #define QUECTEL_PRODUCT_BG96			0x0296
+ #define QUECTEL_PRODUCT_EP06			0x0306
++#define QUECTEL_PRODUCT_RG255C_GL		0x0316
+ #define QUECTEL_PRODUCT_EM05G			0x030a
+ #define QUECTEL_PRODUCT_EM060K			0x030b
+ #define QUECTEL_PRODUCT_EM05G_CS		0x030c
+@@ -1200,6 +1201,10 @@ static const struct usb_device_id option_ids[] = {
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EP06, 0xff, 0xff, 0xff),
+ 	  .driver_info = RSVD(1) | RSVD(2) | RSVD(3) | RSVD(4) | NUMEP2 },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EP06, 0xff, 0, 0) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0xff, 0xff) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0, 0) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0xff, 64) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0xff, 48) },
+ 	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM05CN, 0xff),
+ 	  .driver_info = RSVD(6) | ZLP },
+ 	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM05CN_SG, 0xff),
+@@ -2406,6 +2411,21 @@ static int option_probe(struct usb_serial *serial,
+ 	if (device_flags & NUMEP2 && iface_desc->bNumEndpoints != 2)
+ 		return -ENODEV;
+ 
++	if (le16_to_cpu(serial->dev->descriptor.idVendor) == QUECTEL_VENDOR_ID &&
++		le16_to_cpu(serial->dev->descriptor.idProduct) == QUECTEL_PRODUCT_RG255C_GL) {
++
++			struct usb_interface_descriptor *intf = &serial->interface->cur_altsetting->desc;
++
++			// EXCLUDE the RMNET (QMI) interface (Interface 3) to allow qmi_wwan to bind.
++			if (intf->bInterfaceNumber == 3 &&         // Interface number 3
++			intf->bNumEndpoints == 3 &&
++			intf->bInterfaceClass == 0xFF &&
++			intf->bInterfaceSubClass == 0xFF &&
++			intf->bInterfaceProtocol == 80) {
++				return -ENODEV;
++			}
++	}
++
+ 	/* Store the device flags so we can use them during attach. */
+ 	usb_set_serial_data(serial, (void *)device_flags);
+ 
+-- 
+2.50.1
+
