@@ -254,10 +254,12 @@ fi
 # Define paths for kernel Image and DTB
 if [[ "$PATCH" == "6.0DP" || "$PATCH" == "6.2" ]]; then
     KERNEL_OUT_DIR="$KERNEL_SRC_ROOT/kernel_out"
-    KERNEL_IMAGE_SRC="$KERNEL_OUT_DIR/kernel/Image"
+    KERNEL_BUILD_DIR="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot"
+    KERNEL_IMAGE_SRC="$KERNEL_BUILD_DIR/Image"
     DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb")
 else
-    KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
+    KERNEL_BUILD_DIR="$KERNEL_SRC/arch/arm64/boot"
+    KERNEL_IMAGE_SRC="$KERNEL_BUILD_DIR/Image"
     DTB_NAMES=(
       "tegra234-p3701-0000-p3737-0000.dtb"
       "tegra234-p3701-0005-p3737-0000.dtb"
