@@ -23,8 +23,9 @@ declare -A BSP_VERSION_MAP=(
     [5.1.3]="R35-5"
     [5.1.4]="R35-6"
     [5.1.5]="R35-6"
-    [6.0DP]="R36-2"
-    [6.2]="R36-2"
+    [6.0DP]="R36-3"
+    [6.1]="R36-4"
+    [6.2]="R36-4"
 )
 
 declare -A OTA_TOOL_URLS=(
@@ -33,6 +34,7 @@ declare -A OTA_TOOL_URLS=(
 	[5.1.4]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/release/ota_tools_R35.6.0_aarch64.tbz2"
 	[5.1.5]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/release/ota_tools_R35.6.1_aarch64.tbz2"
     [6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/ota_tools_R36.3.0_aarch64.tbz2"
+    [6.1]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/ota_tools_r36.4.0_aarch64.tbz2"
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/ota_tools_r36.4.3_aarch64.tbz2"
 )
 
@@ -195,7 +197,32 @@ if $BUILD_ROOTFS; then
     OTA_BUILD_ARGS+=" -r"
 fi
 
-DTB_PATH="$TARGET_L4T/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+case "$TARGET_VERSION" in
+    5.1.2|5.1.3|5.1.4|5.1.5)
+        DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+        ;;
+    6.0DP|6.1|6.2)
+        DTB_NAME="tegra234-p3737-0000+p3701-0000.dtb"
+        ;;
+    *)
+        echo "Warning: Unsupported target version for DTB selection. Using default."
+        DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+        ;;
+esac
+
+DTB_PATH="$TARGET_L4T/kernel/dtb/$DTB_NAME"
+
+# Symlink BCT file for JP6+
+if [[ "$TARGET_VERSION" == "6.0DP" || "$TARGET_VERSION" == "6.1" || "$TARGET_VERSION" == "6.2" ]]; then
+    BCT_DIR_OLD="$TARGET_L4T/bootloader/t186ref/BCT"
+    BCT_DIR_NEW="$TARGET_L4T/bootloader/generic/BCT"
+    BCT_FILE="tegra234-p3701-0000-sdram-l4t.dts"
+
+    if [ -f "$BCT_DIR_NEW/$BCT_FILE" ] && [ ! -f "$BCT_DIR_OLD/$BCT_FILE" ]; then
+        echo "Creating symlink for BCT file..."
+        run_cmd "mkdir -p '$BCT_DIR_OLD' && ln -s '$BCT_DIR_NEW/$BCT_FILE' '$BCT_DIR_OLD/$BCT_FILE'"
+    fi
+fi
 
 # Generate OTA payload
 if ! $SKIP_BUILD; then

@@ -1,23 +1,22 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 TEGRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTFS_ROOT_DIR="$TEGRA_DIR/rootfs"
-TOOLCHAIN_DIR="$TEGRA_DIR/toolchain/bin"
+TOOLCHAIN_DIR="$TEGRA_DIR/toolchain"
 KERNEL_SRC_ROOT="$TEGRA_DIR/kernel_src"
-CROSS_COMPILE="$TOOLCHAIN_DIR/aarch64-buildroot-linux-gnu-"
+CROSS_COMPILE="$TOOLCHAIN_DIR/bin/aarch64-buildroot-linux-gnu-"
 MAKE_ARGS="ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE -j$(nproc)"
 MENUCONFIG=false
 LOCALVERSION=""
-PATCH="5.1.3"
+PATCH="6.0DP"
 PATCH_SOURCE=false
 
 declare -A JETPACK_L4T_MAP=(
-    [5.1.3]=35.5.0
-    [5.1.2]=35.4.1
-	[5.1.4]=35.6.0
-	[5.1.5]=35.6.1
+    [6.0DP]=36.2
+    [6.1]=36.4
+    [6.2]=36.4.3
 )
 
 # Ensure the script is run with sudo
@@ -77,12 +76,9 @@ if [ -z "$KERNEL_SRC_SUBDIR" ]; then
     exit 1
 fi
 
-# For older JetPack, we rename the directory for compatibility with the build process.
-KERNEL_SRC="$KERNEL_SRC_DIR_BASE/kernel"
-if [[ "$KERNEL_SRC_SUBDIR" != "$KERNEL_SRC" ]]; then
-    echo "Renaming kernel source directory to $KERNEL_SRC"
-    sudo mv "$KERNEL_SRC_SUBDIR" "$KERNEL_SRC"
-fi
+KERNEL_SRC="$KERNEL_SRC_SUBDIR"
+echo "Using kernel source at $KERNEL_SRC"
+
 
 # Validate JetPack version
 if [[ -z "${JETPACK_L4T_MAP[$PATCH]}" ]]; then
@@ -114,7 +110,8 @@ if [ ! -d "$KERNEL_SRC_ROOT/.git" ]; then
     (cd "$KERNEL_SRC_ROOT" && git init && git config user.name "KernelBuilder" && git config user.email "builder@localhost" && git add . && git commit --no-gpg-sign -m "Initial kernel source")
 else
     # Check if there are any commits before attempting to reset
-    if (cd "$KERNEL_SRC_ROOT" && git rev-parse --verify HEAD &>/dev/null); then
+    if (cd "$KERNEL_SRC_ROOT" && git rev-parse --verify HEAD &>/dev/null);
+    then
         echo "Resetting kernel source to clean state..."
         (cd "$KERNEL_SRC_ROOT" && git reset --hard HEAD && git clean -fdx)
     else
@@ -145,8 +142,8 @@ if [ "$PATCH_SOURCE" = true ]; then
         exit 1
     fi
 
-    # Check if it\'s a valid JSON array. The GitHub API returns an array for a directory listing.
-    # If it\'s not an array, it\'s likely an error object (e.g., for a 404), even if the HTTP code was 200 for some reason.
+    # Check if it's a valid JSON array. The GitHub API returns an array for a directory listing.
+    # If it's not an array, it's likely an error object (e.g., for a 404), even if the HTTP code was 200 for some reason.
     if ! echo "$PATCH_LIST" | jq -e 'type=="array"' > /dev/null 2>&1; then
         echo "Error: Invalid JSON response from GitHub (not an array)."
         echo "Response: $PATCH_LIST"
@@ -193,39 +190,44 @@ echo "Downloading cartken defconfig..."
 sudo wget -O "$defconfig_path" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
 echo "cartken_defconfig downloaded successfully."
 
-sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
+echo "Setting LOCALVERSION in defconfig..."
+echo "CONFIG_LOCALVERSION=\"$LOCALVERSION\"" | sudo tee -a "$defconfig_path"
+echo "CONFIG_LOCALVERSION_AUTO=n" | sudo tee -a "$defconfig_path"
 
-# Run menuconfig if requested
-if [ "$MENUCONFIG" = true ]; then
-    echo "Running menuconfig..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS menuconfig
+echo "Building kernel for JetPack $PATCH using nvbuild.sh..."
+
+NVBUILD_SCRIPT="$KERNEL_SRC_ROOT/nvbuild.sh"
+if [ ! -f "$NVBUILD_SCRIPT" ]; then
+    echo "Error: nvbuild.sh not found at $NVBUILD_SCRIPT"
+    exit 1
 fi
 
-if [ -n "$LOCALVERSION" ]; then
-    echo "Building kernel with LOCALVERSION=$LOCALVERSION..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" defconfig
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION"
+# Set environment variables for nvbuild.sh
+export CROSS_COMPILE
+export ARCH=arm64
+export INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
 
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS LOCALVERSION="$LOCALVERSION" modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
-else
-    echo "Building kernel using cartken_defconfig..."
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS defconfig
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS
+# nvbuild.sh needs to be run from its containing directory
+pushd "$KERNEL_SRC_ROOT" > /dev/null
 
-    sudo make -C "$KERNEL_SRC" $MAKE_ARGS modules_install INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
-fi
+# Build the kernel and modules
+echo "Running nvbuild.sh to build kernel and modules..."
+sudo -E "./nvbuild.sh"
+
+# Install the kernel and modules
+echo "Running nvbuild.sh to install kernel and modules..."
+sudo -E "./nvbuild.sh" -i
+
+popd > /dev/null
 
 # Define paths for kernel Image and DTB
-KERNEL_IMAGE_SRC="$KERNEL_SRC/arch/arm64/boot/Image"
+KERNEL_OUT_DIR="$KERNEL_SRC_ROOT/kernel_out"
+KERNEL_IMAGE_SRC="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot/Image"
 KERNEL_IMAGE_DEST="$TEGRA_DIR/kernel/"
 ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
 
-# Define DTBs based on JetPack version
-DTB_NAMES=(
-  "tegra234-p3701-0000-p3737-0000.dtb"
-  "tegra234-p3701-0005-p3737-0000.dtb"
-  "tegra234-p3701-0004-p3737-0000.dtb"
-)
+DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb")
+
 KERNEL_DTB_DIR="$TEGRA_DIR/kernel/dtb"
 ROOTFS_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
 ROOTFS_EXTLINUX_DIR="$ROOTFS_BOOT_DIR/extlinux"
@@ -248,7 +250,7 @@ else
 fi
 
 for DTB_NAME in "${DTB_NAMES[@]}"; do
-    DTB_SRC="$KERNEL_SRC/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+    DTB_SRC="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot/dts/nvidia/$DTB_NAME"
     KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
     ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
     ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
@@ -273,4 +275,15 @@ fi
 
 echo "Kernel build completed successfully!"
 
-sudo "$TEGRA_DIR/build_third_party_drivers.sh" --kernel-src-root "$KERNEL_SRC" --toolchain "$CROSS_COMPILE" --rootfs-root-dir "$ROOTFS_ROOT_DIR" --tegra-dir "$TEGRA_DIR" --patch "$PATCH"
+echo "Reading actual LOCALVERSION from .config"
+KERNEL_BUILD_DIR="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")"
+CONFIG_FILE="$KERNEL_BUILD_DIR/.config"
+if [ -f "$CONFIG_FILE" ]; then
+    ACTUAL_LOCALVERSION=$(grep CONFIG_LOCALVERSION= "$CONFIG_FILE" | cut -d '"' -f 2)
+    echo "Actual LOCALVERSION is: $ACTUAL_LOCALVERSION"
+else
+    echo "Warning: .config file not found. Using the provided LOCALVERSION."
+    ACTUAL_LOCALVERSION="$LOCALVERSION"
+fi
+
+sudo "$TEGRA_DIR/build_third_party_drivers_jp6.sh" --kernel-src "$KERNEL_SRC" --kernel-out-dir "$KERNEL_BUILD_DIR" --toolchain "$CROSS_COMPILE" --rootfs-root-dir "$ROOTFS_ROOT_DIR" --tegra-dir "$TEGRA_DIR" --patch "$PATCH" --localversion "$ACTUAL_LOCALVERSION"

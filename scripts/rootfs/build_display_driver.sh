@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 		--target-bsp)
 			TARGET_BSP="$2"
 			shift 2
-			;;
+			;; 
         -h|--help)
             show_help
             ;;
@@ -59,11 +59,7 @@ LOCALVERSION="-cartken${TARGET_BSP}"
 mkdir -p "$WORK_DIR"
 
 # pick the right kernel-src folder name
-if [[ "$TARGET_BSP" == "6.0DP" || "$TARGET_BSP" == "6.2" ]]; then
-    KERNEL_FOLDER="kernel-jammy-src"
-else
-    KERNEL_FOLDER="kernel-5.10"
-fi
+KERNEL_FOLDER="kernel-5.10"
 
 KERNEL_TARGET_DIR="$WORK_DIR/kernel_src/kernel/$KERNEL_FOLDER"
 
@@ -83,33 +79,23 @@ fi
 case "$TARGET_BSP" in
     5.1.2)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2"
-        ;;
+        ;; 
     5.1.3)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
-        ;;
+        ;; 
     5.1.4)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/sources/public_sources.tbz2"
-        ;;
+        ;; 
     5.1.5)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
-        ;;
-    6.0DP)
-        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
-        ;;
-    6.2)
-        BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
-        ;;
+        ;; 
     *)
         echo "Unsupported target BSP: $TARGET_BSP"
         exit 1
-        ;;
+        ;; 
 esac
 BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
-if [[ "$TARGET_BSP" == "6.0DP" || "$TARGET_BSP" == "6.2" ]]; then
-    NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source"
-else
-    NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
-fi
+NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
 NVDISPLAY_TAR="$NVDISPLAY_TAR_DIR/nvidia_kernel_display_driver_source.tbz2"
 NVDISPLAY_SOURCE_DIR="$NVDISPLAY_TAR_DIR/nvdisplay"
 
@@ -201,4 +187,3 @@ chmod 755 "$PACKAGE_DIR/DEBIAN/postinst"
 dpkg-deb --build "$PACKAGE_DIR" "$DEB_PACKAGE"
 
 echo "Debian package created: $DEB_PACKAGE"
-

@@ -31,7 +31,7 @@ LOCALVERSION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --kernel-src)
-            KERNEL_SOURCE=$(realpath "$2/kernel/kernel")  # Use the provided path as is
+            KERNEL_SOURCE=$(realpath "$2")  # Use the provided path as is
             shift 2
             ;;
         --toolchain)

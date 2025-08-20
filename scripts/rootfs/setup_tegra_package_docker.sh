@@ -80,7 +80,7 @@ for arg in "$@"; do
 done
 
 if [[ "$RUN_SETUP_SCRIPT" == true ]]; then
-    CONTAINER_CMD="./setup_tegra_package.sh $*"
+    CONTAINER_CMD="./setup_tegra_package.sh $@"
 else
     CONTAINER_CMD="/bin/bash"
 fi
@@ -113,4 +113,3 @@ docker run --rm -i \
     -e HOME="$SCRIPT_DIR" \
     "$DOCKER_TAG" \
     /bin/bash -c "$CONTAINER_CMD"
-
