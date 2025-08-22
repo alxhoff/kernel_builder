@@ -52,7 +52,19 @@ L4T_DIR=$(to_absolute_path "$L4T_DIR")
 
 BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
 KERNEL_IMAGE="$L4T_DIR/kernel/Image"
-DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+L4T_DIR_BASE=$(dirname "$L4T_DIR")
+JETPACK_VERSION=$(basename "$L4T_DIR_BASE")
+
+case "$JETPACK_VERSION" in
+    6.*)
+        DTB_NAME="tegra234-p3737-0000+p3701-0000.dtb"
+        ;;
+    *)
+        DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+        ;;
+esac
+
+DTB_FILE="$L4T_DIR/kernel/dtb/$DTB_NAME"
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
 KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
 DTB_FILE=$(to_absolute_path "$DTB_FILE")
