@@ -94,12 +94,13 @@ if [[ "$REBUILD_IMAGE" == true ]] || ! docker image inspect "$IMAGE_NAME" >/dev/
     echo "Building Docker image..."
     docker build -t "$IMAGE_NAME" - <<EOF
 FROM ubuntu:22.04
-RUN apt-get update
-RUN apt-get install -y apt-utils wget tar sudo bash libxml2-utils cpio binutils \
-    openssh-client dosfstools util-linux device-tree-compiler python3 \
-    python3-pip bc bzip2 xz-utils kmod qemu-user-static zlib1g \
-    pv zip unzip git curl libssl-dev rsync jq
-RUN apt-get clean
+RUN apt-get update && apt-get install -y apt-utils wget tar sudo bash libxml2-utils
+RUN apt-get update && apt-get install -y openssh-client dosfstools util-linux
+RUN apt-get update && apt-get install -y python3 python3-pip bc bzip2 xz-utils
+RUN apt-get update && apt-get install -y kmod qemu-user-static device-tree-compiler
+RUN apt-get update && apt-get install -y pv zip unzip git curl libssl-dev rsync
+RUN apt-get update && apt-get install -y pv jq uuid-runtime zlib1g cpio binutils
+RUN apt-get update && apt-get clean
 RUN pip3 install --no-cache-dir pyyaml
 RUN ln -s $(which python3) /usr/bin/python
 WORKDIR /workspace

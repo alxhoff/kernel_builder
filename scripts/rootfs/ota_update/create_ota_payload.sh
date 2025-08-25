@@ -17,6 +17,7 @@ PARTITION_XML=""
 BUILD_BOOTLOADER=false
 BUILD_ROOTFS=false
 SKIP_BUILD=false
+CFG_FILE=""
 
 declare -A BSP_VERSION_MAP=(
     [5.1.2]="R35-4"
@@ -47,6 +48,7 @@ show_help() {
     echo "  --dry-run                    Show commands that would be executed without running them"
     echo "  --force-partition-change     Modify l4t_generate_ota_package.sh to enable partition changes"
 	echo "  --partition-xml FILE         Path to a partition XML file to replace the default one in the target BSP"
+	echo "  --cfgfile FILE               Path to a flash partition table config file"
 	echo "  --skip-build				 Skips the building of the package (assumes it already exists)"
 	echo "  -b                           Build only the bootloader"
     echo "  -r                           Build only the rootfs"
@@ -87,6 +89,10 @@ while [[ $# -gt 0 ]]; do
             PARTITION_XML=$(realpath "$2")
             shift 2
             ;;
+		--cfgfile)
+            CFG_FILE=$(realpath "$2")
+            shift 2
+            ;;
 		--skip-build)
             SKIP_BUILD=true
             shift
@@ -121,6 +127,18 @@ TARGET_L4T="$TARGET_BSP/Linux_for_Tegra"
 export BASE_BSP=$BASE_L4T
 export TARGET_BSP=$TARGET_L4T
 BASE_BSP_VERSION="${BSP_VERSION_MAP[$BASE_VERSION]}"
+
+# Set default cfgfile for JP5/6+ if not provided
+if [[ -z "$CFG_FILE" ]]; then
+    case "$TARGET_VERSION" in
+        6*)
+            CFG_FILE="$TARGET_L4T/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
+            ;;
+        5*)
+            CFG_FILE="$TARGET_L4T/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+            ;;
+    esac
+fi
 
 echo "BASE L4T: $BASE_L4T"
 
@@ -223,8 +241,20 @@ DTB_PATH="$TARGET_L4T/kernel/dtb/$DTB_NAME"
 # Generate OTA payload
 if ! $SKIP_BUILD; then
     echo "Generating OTA update payload..."
+	FLASH_OPTS_INTERNAL=""
 	if [[ -n "$DTB_PATH" && "$BASE_BSP_VERSION" != "R35-4" ]]; then
-		FLASH_OPTS="-p \"-d $DTB_PATH\""
+		FLASH_OPTS_INTERNAL+="-d $DTB_PATH"
+	fi
+
+	if [[ -n "$CFG_FILE" ]]; then
+		if [[ -n "$FLASH_OPTS_INTERNAL" ]]; then
+			FLASH_OPTS_INTERNAL+=" "
+		fi
+		FLASH_OPTS_INTERNAL+="-c $CFG_FILE"
+	fi
+
+	if [[ -n "$FLASH_OPTS_INTERNAL" ]]; then
+		FLASH_OPTS="-p \"$FLASH_OPTS_INTERNAL\""
 	else
 		FLASH_OPTS=""
 	fi
