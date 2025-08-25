@@ -340,7 +340,7 @@ sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 prompt_user
 
 echo "Getting pinmux files"
-sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR
+sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
 
 if [[ "$JUST_CLONE" == true ]]; then
 	exit 1
