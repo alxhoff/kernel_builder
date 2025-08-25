@@ -50,7 +50,16 @@ done
 
 L4T_DIR=$(to_absolute_path "$L4T_DIR")
 
-BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+L4T_VERSION=$(basename "$(dirname "$L4T_DIR")")
+
+case "$L4T_VERSION" in
+    6*)
+        BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
+        ;;
+    *)
+        BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+        ;;
+esac
 KERNEL_IMAGE="$L4T_DIR/kernel/Image"
 DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")

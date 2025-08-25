@@ -167,11 +167,19 @@ run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_L4T")\""
 
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
-	TARGET_PARTITION_XML="$TARGET_L4T/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+	case "$TARGET_VERSION" in
+        6*)
+            TARGET_PARTITION_XML="$TARGET_L4T/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
+            ;;
+        *)
+            TARGET_PARTITION_XML="$TARGET_L4T/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml"
+            ;;
+    esac
 	echo "Replacing partition XML file..."
 	echo "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
 	run_cmd "cp \"$PARTITION_XML\" \"$TARGET_PARTITION_XML\""
 fi
+
 
 # Remove specific line from ota_make_recovery_img_dtb.sh
 OTA_SCRIPT="${TARGET_L4T}/tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh"
@@ -211,18 +219,6 @@ case "$TARGET_VERSION" in
 esac
 
 DTB_PATH="$TARGET_L4T/kernel/dtb/$DTB_NAME"
-
-# Symlink BCT file for JP6+
-if [[ "$TARGET_VERSION" == "6.0DP" || "$TARGET_VERSION" == "6.1" || "$TARGET_VERSION" == "6.2" ]]; then
-    BCT_DIR_OLD="$TARGET_L4T/bootloader/t186ref/BCT"
-    BCT_DIR_NEW="$TARGET_L4T/bootloader/generic/BCT"
-    BCT_FILE="tegra234-p3701-0000-sdram-l4t.dts"
-
-    if [ -f "$BCT_DIR_NEW/$BCT_FILE" ] && [ ! -f "$BCT_DIR_OLD/$BCT_FILE" ]; then
-        echo "Creating symlink for BCT file..."
-        run_cmd "mkdir -p '$BCT_DIR_OLD' && ln -s '$BCT_DIR_NEW/$BCT_FILE' '$BCT_DIR_OLD/$BCT_FILE'"
-    fi
-fi
 
 # Generate OTA payload
 if ! $SKIP_BUILD; then

@@ -85,5 +85,13 @@ fi
 # --- FLASH UEFI ---
 cd "$L4T_DIR/Linux_for_Tegra"
 echo "🚀 Flashing UEFI bootloader only..."
-./flash.sh --no-systemimg -c bootloader/t186ref/cfg/flash_t234_qspi.xml jetson-agx-orin-devkit mmcblk0p1
+case "$TARGET_VERSION" in
+    6*)
+        FLASH_XML_PATH="bootloader/generic/cfg/flash_t234_qspi.xml"
+        ;;
+    *)
+        FLASH_XML_PATH="bootloader/t186ref/cfg/flash_t234_qspi.xml"
+        ;;
+esac
+./flash.sh --no-systemimg -c "$FLASH_XML_PATH" jetson-agx-orin-devkit mmcblk0p1
 
