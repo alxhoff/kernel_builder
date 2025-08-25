@@ -2,11 +2,28 @@
 
 set -ex
 
+if ! command -v jq &> /dev/null
+then
+    echo "jq could not be found, please install it first"
+    exit
+fi
+
 # Ensure script is run as root
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root. Please use sudo."
     exit 1
 fi
+
+# --- Helper Functions ---
+PROMPT=false
+prompt_user() {
+    if [ "$PROMPT" = true ]; then
+        echo "------------------------------------------------------"
+        echo "Script paused. Press Enter to continue..."
+        read -r
+        echo "------------------------------------------------------"
+    fi
+}
 
 # Define JetPack versions and corresponding L4T versions
 declare -A JETPACK_L4T_MAP=(
@@ -72,6 +89,7 @@ show_help() {
 	echo "  --skip-chroot-build		Skips updating and settup up the rootfs in a chroot"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
 	echo "  --just-clone		    Only pulls the sources, nothing more"
+    echo "  --prompt                Prompt user to press Enter at each major step"
     echo "  -h, --help              Show this help message"
     exit 0
 }
@@ -111,6 +129,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_CHROOT_BUILD=true
             shift
             ;;
+        --prompt)
+            PROMPT=true
+            shift
+            ;;
         -h|--help)
             show_help
             ;;
@@ -137,6 +159,9 @@ DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
 
 TEGRA_BASE_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
 TEGRA_DIR="$TEGRA_BASE_DIR/Linux_for_Tegra"
+
+prompt_user
+
 if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required BSP files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
@@ -149,11 +174,15 @@ if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
 		fi
 	fi
 
+	prompt_user
+
 	sudo mkdir -p "$TEGRA_BASE_DIR"
 	echo "Extracting driver package: $DRIVER_FILE into $TEGRA_BASE_DIR..."
 	sudo tar -xjf "$DRIVER_FILE" -C "$TEGRA_BASE_DIR"
 	echo "Driver package extracted successfully."
 fi
+
+prompt_user
 
 if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
 
@@ -167,6 +196,8 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 			exit 1
 		fi
 	fi
+
+	prompt_user
 
 	TMP_DIR=$(sudo mktemp -d)
 	echo "Extracting public sources: $KERNEL_FILE into $TMP_DIR..."
@@ -233,6 +264,8 @@ if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'R
 		fi
 	fi
 
+	prompt_user
+
 	mkdir -p "$TEGRA_DIR/rootfs"
 	echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 	sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
@@ -281,6 +314,8 @@ for FILE in $FILE_URLS; do
 	wget --show-progress -P "$TEGRA_DIR/" "$FILE"
 done
 
+prompt_user
+
 # if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 #     echo "Setting up chroot environment for SoC: $SOC..."
 #     sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
@@ -293,12 +328,16 @@ echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
 echo "All rootfs scripts downloaded successfully."
 
+prompt_user
+
 cd $TEGRA_DIR
 echo "Setting up rootfs with nvidia binaries and default user"
 echo "Removing existing device nodes before setup..."
 sudo rm -f "$TEGRA_DIR/rootfs/dev/random"
 sudo rm -f "$TEGRA_DIR/rootfs/dev/urandom"
 sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
+
+prompt_user
 
 echo "Getting pinmux files"
 sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR
@@ -307,6 +346,8 @@ if [[ "$JUST_CLONE" == true ]]; then
 	exit 1
 fi
 
+prompt_user
+
 if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
 	if [ ! -d "$TEGRA_DIR/toolchain" ]; then
@@ -314,14 +355,20 @@ if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	fi
 	echo "Toolchain cloned successfully."
 
+	prompt_user
+
 	echo "Building kernel"
 	case "$JETPACK_VERSION" in
 		5.1.2|5.1.3|5.1.4|5.1.5)
 			sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
 
+			prompt_user
+
 			echo "Building display driver"
 			echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION""
 			sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION"
+
+			prompt_user
 
 			DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
 			ROOTFS_DIR="$TEGRA_DIR/rootfs"
@@ -349,9 +396,13 @@ else
 	echo "Skipping kernel build as requested."
 fi
 
+prompt_user
+
 echo "Running get_packages.sh with access token and tag: $TAG..."
 $TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
+
+prompt_user
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 	echo "Setting up chroot environment for SoC: $SOC..."
