@@ -130,6 +130,7 @@ Version: 1.0.0
 Architecture: arm64
 Maintainer: Alex Hoffman <alxhoff@cartken.com>
 Description: Full system OTA update package for release $REPO_VERSION and with kernel version $KERNEL_VERSION
+Depends: nvme-cli
 EOF
 
 wget -O "$OTA_INSTALL_DIR/ota_tools.tbz2" "$OTA_TOOLS_URL"
