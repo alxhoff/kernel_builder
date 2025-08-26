@@ -77,14 +77,20 @@ if [[ -n "$EXTLINUX_CONF" && ! -f "$EXTLINUX_CONF" ]]; then
 fi
 
 case "$TARGET_BSP" in
-    5.1.2|5.1.3|5.1.4|5.1.5) ;;
+    5.1.2|5.1.3|5.1.4|5.1.5|6.1|6.2) ;;
     *)
-        echo "Error: Unsupported target BSP version. Supported versions are 5.1.2, 5.1.3, 5.1.4, and 5.1.5."
+        echo "Error: Unsupported target BSP version. Supported versions are 5.1.2, 5.1.3, 5.1.4, 5.1.5, 6.1, and 6.2."
         exit 1
         ;;
 esac
 
 case "$TARGET_BSP" in
+    "6.2")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/ota_tools_r36.4.3_aarch64.tbz2"
+        ;;
+    "6.1")
+        OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/ota_tools_r36.4.0_aarch64.tbz2"
+        ;;
     "5.1.5")
         OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/release/ota_tools_R35.6.1_aarch64.tbz2"
         ;;
@@ -98,7 +104,7 @@ case "$TARGET_BSP" in
         OTA_TOOLS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/release/ota_tools_r35.4.1_aarch64.tbz2"
         ;;
     *)
-        echo "Error: Unsupported target BSP version. Supported: 5.1.2, 5.1.3"
+        echo "Error: Unsupported target BSP version. Supported: 5.1.2, 5.1.3, 5.1.4, 5.1.5, 6.1, 6.2"
         exit 1
         ;;
 esac
