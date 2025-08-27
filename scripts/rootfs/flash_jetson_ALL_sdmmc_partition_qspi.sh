@@ -13,6 +13,7 @@ Flashes the Jetson AGX Orin with the specified kernel, DTB, and modules.
 
 Options:
   --l4t-dir <path>    Path to the Linux_for_Tegra directory (default: $DEFAULT_L4T_DIR)
+  --dtb-file <path>   Path to the DTB file. If not provided, a default will be used.
   --help              Show this help message and exit
 EOF
 }
@@ -29,11 +30,16 @@ to_absolute_path() {
 
 # Parse arguments
 L4T_DIR="$DEFAULT_L4T_DIR"
+DTB_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --l4t-dir)
       L4T_DIR="${2%/}"  # Remove trailing slash if present
+      shift 2
+      ;;
+    --dtb-file)
+      DTB_FILE="$2"
       shift 2
       ;;
     --help)
@@ -61,7 +67,9 @@ case "$L4T_VERSION" in
         ;;
 esac
 KERNEL_IMAGE="$L4T_DIR/kernel/Image"
-DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+if [ -z "$DTB_FILE" ]; then
+    DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+fi
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
 KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
 DTB_FILE=$(to_absolute_path "$DTB_FILE")

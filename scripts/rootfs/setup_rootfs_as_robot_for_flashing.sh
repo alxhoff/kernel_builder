@@ -248,4 +248,13 @@ curl -fsSL \
 https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/flash_jetson_ALL_sdmmc_partition_qspi.sh \
 -o "$FLASH_SCRIPT"
 chmod +x "$FLASH_SCRIPT"
-"$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
+
+MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)
+
+if [[ "$MAJOR_VERSION" -ge 6 ]]; then
+  DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+  echo "Jetpack 6.0+ detected, using DTB file: $DTB_FILE"
+  "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR" --dtb-file "$DTB_FILE"
+else
+  "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
+fi
