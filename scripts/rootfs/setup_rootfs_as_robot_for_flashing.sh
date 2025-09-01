@@ -242,6 +242,11 @@ fi
 
 read -rp "✅ Rootfs at $L4T_DIR is ready for flashing. Please put the robot in recovery mode and press [Enter] to continue..."
 
+if [ -f "$L4T_DIR/tools/l4t_flash_prerequisites.sh" ]; then
+  echo "Running l4t_flash_prerequisites.sh..."
+  (cd "$L4T_DIR" && ./tools/l4t_flash_prerequisites.sh)
+fi
+
 # --- Flash ---
 echo "Running flash script: $FLASH_SCRIPT"
 curl -fsSL \

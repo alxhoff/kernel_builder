@@ -266,6 +266,11 @@ else
 	chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
 fi
 
+if [ -f "$L4T_DIR/tools/l4t_flash_prerequisites.sh" ]; then
+  echo "Running l4t_flash_prerequisites.sh..."
+  (cd "$L4T_DIR" && ./tools/l4t_flash_prerequisites.sh)
+fi
+
 echo "Creating OTA payload (docker)..."
 run "$OTA_DIR/create_ota_payload_docker.sh" \
     --base-bsp "$SCRIPT_DIRECTORY/$BASE_BSP" \
