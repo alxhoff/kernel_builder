@@ -44,8 +44,66 @@ def monitor_traffic(device):
     try:
         run_command(f"candump {device}")
     except KeyboardInterrupt:
-        print("\nMonitoring stopped.")
+        print("Monitoring stopped.")
         sys.exit(0)
+
+def show_nodes(device):
+    """Monitors CAN traffic, prints the message for new node IDs, and lists all unique IDs found."""
+    print(f"Monitoring for unique CAN node IDs on {device} (press Ctrl+C to stop)...")
+
+    unique_ids = set()
+    process = None
+
+    try:
+        process = subprocess.Popen(
+            ['candump', device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+
+        for line in iter(process.stdout.readline, ''):
+            line = line.strip()
+            if not line:
+                continue
+
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+
+            can_id = parts[1]
+
+            if can_id not in unique_ids:
+                unique_ids.add(can_id)
+
+                print(f"New CAN ID found in message: '{line}'")
+
+                sorted_ids = sorted(list(unique_ids))
+                print(f"Unique IDs seen so far: {sorted_ids}")
+                print("---")
+
+        process.stdout.close()
+        stderr_output = process.stderr.read()
+        if stderr_output:
+            print(f"Error from candump: {stderr_output}", file=sys.stderr)
+        process.wait()
+
+    except FileNotFoundError:
+        print("Error: 'candump' command not found. Please make sure can-utils is installed.", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nMonitoring stopped.")
+        if process:
+            process.terminate()
+        sys.exit(0)
+    except Exception as e:
+        print(f"An error occurred: {e}", file=sys.stderr)
+        if process and process.poll() is None:
+            process.terminate()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     if os.geteuid() != 0:
@@ -60,6 +118,7 @@ if __name__ == "__main__":
     group.add_argument("--trigger", action="store_true", help="Send a trigger frame.")
     group.add_argument("--monitor", action="store_true", help="Monitor live CAN traffic.")
     group.add_argument("--errors", action="store_true", help="Show CAN bus statistics and errors.")
+    group.add_argument("--nodes", action="store_true", help="Show unique CAN node IDs from traffic.")
 
     args = parser.parse_args()
 
@@ -71,3 +130,5 @@ if __name__ == "__main__":
         monitor_traffic(args.device)
     elif args.errors:
         show_errors(args.device)
+    elif args.nodes:
+        show_nodes(args.device)
