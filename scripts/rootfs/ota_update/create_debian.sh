@@ -169,6 +169,13 @@ cat << 'EOF' > "$DEBIAN_DIR/postinst"
 #!/bin/bash
 set -e
 
+# Ensure nvme-cli is installed, as it's a dependency for the OTA process.
+if ! command -v nvme &> /dev/null; then
+    echo "nvme-cli not found, attempting to install via apt-get..."
+    apt-get update
+    apt-get install -y nvme-cli
+fi
+
 # Extract OTA tools
 mkdir -p /tmp/ota_tools
 tar -xjf /ota/ota_tools.tbz2 -C /tmp/ota_tools && rm /ota/ota_tools.tbz2
