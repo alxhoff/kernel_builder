@@ -53,6 +53,7 @@ def show_nodes(device):
 
     unique_ids = set()
     process = None
+    exit_code = 0
 
     try:
         process = subprocess.Popen(
@@ -81,7 +82,7 @@ def show_nodes(device):
                 print(f"New CAN ID found in message: '{line}'")
 
                 sorted_ids = sorted(list(unique_ids))
-                print(f"Unique IDs seen so far: {sorted_ids}")
+                print(f"Unique IDs seen so far ({len(unique_ids)}): {sorted_ids}")
                 print("---")
 
         process.stdout.close()
@@ -92,17 +93,18 @@ def show_nodes(device):
 
     except FileNotFoundError:
         print("Error: 'candump' command not found. Please make sure can-utils is installed.", file=sys.stderr)
-        sys.exit(1)
+        exit_code = 1
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")
-        if process:
-            process.terminate()
-        sys.exit(0)
     except Exception as e:
         print(f"An error occurred: {e}", file=sys.stderr)
+        exit_code = 1
+    finally:
         if process and process.poll() is None:
             process.terminate()
-        sys.exit(1)
+
+    print(f"\nTotal unique CAN IDs found: {len(unique_ids)}")
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
