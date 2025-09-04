@@ -182,6 +182,11 @@ if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
 	echo "Driver package extracted successfully."
 fi
 
+if [ -f "$TEGRA_DIR/tools/l4t_flash_prerequisites.sh" ]; then
+  echo "Running l4t_flash_prerequisites.sh..."
+  (cd "$TEGRA_DIR" && ./tools/l4t_flash_prerequisites.sh)
+fi
+
 prompt_user
 
 if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
