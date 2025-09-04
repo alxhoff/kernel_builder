@@ -74,6 +74,9 @@ BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
 KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
 DTB_FILE=$(to_absolute_path "$DTB_FILE")
 
+echo "Disabling USB autosuspend"
+echo -1 | sudo tee /sys/module/usbcore/parameters/autosuspend
+
 # Run the flash command
 CMD="$L4T_DIR/flash.sh -c $BOOTLOADER_PARTITION_XML -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
 
