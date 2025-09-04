@@ -55,14 +55,14 @@ if [[ ! -d "$ROOTFS_PATH" ]]; then
     exit 1
 fi
 
-echo "Holding nvidia-l4t-core package to prevent pre-installation script failure..."
-sudo chroot "$ROOTFS_PATH" apt-mark hold nvidia-l4t-core || true
+# echo "Holding nvidia-l4t-core package to prevent pre-installation script failure..."
+# sudo chroot "$ROOTFS_PATH" apt-mark hold nvidia-l4t-core || true
 
 echo "Applying Jetson binaries in $L4T_DIR..."
 sudo "$L4T_DIR/apply_binaries.sh"
 
-echo "Unholding nvidia-l4t-core package..."
-sudo chroot "$ROOTFS_PATH" apt-mark unhold nvidia-l4t-core || true
+# echo "Unholding nvidia-l4t-core package..."
+# sudo chroot "$ROOTFS_PATH" apt-mark unhold nvidia-l4t-core || true
 
 echo "Creating default user..."
 pushd "$L4T_DIR/tools" > /dev/null
