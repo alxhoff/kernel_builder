@@ -7,6 +7,7 @@ ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
 # Update the base image and install dependencies
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
 RUN apt-get update && apt-get install -y \
     apt-utils \
     locales \
@@ -28,8 +29,10 @@ RUN apt-get update && apt-get install -y \
     binutils \
     pkg-config \
     qt5-default \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    rsync \
+    cpio
+RUN apt-get clean
+RUN rm -rf /var/lib/apt/lists/*
 
 # Generate and configure locale
 RUN locale-gen en_US.UTF-8 && \
