@@ -207,6 +207,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
             elif target == "modules":
                 combined_command += f"{base_command} modules && "
                 combined_command += f"{base_command} modules_install INSTALL_MOD_PATH=../modules && "
+            elif target == "headers_install":
+                headers_path = f"../headers"
+                combined_command += f"mkdir -p {headers_path} && "
+                combined_command += f"{base_command} headers_install INSTALL_HDR_PATH={headers_path} && "
             else:
                 # General case for any target, including menuconfig
                 combined_command += f"{base_command} {target} && "
@@ -303,6 +307,10 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
             elif target == "modules":
                 combined_command_phase_1 += f"{base_command} modules && "
                 combined_command_phase_1 += f"{base_command} modules_install INSTALL_MOD_PATH=/builder/kernels/{kernel_name}/modules && "
+            elif target == "headers_install":
+                headers_path = f"/builder/kernels/{kernel_name}/headers"
+                combined_command_phase_1 += f"mkdir -p {headers_path} && "
+                combined_command_phase_1 += f"{base_command} headers_install INSTALL_HDR_PATH={headers_path} && "
             else:
                 # General case for any target, including menuconfig
                 combined_command_phase_1 += f"{base_command} {target} && "
