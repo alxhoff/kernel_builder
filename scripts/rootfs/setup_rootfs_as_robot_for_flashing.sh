@@ -23,8 +23,9 @@ Options:
   --dry-run              Simulate connectivity and cert fetch without execution.
   --password             Password for pulling VPN credentials.
   --skip-vpn	    Skips pulling and updaing the VPN certificates
-  --cert                 Provide the VPN certificate directly.
+  --crt                  Provide the VPN certificate directly.
   --key                  Provide the VPN key directly.
+  --zip                  Provide a zip file containing the VPN certificate and key.
   -h, --help             Show this help message and exit.
 
 Examples:
@@ -42,6 +43,7 @@ DRY_RUN=0
 PASSWORD=""
 SKIP_VPN=0
 SOC=""
+ZIP_PATH=""
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -73,7 +75,7 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1
       shift
       ;;
-	--skip-vpn) 
+	--skip-vpn)
 	  SKIP_VPN=1
 	  shift
 	  ;;
@@ -81,12 +83,16 @@ while [[ $# -gt 0 ]]; do
       PASSWORD="$2"
       shift 2
       ;;
-    --cert)
+    --crt)
       CERT_PATH="$2"
       shift 2
       ;;
     --key)
       KEY_PATH="$2"
+      shift 2
+      ;;
+    --zip)
+      ZIP_PATH="$2"
       shift 2
       ;;
     *)
@@ -133,13 +139,36 @@ fi
 
 if [[ "$DISTRO" == "ubuntu" ]]; then
    sudo apt-get update
-   sudo apt-get install -y qemu-user-static libxml2-utils sshpass curl
+   sudo apt-get install -y qemu-user-static libxml2-utils sshpass curl unzip
 fi
 
 # --- Pull certs and maybe chroot ---
 if [[ -n "$ROBOT_NUMBER" ]]; then
   LOCAL_DEST="$ROOTFS_PATH/etc/openvpn/cartken/2.0/crt"
   run mkdir -p "$LOCAL_DEST"
+
+  if [[ -n "$ZIP_PATH" ]]; then
+    TEMP_DIR=$(mktemp -d)
+    if [ -d "$TEMP_DIR" ]; then
+        trap 'rm -rf "$TEMP_DIR"' EXIT
+    else
+        echo "Failed to create temp directory" >&2
+        exit 1
+    fi
+    echo "Extracting certs from $ZIP_PATH..."
+    if ! unzip -j "$ZIP_PATH" -d "$TEMP_DIR"; then
+        echo "Failed to unzip $ZIP_PATH" >&2
+        exit 1
+    fi
+
+    CERT_PATH=$(find "$TEMP_DIR" -name "*.crt" | head -n 1)
+    KEY_PATH=$(find "$TEMP_DIR" -name "*.key" | head -n 1)
+
+    if [[ -z "$CERT_PATH" || -z "$KEY_PATH" ]]; then
+      echo "Error: .crt or .key file not found in the zip archive." >&2
+      exit 1
+    fi
+  fi
 
   NEED_CERT=0
   NEED_KEY=0
@@ -200,7 +229,7 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
       run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
     fi
   elif [[ "$SKIP_VPN" -eq 1 && ( "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ) ]]; then
-      echo "Error: --key or --cert missing, and --skip-vpn prevents fallback."
+      echo "Error: --key or --crt missing, and --skip-vpn prevents fallback."
       exit 1
   else
       echo "--skip-vpn active, skipping VPN certificate copy."
