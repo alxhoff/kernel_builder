@@ -31,7 +31,8 @@ RUN apt-get update && apt-get install -y \
     qt5-default \
     rsync \
     cpio \
-	libelf-dev
+	libelf-dev \
+	dwarves
 RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/*
 
