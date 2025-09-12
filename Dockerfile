@@ -30,7 +30,8 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     qt5-default \
     rsync \
-    cpio
+    cpio \
+	libelf-dev
 RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/*
 
