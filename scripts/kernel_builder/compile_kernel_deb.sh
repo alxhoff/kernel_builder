@@ -188,6 +188,18 @@ Maintainer: $DEBFULLNAME <$DEBEMAIL>
 Description: Linux kernel headers for ${KERNEL_VERSION}
 EOF
 
+# Create postinst script
+POSTINST_SCRIPT="$PKG_DIR/DEBIAN/postinst"
+cat << EOF > "$POSTINST_SCRIPT"
+#!/bin/sh
+set -e
+mkdir -p /lib/modules/${KERNEL_VERSION}
+ln -sfn /usr/src/${PKG_NAME} /lib/modules/${KERNEL_VERSION}/build
+exit 0
+EOF
+
+chmod +x "$POSTINST_SCRIPT"
+
 dpkg-deb --build "$PKG_DIR" "${PKG_NAME}_arm64.deb"
 rm -rf "$PKG_DIR"
 
