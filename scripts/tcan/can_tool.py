@@ -34,7 +34,14 @@ def setup_can(device):
 def trigger_can(device):
     """Sends a specific CAN frame to the device."""
     print(f"Sending trigger frame to {device}...")
-    run_command(f"cansend {device} 501##000.00.00.00.00.00.00.00")
+    id_map = {
+        "can4": 201,
+        "can5": 401,
+        "can6": 301,
+        "can7": 501,
+    }
+    can_id = id_map.get(device, 501)
+    run_command(f"cansend {device} {can_id}##000.00.00.00.00.00.00.00")
     print("Trigger frame sent.")
 
 def show_errors(device):
@@ -118,7 +125,7 @@ def monitor_dmesg(device, verbose=False):
     last_fgi = None
     active_fgi = None
     recent_ids = deque(maxlen=88)
-    
+
     expected_ids = set()
     collecting_expected_ids = True
 
@@ -149,9 +156,9 @@ def monitor_dmesg(device, verbose=False):
                     # Check for non-sequential FGI. Assuming 32-entry FIFO (0-31).
                     if last_fgi is not None and new_fgi != (last_fgi + 1) % 32:
                         print(f"Warning: FGI jump from {last_fgi} to {new_fgi}")
-                
+
                 last_fgi = new_fgi
-                
+
                 if verbose:
                     print(f"--- FGI batch: {active_fgi} ---")
                 continue
@@ -163,7 +170,7 @@ def monitor_dmesg(device, verbose=False):
             can_id_match = re.search(r'CAN-FD: id=0x([0-9a-fA-F]+)', line)
             if can_id_match:
                 can_id = int(can_id_match.group(1), 16)
-                
+
                 if verbose:
                     print(f"  ID: {can_id:x}")
 
@@ -185,10 +192,10 @@ def monitor_dmesg(device, verbose=False):
                         if verbose:
                             hex_expected_ids = [f'{i:x}' for i in sorted(list(expected_ids))]
                             print(f"  Expected set: {hex_expected_ids}")
-                
+
                 if not collecting_expected_ids:
                     unique_ids_in_window = set(recent_ids)
-                    
+
                     if len(unique_ids_in_window) < len(recent_ids):
                          print(f"  WARNING: Last {len(recent_ids)} messages contain duplicates. Only {len(unique_ids_in_window)} unique IDs.")
 
@@ -199,7 +206,7 @@ def monitor_dmesg(device, verbose=False):
                         print(f"  Missing from last {len(recent_ids)} ({len(missing_ids)} from expected set): {hex_missing_ids}")
                     elif verbose:
                         print("  All expected IDs are present in the last 88 messages.")
-                
+
                     if verbose:
                         print("---")
 
@@ -254,7 +261,7 @@ def monitor_interrupts(device):
                     with lock:
                         shared_data['latest_fgi'] = current_fgi
                         shared_data['total_fgi_updates'] += 1
-        
+
         except FileNotFoundError:
             with lock:
                 shared_data['error'] = "'dmesg' command not found"
@@ -323,14 +330,14 @@ def monitor_interrupts(device):
         except FileNotFoundError:
             print("Error: /proc/interrupts not found.", file=sys.stderr)
             sys.exit(1)
-        
+
         last_interrupt_count = initial_count
-        
+
         with lock:
             fgi_at_last_interrupt = shared_data['total_fgi_updates']
-        
+
         last_interrupt_time = time.time()
-        
+
         print("Waiting for first interrupt...")
 
         while True:
@@ -362,7 +369,7 @@ def monitor_interrupts(device):
                 with lock:
                     total_fgi = shared_data['total_fgi_updates']
                     latest_fgi = shared_data['latest_fgi']
-                
+
                 fgi_since_last = total_fgi - fgi_at_last_interrupt
 
                 print(f"Time since last: {time_since_last:7.4f}s | FGI changes: {fgi_since_last:3d} | Interrupts: {interrupts_fired:2d} | Last FGI: {str(latest_fgi):>3}")
@@ -377,7 +384,7 @@ def monitor_interrupts(device):
                 if shared_data['error']:
                     print(f"\nError in dmesg reader thread: {shared_data['error']}", file=sys.stderr)
                     break
-            
+
             time.sleep(0.001) # High frequency polling
 
     except KeyboardInterrupt:
@@ -399,7 +406,7 @@ def monitor_timing(device):
     periods = deque(maxlen=1000)
     process = None
     exit_code = 0
-    
+
     try:
         process = subprocess.Popen(
             ['dmesg', '-w'],
@@ -418,17 +425,17 @@ def monitor_timing(device):
             timestamp_match = re.search(r'^\[\s*(\d+\.\d+)\]', line)
             if timestamp_match:
                 current_timestamp = float(timestamp_match.group(1))
-                
+
                 if last_timestamp is not None:
                     period = current_timestamp - last_timestamp
                     periods.append(period)
-                    
+
                     avg_period = sum(periods) / len(periods)
                     min_period = min(periods)
                     max_period = max(periods)
-                    
+
                     print(f"Period: {period:.6f}s | Avg: {avg_period:.6f}s | Min: {min_period:.6f}s | Max: {max_period:.6f}s   ", end='\r')
-                
+
                 last_timestamp = current_timestamp
 
     except FileNotFoundError:
