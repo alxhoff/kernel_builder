@@ -391,6 +391,72 @@ def monitor_interrupts(device):
 
 
 
+def monitor_timing(device):
+    """Monitors dmesg for CAN-FD messages and calculates the time between them."""
+    print(f"Monitoring dmesg for CAN-FD messages on {device} to calculate timing (press Ctrl+C to stop)...")
+
+    last_timestamp = None
+    periods = deque(maxlen=1000)
+    process = None
+    exit_code = 0
+    
+    try:
+        process = subprocess.Popen(
+            ['dmesg', '-w'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+
+        for line in iter(process.stdout.readline, ''):
+            line = line.strip()
+            if f'tcan4x5x' not in line or f' {device}:' not in line or 'CAN-FD: id=' not in line:
+                continue
+
+            timestamp_match = re.search(r'^\[\s*(\d+\.\d+)\]', line)
+            if timestamp_match:
+                current_timestamp = float(timestamp_match.group(1))
+                
+                if last_timestamp is not None:
+                    period = current_timestamp - last_timestamp
+                    periods.append(period)
+                    
+                    avg_period = sum(periods) / len(periods)
+                    min_period = min(periods)
+                    max_period = max(periods)
+                    
+                    print(f"Period: {period:.6f}s | Avg: {avg_period:.6f}s | Min: {min_period:.6f}s | Max: {max_period:.6f}s   ", end='\r')
+                
+                last_timestamp = current_timestamp
+
+    except FileNotFoundError:
+        print("Error: 'dmesg' command not found.", file=sys.stderr)
+        exit_code = 1
+    except KeyboardInterrupt:
+        print("\nMonitoring stopped.")
+        # Print final stats
+        if periods:
+            avg_period = sum(periods) / len(periods)
+            min_period = min(periods)
+            max_period = max(periods)
+            print(f"\n--- Final Statistics ({len(periods)} samples) ---")
+            print(f"Average Period: {avg_period:.6f}s")
+            print(f"Min Period:     {min_period:.6f}s")
+            print(f"Max Period:     {max_period:.6f}s")
+
+    except Exception as e:
+        print(f"An error occurred: {e}", file=sys.stderr)
+        exit_code = 1
+    finally:
+        if process and process.poll() is None:
+            process.terminate()
+
+    sys.exit(exit_code)
+
+
+
 if __name__ == "__main__":
     if os.geteuid() != 0:
         print("This script must be run as root. Please use sudo.", file=sys.stderr)
@@ -408,6 +474,7 @@ if __name__ == "__main__":
     group.add_argument("--nodes", action="store_true", help="Show unique CAN node IDs from traffic.")
     group.add_argument("--dmesg", action="store_true", help="Monitor dmesg for tcan4x5x messages.")
     group.add_argument("--interrupt", action="store_true", help="Monitor interrupt and FGI events.")
+    group.add_argument("--timing", action="store_true", help="Monitor dmesg for CAN-FD message timing.")
 
     args = parser.parse_args()
 
@@ -425,3 +492,5 @@ if __name__ == "__main__":
         monitor_dmesg(args.device, args.verbose)
     elif args.interrupt:
         monitor_interrupts(args.device)
+    elif args.timing:
+        monitor_timing(args.device)
