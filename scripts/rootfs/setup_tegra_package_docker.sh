@@ -109,8 +109,8 @@ docker run --rm -i \
     --name "$CONTAINER_NAME" \
     --privileged \
     --network=host \
-    -v "$SCRIPT_DIR:$SCRIPT_DIR" \
-    -w "$SCRIPT_DIR" \
-    -e HOME="$SCRIPT_DIR" \
+    -v "$SCRIPT_DIR:/workspace" \
+    -w "/workspace" \
+    -e HOME="/workspace" \
     "$DOCKER_TAG" \
     /bin/bash -c "$CONTAINER_CMD"

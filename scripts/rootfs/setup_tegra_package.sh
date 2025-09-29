@@ -351,69 +351,69 @@ if [[ "$JUST_CLONE" == true ]]; then
 	exit 1
 fi
 
-# prompt_user
-#
-# if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
-#     echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
-#     if [ ! -d "$TEGRA_DIR/toolchain" ]; then
-#         sudo git clone --config core.symlinks=true --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
-#     fi
-#     echo "Toolchain cloned successfully."
-#
-#     prompt_user
-#
-#     echo "Building kernel"
-#     case "$JETPACK_VERSION" in
-#         5.1.2|5.1.3|5.1.4|5.1.5)
-#             sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
-#
-#             prompt_user
-#
-#             echo "Building display driver"
-#             echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION""
-#             sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION"
-#
-#             prompt_user
-#
-#             DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
-#             ROOTFS_DIR="$TEGRA_DIR/rootfs"
-#             ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
-#             KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
-#             ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra/opensrc-disp"
-#             echo "Copying display driver into our kernel at $ROOTFS_TARGET_MODULES_DIR"
-#             mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
-#             NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
-#             echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
-#             cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
-#
-#             echo "Running depmod on $KERNEL_VERSION for rootfs: $ROOTFS_DIR"
-#             depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
-#             ;;
-#         6.0DP|6.1|6.2)
-#             sudo $TEGRA_DIR/build_kernel_jp6.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
-#             ;;
-#         *)
-#             echo "Error: Unsupported JetPack version for kernel build."
-#             exit 1
-#             ;;
-#     esac
-# else
-#     echo "Skipping kernel build as requested."
-# fi
-#
-# prompt_user
-#
-# echo "Running get_packages.sh with access token and tag: $TAG..."
-# $TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
-# sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
+prompt_user
 
-# prompt_user
-#
-# if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-#     echo "Setting up chroot environment for SoC: $SOC..."
-#     sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
-# else
-#     echo "Skipping rootfs setup in chroot as requested."
-# fi
-#
-# echo "Setup completed successfully!"
+if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
+	echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
+	if [ ! -d "$TEGRA_DIR/toolchain" ]; then
+		sudo git clone --config core.symlinks=true --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+	fi
+	echo "Toolchain cloned successfully."
+
+	prompt_user
+
+	echo "Building kernel"
+	case "$JETPACK_VERSION" in
+		5.1.2|5.1.3|5.1.4|5.1.5)
+			sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+
+			prompt_user
+
+			echo "Building display driver"
+			echo "sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION""
+			sudo "$TEGRA_DIR/build_display_driver.sh" --toolchain "$TEGRA_DIR/toolchain" --kernel-sources "$TEGRA_DIR/kernel_src" --target-bsp "$JETPACK_VERSION"
+
+			prompt_user
+
+			DISPLAY_DRIVER_DIR="$TEGRA_DIR/jetson_display_driver"
+			ROOTFS_DIR="$TEGRA_DIR/rootfs"
+			ROOTFS_MODULES_DIR="$ROOTFS_DIR/lib/modules"
+			KERNEL_VERSION=$(find "$DISPLAY_DRIVER_DIR" -type f -name "Image" -exec strings {} \; | grep -m1 -Eo 'Linux version [^ ]+' | awk '{print $3}')
+			ROOTFS_TARGET_MODULES_DIR="$ROOTFS_MODULES_DIR/$KERNEL_VERSION/extra/opensrc-disp"
+			echo "Copying display driver into our kernel at $ROOTFS_TARGET_MODULES_DIR"
+			mkdir -p "$ROOTFS_TARGET_MODULES_DIR"
+			NVDISPLAY_MOD_DIR=$(find "$DISPLAY_DRIVER_DIR" -type f -name "nvidia.ko" -exec dirname {} \; | head -n1)
+			echo "nvidia.ko found in: $NVDISPLAY_MOD_DIR"
+			cp "$NVDISPLAY_MOD_DIR"/*.ko "$ROOTFS_TARGET_MODULES_DIR"
+
+			echo "Running depmod on $KERNEL_VERSION for rootfs: $ROOTFS_DIR"
+			depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
+			;;
+		6.0DP|6.1|6.2)
+			sudo $TEGRA_DIR/build_kernel_jp6.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+			;;
+		*)
+			echo "Error: Unsupported JetPack version for kernel build."
+			exit 1
+			;;
+	esac
+else
+	echo "Skipping kernel build as requested."
+fi
+
+prompt_user
+
+echo "Running get_packages.sh with access token and tag: $TAG..."
+$TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
+sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
+
+prompt_user
+
+if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+	echo "Setting up chroot environment for SoC: $SOC..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+else
+	echo "Skipping rootfs setup in chroot as requested."
+fi
+
+echo "Setup completed successfully!"
