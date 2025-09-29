@@ -84,6 +84,8 @@ case "$yn" in
     echo "Disabling watchdog on robot $robot_ip..."
     sshpass -p "$password" ssh -o StrictHostKeyChecking=no "$default_user@$robot_ip" \
       "echo '$password' | sudo -S cartken-toggle-watchdog off"
+    sshpass -p "$password" ssh -o StrictHostKeyChecking=no "$default_user@$robot_ip" \
+      "echo '$password' | sudo -S cansend can1 610#2f2b210950"
     ;;
   *)
     echo "Skipping watchdog disable.";;
