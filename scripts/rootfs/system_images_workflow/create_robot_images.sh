@@ -105,7 +105,7 @@ for R in "${RS[@]}"; do
     --robot "$R"
 
   echo "=== creating system images for robot $R ==="
-  sudo ./generate_partition_images.sh
+  sudo ./generate_partition_images.sh --l4t-dir "$L4T_DIR"
 
   echo "=== saving system images for robot $R ==="
   sudo ./save_system_images.sh \
