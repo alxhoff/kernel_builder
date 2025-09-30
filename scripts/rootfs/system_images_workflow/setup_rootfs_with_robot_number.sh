@@ -95,8 +95,25 @@ chmod 600 "$auth_file"
 chown -R 1000:1000 "$auth_dir"
 
 # 4) copy VPN crts
-src_crt="$VPN_DIR/$ROBOT/robot.crt"
-src_key="$VPN_DIR/$ROBOT/robot.key"
+robot_creds_dir="$VPN_DIR/$ROBOT"
+shopt -s nullglob
+cert_files=($robot_creds_dir/*.{crt,cert})
+key_files=($robot_creds_dir/*.key)
+shopt -u nullglob
+
+if ((${#cert_files[@]} != 1)); then
+    echo "❌ Error: Expected 1 certificate file (.crt/.cert) in '$robot_creds_dir', but found ${#cert_files[@]}." >&2
+    exit 1
+fi
+
+if ((${#key_files[@]} != 1)); then
+    echo "❌ Error: Expected 1 key file (.key) in '$robot_creds_dir', but found ${#key_files[@]}." >&2
+    exit 1
+fi
+
+src_crt="${cert_files[0]}"
+src_key="${key_files[0]}"
+
 dest_dir="$ROOTFS_DIR$REMOTE_CRT_PATH"
 mkdir -p "$dest_dir"
 cp -- "$src_crt" "$dest_dir/robot.crt"
