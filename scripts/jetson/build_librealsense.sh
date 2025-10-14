@@ -16,16 +16,16 @@ apt-get install -y \
   libxrandr-dev
 
 # Clone the repo if it doesn't exist, otherwise enter it
-if [[ -d librealsense_cartken ]]; then
-  cd librealsense_cartken
+if [[ -d librealsense ]]; then
+  cd librealsense
 else
-  git clone https://gitlab.com/cartken/librealsense_cartken.git
-  cd librealsense_cartken
+  git clone https://github.com/IntelRealSense/librealsense.git
+  cd librealsense
 fi
 
 # Checkout desired branch
-git fetch
-git checkout v2.56.4-cartken-metadata-d430-compat
+# git fetch
+# git checkout v2.56.4-cartken-metadata-d430-compat
 
 # Create and enter build directory
 mkdir -p build
