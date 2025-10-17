@@ -344,6 +344,21 @@ sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
 
 prompt_user
 
+echo "Running get_packages.sh with access token and tag: $TAG..."
+$TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
+sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
+
+prompt_user
+
+if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+	echo "Setting up chroot environment for SoC: $SOC..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+else
+	echo "Skipping rootfs setup in chroot as requested."
+fi
+
+prompt_user
+
 echo "Getting pinmux files"
 sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
 
@@ -399,21 +414,6 @@ if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
 	esac
 else
 	echo "Skipping kernel build as requested."
-fi
-
-prompt_user
-
-echo "Running get_packages.sh with access token and tag: $TAG..."
-$TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
-sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
-
-prompt_user
-
-if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-	echo "Setting up chroot environment for SoC: $SOC..."
-	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
-else
-	echo "Skipping rootfs setup in chroot as requested."
 fi
 
 echo "Setup completed successfully!"
