@@ -89,6 +89,8 @@ sleep "$DURATION"
 echo "--- Capture complete. Dumping and analyzing... ---" >&2
 CAPTURE_FILE=$(mktemp)
 cat /sys/kernel/debug/tracing/trace > "$CAPTURE_FILE"
+echo "--- Raw trace data ---" >&2
+cat "${CAPTURE_FILE}" >&2
 
 # --- Analysis Logic ---
 # Extract the event name (e.g., m_can_do_rx_poll_timing)
