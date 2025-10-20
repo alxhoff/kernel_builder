@@ -60,14 +60,18 @@ cleanup() {
         fi
     done
 
-    # Clean up the dummy device-tree file if it exists
-    if [ -f "$ROOTFS_DIR/proc/device-tree/compatible" ]; then
-        rm -rf "$ROOTFS_DIR/proc/device-tree"
-    fi
-
-    # Clean up the dummy nv_boot_control.conf file if it exists
+    # Clean up dummy files for chroot
     if [ -f "$ROOTFS_DIR/etc/nv_boot_control.conf" ]; then
         rm -f "$ROOTFS_DIR/etc/nv_boot_control.conf"
+    fi
+    if [ -d "$ROOTFS_DIR/etc/fake-device-tree" ]; then
+        rm -rf "$ROOTFS_DIR/etc/fake-device-tree"
+    fi
+    if [ -f "$ROOTFS_DIR/tmp/fakeroot.c" ]; then
+        rm -f "$ROOTFS_DIR/tmp/fakeroot.c"
+    fi
+    if [ -f "$ROOTFS_DIR/lib/fakeroot.so" ]; then
+        rm -f "$ROOTFS_DIR/lib/fakeroot.so"
     fi
 
     echo "Cleanup completed."
@@ -82,11 +86,9 @@ setup_orin_specific_files() {
     SOC_TYPE=$2
 
     if [ "$SOC_TYPE" == "orin" ]; then
-        echo "Creating dummy device-tree compatible file for Orin..."
-        mkdir -p "$ROOTFS_DIR/proc/device-tree"
-        printf "nvidia,p3737-0000+p3701-0000\0nvidia,p3701-0000\0nvidia,tegra234\0nvidia,tegra23x\0" > "$ROOTFS_DIR/proc/device-tree/compatible"
+        echo "Creating dummy files for Orin..."
 
-        echo "Creating /etc/nv_boot_control.conf for Orin..."
+        # Create dummy nv_boot_control.conf
         cat <<EOF > "$ROOTFS_DIR/etc/nv_boot_control.conf"
 TNSPEC 3700-500-0000-M.0-1-1-jetson-agx-orin-devkit-
 COMPATIBLE_SPEC 3701-300-0000--1--jetson-agx-orin-devkit-
@@ -97,6 +99,72 @@ TEGRA_CHIPID 0x23
 TEGRA_OTA_BOOT_DEVICE /dev/mtdblock0
 TEGRA_OTA_GPT_DEVICE /dev/mtdblock0
 EOF
+
+        # Create dummy device-tree file in /etc
+        mkdir -p "$ROOTFS_DIR/etc/fake-device-tree"
+        printf "nvidia,p3737-0000+p3701-0000\0nvidia,p3701-0000\0nvidia,tegra234\0nvidia,tegra23x\0" > "$ROOTFS_DIR/etc/fake-device-tree/compatible"
+
+        # Create the C source for the LD_PRELOAD library
+        cat <<'EOC' > "$ROOTFS_DIR/tmp/fakeroot.c"
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <stdarg.h>
+#include <fcntl.h>
+
+static const char* INTERCEPT_PATH = "/proc/device-tree/compatible";
+static const char* FAKE_PATH = "/etc/fake-device-tree/compatible";
+
+typedef int (*orig_open_f_type)(const char *pathname, int flags, ...);
+
+int open(const char *pathname, int flags, ...) {
+    mode_t mode = 0;
+    if (flags & O_CREAT) {
+        va_list args;
+        va_start(args, flags);
+        mode = va_arg(args, mode_t);
+        va_end(args);
+    }
+
+    if (strcmp(pathname, INTERCEPT_PATH) == 0) {
+        pathname = FAKE_PATH;
+    }
+
+    orig_open_f_type orig_open = (orig_open_f_type)dlsym(RTLD_NEXT, "open");
+
+    if (flags & O_CREAT) {
+        return orig_open(pathname, flags, mode);
+    } else {
+        return orig_open(pathname, flags);
+    }
+}
+
+typedef int (*orig_open64_f_type)(const char *pathname, int flags, ...);
+
+int open64(const char *pathname, int flags, ...) {
+    mode_t mode = 0;
+    if (flags & O_CREAT) {
+        va_list args;
+        va_start(args, flags);
+        mode = va_arg(args, mode_t);
+        va_end(args);
+    }
+
+    if (strcmp(pathname, INTERCEPT_PATH) == 0) {
+        pathname = FAKE_PATH;
+    }
+
+    orig_open64_f_type orig_open64 = (orig_open64_f_type)dlsym(RTLD_NEXT, "open64");
+
+    if (flags & O_CREAT) {
+        return orig_open64(pathname, flags, mode);
+    } else {
+        return orig_open64(pathname, flags);
+    }
+}
+EOC
     fi
 }
 
@@ -141,6 +209,36 @@ fi
 # Set up the dummy device-tree file before entering chroot
 setup_orin_specific_files "$ROOTFS_DIR" "$SOC_TYPE"
 
+# If Orin, compile the LD_PRELOAD library
+if [ "$SOC_TYPE" == "orin" ]; then
+    echo "Compiling fakeroot library for Orin..."
+    # Temporarily mount filesystems needed for compilation
+    for mount_point in proc sys dev; do
+        if ! mountpoint -q "$ROOTFS_DIR/$mount_point"; then
+            mount --bind "/$mount_point" "$ROOTFS_DIR/$mount_point"
+        fi
+    done
+    if ! chroot "$ROOTFS_DIR" /bin/bash -c "command -v gcc >/dev/null"; then
+        echo "Error: gcc is not found in the chroot environment. Cannot compile fakeroot library."
+        # Unmount temporary mounts
+        for mount_point in dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
+        exit 1
+    fi
+    chroot "$ROOTFS_DIR" gcc -shared -fPIC /tmp/fakeroot.c -o /lib/fakeroot.so -ldl
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to compile fakeroot library."
+        # Unmount temporary mounts
+        for mount_point in dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
+        exit 1
+    fi
+    # Unmount temporary mounts
+    for mount_point in dev sys proc; do
+        if mountpoint -q "$ROOTFS_DIR/$mount_point"; then
+            umount -l "$ROOTFS_DIR/$mount_point"
+        fi
+    done
+fi
+
 echo "Preparing to chroot into $ROOTFS_DIR with SOC type: $SOC_TYPE ($SOC)..."
 
 # Bind mount necessary filesystems
@@ -182,6 +280,12 @@ if [ -f "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list" ]; then
     sed -i "s|<SOC>|$SOC|g" "$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
 fi
 
+# Set LD_PRELOAD var for Orin
+LD_PRELOAD_VAR=""
+if [ "$SOC_TYPE" == "orin" ]; then
+    LD_PRELOAD_VAR="LD_PRELOAD=/lib/fakeroot.so"
+fi
+
 # If a command file is provided, execute each line inside the chroot
 if [ -n "$COMMAND_FILE" ]; then
     if [ ! -f "$COMMAND_FILE" ]; then
@@ -196,7 +300,7 @@ if [ -n "$COMMAND_FILE" ]; then
         [[ -z "$line" || "$line" =~ ^# ]] && continue
 
         echo "Running: $line"
-		chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; $line"
+		chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; export $LD_PRELOAD_VAR; $line"
 
         if [ $? -ne 0 ]; then
             echo "Error executing: $line"
@@ -210,7 +314,7 @@ fi
 
 # Enter the chroot environment
 echo "Entering chroot environment. Type 'exit' to leave."
-chroot "$ROOTFS_DIR" /bin/bash --login -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; exec bash"
+chroot "$ROOTFS_DIR" /bin/bash --login -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; export $LD_PRELOAD_VAR; exec bash"
 
 # Exit without running cleanup again
 exit 0
