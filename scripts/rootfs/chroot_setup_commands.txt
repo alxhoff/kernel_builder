@@ -1,6 +1,8 @@
 sudo apt update
 sudo apt install -y qemu
+apt-mark hold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
 sudo apt upgrade -y
+apt-mark unhold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
 sudo apt autoremove -y
 echo "Installing apt packages"
 apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim
