@@ -1,2 +1,2 @@
 apt update
-apt install -y libssl1.1 libglib2.0-0 apt-utils
+apt install -y libglib2.0-0 apt-utils
