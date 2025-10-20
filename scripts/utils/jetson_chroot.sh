@@ -117,8 +117,8 @@ EOF
 static const char* INTERCEPT_PATH = "/proc/device-tree/compatible";
 static const char* FAKE_PATH = "/etc/fake-device-tree/compatible";
 
+// --- open interceptors ---
 typedef int (*orig_open_f_type)(const char *pathname, int flags, ...);
-
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0;
     if (flags & O_CREAT) {
@@ -127,13 +127,10 @@ int open(const char *pathname, int flags, ...) {
         mode = va_arg(args, mode_t);
         va_end(args);
     }
-
-    if (strcmp(pathname, INTERCEPT_PATH) == 0) {
+    if (pathname && strcmp(pathname, INTERCEPT_PATH) == 0) {
         pathname = FAKE_PATH;
     }
-
     orig_open_f_type orig_open = (orig_open_f_type)dlsym(RTLD_NEXT, "open");
-
     if (flags & O_CREAT) {
         return orig_open(pathname, flags, mode);
     } else {
@@ -142,7 +139,6 @@ int open(const char *pathname, int flags, ...) {
 }
 
 typedef int (*orig_open64_f_type)(const char *pathname, int flags, ...);
-
 int open64(const char *pathname, int flags, ...) {
     mode_t mode = 0;
     if (flags & O_CREAT) {
@@ -151,18 +147,43 @@ int open64(const char *pathname, int flags, ...) {
         mode = va_arg(args, mode_t);
         va_end(args);
     }
-
-    if (strcmp(pathname, INTERCEPT_PATH) == 0) {
+    if (pathname && strcmp(pathname, INTERCEPT_PATH) == 0) {
         pathname = FAKE_PATH;
     }
-
     orig_open64_f_type orig_open64 = (orig_open64_f_type)dlsym(RTLD_NEXT, "open64");
-
     if (flags & O_CREAT) {
         return orig_open64(pathname, flags, mode);
     } else {
         return orig_open64(pathname, flags);
     }
+}
+
+// --- stat interceptors ---
+typedef int (*orig_xstat_f_type)(int ver, const char *path, struct stat *stat_buf);
+int __xstat(int ver, const char *path, struct stat *stat_buf) {
+    if (path && strcmp(path, INTERCEPT_PATH) == 0) {
+        path = FAKE_PATH;
+    }
+    orig_xstat_f_type orig_func = (orig_xstat_f_type)dlsym(RTLD_NEXT, "__xstat");
+    return orig_func(ver, path, stat_buf);
+}
+
+typedef int (*orig_xstat64_f_type)(int ver, const char *path, struct stat64 *stat_buf);
+int __xstat64(int ver, const char *path, struct stat64 *stat_buf) {
+    if (path && strcmp(path, INTERCEPT_PATH) == 0) {
+        path = FAKE_PATH;
+    }
+    orig_xstat64_f_type orig_func = (orig_xstat64_f_type)dlsym(RTLD_NEXT, "__xstat64");
+    return orig_func(ver, path, stat_buf);
+}
+
+typedef int (*orig_statx_f_type)(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
+int statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf) {
+    if (pathname && strcmp(pathname, INTERCEPT_PATH) == 0) {
+        pathname = FAKE_PATH;
+    }
+    orig_statx_f_type orig_func = (orig_statx_f_type)dlsym(RTLD_NEXT, "statx");
+    return orig_func(dirfd, pathname, flags, mask, statxbuf);
 }
 EOC
     fi
