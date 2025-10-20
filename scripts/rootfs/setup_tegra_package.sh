@@ -75,6 +75,7 @@ TAG="latest"
 SOC="orin"
 SKIP_KERNEL_BUILD=false
 SKIP_CHROOT_BUILD=false
+SKIP_PINMUX=false
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Function to show help
@@ -87,6 +88,7 @@ show_help() {
     echo "  --soc SOC               Specify SoC type for jetson_chroot.sh (default: $SOC)"
 	echo "  --skip-kernel-build		Skips building the kernel"
 	echo "  --skip-chroot-build		Skips updating and settup up the rootfs in a chroot"
+	echo "  --skip-pinmux		    Skips overriding the pinmux"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
 	echo "  --just-clone		    Only pulls the sources, nothing more"
     echo "  --prompt                Prompt user to press Enter at each major step"
@@ -127,6 +129,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-chroot-build)
             SKIP_CHROOT_BUILD=true
+            shift
+            ;;
+        --skip-pinmux)
+            SKIP_PINMUX=true
             shift
             ;;
         --prompt)
@@ -359,8 +365,12 @@ fi
 
 prompt_user
 
-echo "Getting pinmux files"
-sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
+if [[ "$SKIP_PINMUX" == false ]]; then
+	echo "Getting pinmux files"
+	sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
+else
+	echo "Skipping pinmux override as requested."
+fi
 
 if [[ "$JUST_CLONE" == true ]]; then
 	exit 1
