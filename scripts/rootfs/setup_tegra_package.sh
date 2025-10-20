@@ -321,12 +321,12 @@ done
 
 prompt_user
 
-# if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-#     echo "Setting up chroot environment for SoC: $SOC..."
-#     sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
-# else
-#     echo "Skipping rootfs setup in chroot as requested."
-# fi
+if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+	echo "Setting up chroot environment for SoC: $SOC..."
+	sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
+else
+	echo "Skipping rootfs setup in chroot as requested."
+fi
 
 rm $TEGRA_DIR/setup_tegra_package.sh
 echo "Setting execute permissions for scripts..."
@@ -350,11 +350,11 @@ sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
 
 prompt_user
 
-# if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-#     echo "Setting up chroot environment for SoC: $SOC..."
-#     sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
-# else
-#     echo "Skipping rootfs setup in chroot as requested."
+if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+	echo "Setting up chroot environment for SoC: $SOC..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+else
+	echo "Skipping rootfs setup in chroot as requested."
 fi
 
 prompt_user
