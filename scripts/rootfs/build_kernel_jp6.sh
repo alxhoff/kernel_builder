@@ -249,29 +249,29 @@ else
     exit 1
 fi
 
-for DTB_NAME in "${DTB_NAMES[@]}"; do
-    DTB_SRC="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot/dts/nvidia/$DTB_NAME"
-    KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
-    ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
-    ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
-
-    if [ -f "$DTB_SRC" ]; then
-        echo "Copying $DTB_NAME to $KERNEL_DTB_FILE..."
-        sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
-
-        echo "Copying $DTB_NAME to $ROOTFS_DTB_FILE..."
-        sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
-    else
-        echo "Error: $DTB_NAME not found at $DTB_SRC"
-        exit 1
-    fi
-done
-
-if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
-    sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
-else
-    sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
-fi
+# for DTB_NAME in "${DTB_NAMES[@]}"; do
+#     DTB_SRC="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+#     KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
+#     ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
+#     ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
+#
+#     if [ -f "$DTB_SRC" ]; then
+#         echo "Copying $DTB_NAME to $KERNEL_DTB_FILE..."
+#         sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
+#
+#         echo "Copying $DTB_NAME to $ROOTFS_DTB_FILE..."
+#         sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
+#     else
+#         echo "Error: $DTB_NAME not found at $DTB_SRC"
+#         exit 1
+#     fi
+# done
+#
+# if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
+#     sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
+# else
+#     sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
+# fi
 
 echo "Kernel build completed successfully!"
 
