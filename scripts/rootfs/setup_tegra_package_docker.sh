@@ -49,7 +49,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 # Set variables
 IMAGE="ubuntu:22.04"
 CONTAINER_NAME="tegra_setup"
-DOCKER_TAG="$CONTAINER_NAME:latest"
+DOCKER_TAG="jetson_builder:latest"
 SCRIPT_NAME="setup_tegra_package.sh"
 RUN_SETUP_SCRIPT=true
 
@@ -90,7 +90,7 @@ if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" || "$REBUILD" == tr
 	docker pull "$IMAGE"
     docker build -t "$DOCKER_TAG" - <<EOF
     FROM $IMAGE
-    RUN apt-get update && apt-get install -y sudo tar bzip2 git wget curl
+    RUN apt-get update && apt-get install -y sudo tar bzip2 git wget curl openssh-client iputils-ping docker.io
 	RUN apt-get update && apt-get install -y jq qemu-user-static binfmt-support
 	RUN apt-get update && apt-get install -y unzip build-essential kmod flex bison
 	RUN apt-get update && apt-get install -y libelf-dev bc dwarves ccache libncurses5-dev
@@ -110,6 +110,7 @@ docker run --rm -i \
     --privileged \
     --network=host \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "/var/run/docker.sock:/var/run/docker.sock" \
     -w "/workspace" \
     -e HOME="/workspace" \
     "$DOCKER_TAG" \
