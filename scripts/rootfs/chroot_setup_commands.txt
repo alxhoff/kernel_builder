@@ -3,6 +3,7 @@ sudo apt install -y qemu
 apt-mark hold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
 sudo apt upgrade -y
 apt-mark unhold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
+apt-mark hold nvidia-l4t-kernel nvidia-l4t-kernel-headers nvidia-l4t-kernel-dtbs
 sudo apt autoremove -y
 echo "Installing apt packages"
 apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim
@@ -13,16 +14,16 @@ pip install -U sphinx python-can
 echo "Installing viki"
 python3 -m pip install /root/packages/cartken-wheels/viki-*.whl
 echo "Installing cartken debians"
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-can-setup.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-can-interface.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-kernel-modules.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-access-point.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-modem-kernel-modules.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-wifi-tools.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-jetson-wifi-manager.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-networking-base.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial-credentials.deb
-dpkg -i /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-can-setup.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-can-interface.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-wifi-kernel-modules.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-wifi-access-point.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-modem-kernel-modules.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-wifi-tools.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-jetson-wifi-manager.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-networking-base.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-vpn-initial-credentials.deb
+dpkg -i --force-overwrite /root/packages/cartken-jetson-debians/cartken-vpn-initial.deb
 sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
 echo "root:$(openssl passwd -6 cartken)" | chpasswd -e
