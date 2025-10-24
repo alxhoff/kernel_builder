@@ -71,26 +71,7 @@ if [[ -z "$ROBOT_NUMBER" || -z "$SOC" || -z "$TAG" || -z "$TARGET_BSP" || -z "$B
     exit 1
 fi
 
-#!/usr/bin/env bash
-set -euo pipefail
 
-if [[ -f /etc/arch-release ]]; then
-    echo "[*] Detected Arch Linux"
-    sudo pacman -Sy --noconfirm docker qemu-user-static
-    sudo systemctl enable --now docker
-
-elif [[ -f /etc/debian_version ]]; then
-    echo "[*] Detected Debian/Ubuntu"
-    sudo apt-get update
-    sudo apt-get install -y qemu-user-static curl
-    sudo systemctl enable --now docker
-
-else
-    echo "❌ Unsupported distribution"
-    exit 1
-fi
-
-echo "[✓] Docker and qemu-user-static installed"
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
@@ -264,11 +245,6 @@ else
     grep -qxF "$SSH_KEY" "$AUTH_KEYS_PATH" || echo "$SSH_KEY" >> "$AUTH_KEYS_PATH"
     chmod 600 "$AUTH_KEYS_PATH"
 	chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
-fi
-
-if [ -f "$L4T_DIR/tools/l4t_flash_prerequisites.sh" ]; then
-  echo "Running l4t_flash_prerequisites.sh..."
-  (cd "$L4T_DIR" && ./tools/l4t_flash_prerequisites.sh)
 fi
 
 echo "Creating OTA payload (docker)..."

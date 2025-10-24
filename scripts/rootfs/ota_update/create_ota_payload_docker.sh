@@ -176,16 +176,18 @@ docker run --rm -it --privileged \
     -v "$SCRIPT_DIR:/workspace/script" \
     "$IMAGE_NAME" \
     bash -c "
+    cd /workspace/target_bsp/"$TARGET_BSP_VER"/Linux_for_Tegra/tools && \
+    sudo ./l4t_flash_prerequisites.sh && \
     cd /workspace/script && \
     sudo ./create_ota_payload.sh \
         --base-bsp /workspace/base_bsp/"$BASE_BSP_VER" \
         --target-bsp /workspace/target_bsp/"$TARGET_BSP_VER" \
         $(if [[ -n "$PARTITION_XML" ]]; then echo "--partition-xml /workspace/xml/$(basename "$PARTITION_XML")"; fi) \
-        $(if $FORCE_PARTITION_CHANGE; then echo '--force-partition-change'; fi) \
-        $(if $BUILD_BOOTLOADER; then echo '-b'; fi) \
-        $(if $BUILD_ROOTFS; then echo '-r'; fi) \
+        $(if $FORCE_PARTITION_CHANGE; then echo \'--force-partition-change\'; fi) \
+        $(if $BUILD_BOOTLOADER; then echo \'-b\'; fi) \
+        $(if $BUILD_ROOTFS; then echo \'-r\'; fi) \
 		$(if [[ -n "$DEPLOY_IP" ]]; then echo "--deploy $DEPLOY_IP"; fi) \
-        $(if $SKIP_BUILD; then echo '--skip-build'; fi)
+        $(if $SKIP_BUILD; then echo \'--skip-build\'; fi)
     "
 
 echo "OTA payload generation completed."
