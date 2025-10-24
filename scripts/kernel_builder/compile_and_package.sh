@@ -26,6 +26,7 @@ DTB_NAME_ARG=""
 LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
+BUILD_TARGET_ARG=""
 
 # Function to display help
 show_help() {

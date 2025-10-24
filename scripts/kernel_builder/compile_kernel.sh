@@ -24,6 +24,7 @@ shift # Shift arguments to parse the rest of the options
 CONFIG_ARG=""
 LOCALVERSION_ARG=""
 THREADS_ARG=""
+BUILD_TARGET_ARG=""
 DTB_NAME_ARG="--dtb-name tegra234-p3701-0000-p3737-0000.dtb"  # Default DTB name
 HOST_BUILD_ARG=""
 DRY_RUN_ARG=""
@@ -39,6 +40,7 @@ show_help() {
     echo "  --config <config-file>         Specify the kernel configuration file to use (e.g., defconfig, tegra_defconfig)."
     echo "  --localversion <version>       Set a local version string to append to the kernel version (e.g., -custom_version)."
     echo "  --threads <number>             Number of threads to use for compilation (default: use all available cores)."
+    echo "  --build-target <target>        Specify the make target for the kernel build (e.g., 'kernel', 'modules', 'dtbs')."
     echo "  --dtb-name <dtb-name>          Specify the name of the Device Tree Blob (DTB) file to be copied alongside the compiled kernel (default: tegra234-p3701-0000-p3737-0000.dtb)."
     echo "  --host-build                   Compile the kernel directly on the host instead of using Docker."
     echo "  --dry-run                      Print the commands without executing them."
@@ -74,7 +76,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --localversion)
       if [ -n "$2" ]; then
-        LOCALVERSION_ARG="--localversion \"$2\""
+        LOCALVERSION_ARG="--localversion "$2""
         shift 2
       else
         echo "Error: --localversion requires a value"
@@ -87,6 +89,15 @@ while [[ "$#" -gt 0 ]]; do
         shift 2
       else
         echo "Error: --threads requires a value"
+        exit 1
+      fi
+      ;;
+    --build-target)
+      if [ -n "$2" ]; then
+        BUILD_TARGET_ARG="--build-target $2"
+        shift 2
+      else
+        echo "Error: --build-target requires a value"
         exit 1
       fi
       ;;
@@ -119,7 +130,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name \"$KERNEL_NAME\" --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG"
+COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"
@@ -128,4 +139,3 @@ if [[ -n "$DRY_RUN_ARG" ]]; then
 else
   eval $COMMAND
 fi
-
