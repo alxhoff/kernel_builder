@@ -250,7 +250,7 @@ else
 fi
 
 for DTB_NAME in "${DTB_NAMES[@]}"; do
-	DTB_SRC="$KERNEL_OUT_DIR/kernel/$(basename "$KERNEL_SRC")/arch/arm64/boot/dts/nvidia/$DTB_NAME"
+	DTB_SRC="$KERNEL_OUT_DIR/kernel-devicetree/generic-dts/dtbs/$DTB_NAME"
 	KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
 	ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
 	ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
