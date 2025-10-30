@@ -27,6 +27,7 @@ LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
 BUILD_TARGET_ARG=""
+BUILD_DTB_ARG=""
 
 # Function to display help
 show_help() {
@@ -42,6 +43,7 @@ show_help() {
     --dry-run            Simulate the compilation and packaging processes without executing them.
     --threads <number>   Specify the number of threads to use during kernel compilation.
 	--dtb-name <name>    Specify a DTB filename to build.
+    --build-dtb          Build the Device Tree Blob (DTB) separately using 'make dtbs'.
 
   Examples:
     1. Compile and package the kernel with a custom configuration file:
@@ -107,6 +109,10 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --build-dtb)
+      BUILD_DTB_ARG="--build-dtb"
+      shift
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -120,7 +126,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi

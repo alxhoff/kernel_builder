@@ -6,17 +6,24 @@ import subprocess
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
 
-def locate_dtb_file(kernel_dir, dtb_name):
-    # Search for the specified DTB file within the kernel directory
-    find_command = f"find {kernel_dir} -name {dtb_name}"
-    print(f"Running DTB search command: {find_command}")  # Debugging print
-    try:
-        find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
-        if find_output:
-            print(f"DTB file found at: {find_output}")  # Debugging print
-            return find_output.splitlines()[0]  # Return the first match found
-    except subprocess.CalledProcessError:
-        print(f"Warning: DTB file {dtb_name} not found in {kernel_dir}.")  # Better logging
+def locate_dtb_file(kernel_name, dtb_name):
+    kernel_source_dir = os.path.join("kernels", kernel_name, "kernel", "kernel")
+    top_level_dir = os.path.join("kernels", kernel_name)
+    search_dirs = [kernel_source_dir, top_level_dir]
+
+    for search_dir in search_dirs:
+        # Search for the specified DTB file within the directory
+        find_command = f"find {search_dir} -name {dtb_name}"
+        print(f"Running DTB search command: {find_command}")
+        try:
+            find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+            if find_output:
+                print(f"DTB file found at: {find_output}")
+                return find_output.splitlines()[0]  # Return the first match found
+        except subprocess.CalledProcessError:
+            print(f"Info: DTB file {dtb_name} not found in {search_dir}.")
+    
+    print(f"Warning: DTB file {dtb_name} not found in any of the search paths.")
     return None
 
 def locate_target_modules(kernel_name):
@@ -159,7 +166,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command).wait()
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -188,6 +195,20 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
     if config or use_current_config:
         combined_command += f"{base_command} {config or 'oldconfig'} && "
 
+    if build_dtb:
+        top_level_makefile = os.path.join(kernels_dir, kernel_name, "Makefile")
+        if os.path.exists(top_level_makefile):
+            make_dir = os.path.join(kernels_dir, kernel_name)
+            
+            dtbs_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
+            if toolchain_name:
+                dtbs_make_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, 'bin', toolchain_name)}-"
+
+            dtbs_command = f"{dtbs_make_command} dtbs KERNEL_HEADERS={kernel_dir}"
+            combined_command += f"{dtbs_command} && "
+        else:
+             combined_command += f"{base_command} dtbs && "
+
     if build_target:
         targets = build_target.split(',')
         for target in targets:
@@ -198,7 +219,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                 combined_command += f"cp {kernel_dir}/arch/{arch}/boot/Image ../modules/boot/Image.{localversion} && "
                 # Copy the DTB file with modified filename to include localversion
                 if dtb_name:
-                    dtb_path = locate_dtb_file(kernel_dir, dtb_name)
+                    dtb_path = locate_dtb_file(kernel_name, dtb_name)
                     if dtb_path:
                         new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
                         combined_command += f"cp {dtb_path} ../modules/boot/{new_dtb_name} && "
@@ -244,7 +265,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -297,6 +318,21 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
     if config or use_current_config:
         combined_command_phase_1 += f"{base_command} {config or 'oldconfig'} && "
 
+    if build_dtb:
+        top_level_makefile_path_host = os.path.join("kernels", kernel_name, "Makefile")
+        if os.path.exists(top_level_makefile_path_host):
+            make_dir_docker = f"/builder/kernels/{kernel_name}"
+            kernel_source_dir_docker = f"/builder/kernels/{kernel_name}/kernel/kernel"
+
+            dtbs_make_command = f"make -C {make_dir_docker} ARCH={arch} -j{threads if threads else '$(nproc)'}"
+            if toolchain_name:
+                dtbs_make_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+            
+            dtbs_command = f"{dtbs_make_command} dtbs KERNEL_HEADERS={kernel_source_dir_docker}"
+            combined_command_phase_1 += f"{dtbs_command} && "
+        else:
+            combined_command_phase_1 += f"{base_command} dtbs && "
+
     # Add the kernel and module build targets to the first Docker invocation
     if build_target:
         targets = build_target.split(',')
@@ -343,7 +379,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
 
     # Copy the DTB file with modified filename to include localversion
     if dtb_name:
-        dtb_path = locate_dtb_file(f"kernels/{kernel_name}/kernel/kernel", dtb_name)
+        dtb_path = locate_dtb_file(kernel_name, dtb_name)
         if dtb_path:
             new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
             combined_command_phase_2 += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}"
@@ -475,6 +511,7 @@ def main():
     compile_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     compile_parser.add_argument("--dtb-name", help="Name of the DTB file to be copied alongside the compiled kernel")
+    compile_parser.add_argument("--build-dtb", action="store_true", help="Build the Device Tree Blob (DTB) separately using 'make dtbs'.")
     compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
     target_modules_parser = subparsers.add_parser("compile-target-modules")
@@ -522,6 +559,7 @@ def main():
                 use_current_config=args.use_current_config,
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
+                build_dtb=args.build_dtb,
                 dry_run=args.dry_run
             )
         else:
@@ -538,6 +576,7 @@ def main():
                 use_current_config=args.use_current_config,
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
+                build_dtb=args.build_dtb,
                 dry_run=args.dry_run
             )
     elif args.command == "compile-target-modules":
