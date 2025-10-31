@@ -86,7 +86,12 @@ update-initramfs -c -k {kernel_version}
 # Update extlinux.conf
 sed -i 's|LINUX .*|LINUX /boot/Image|' /boot/extlinux/extlinux.conf
 sed -i 's|INITRD .*|INITRD /boot/initrd.img-{kernel_version}|' /boot/extlinux/extlinux.conf
-sed -i 's|FDT .*|FDT /boot/dtb/{dtb_filename}|' /boot/extlinux/extlinux.conf
+if grep -q "^[[:space:]]*FDT " "/boot/extlinux/extlinux.conf"; then
+    sed -i 's|^[[:space:]]*FDT .*|      FDT /boot/dtb/{dtb_filename}|' "/boot/extlinux/extlinux.conf"
+else
+    sed -i '/^[[:space:]]*LINUX /a \      FDT /boot/dtb/{dtb_filename}' "/boot/extlinux/extlinux.conf"
+fi
+
 """
         with open(os.path.join(debian_control_dir, "postinst"), "w") as postinst_file:
             postinst_file.write(postinst_content)
