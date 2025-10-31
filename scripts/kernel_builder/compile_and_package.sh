@@ -28,6 +28,7 @@ DRY_RUN=false
 THREADS_ARG=""
 BUILD_TARGET_ARG=""
 BUILD_DTB_ARG=""
+OVERLAYS_ARG=""
 
 # Function to display help
 show_help() {
@@ -44,6 +45,7 @@ show_help() {
     --threads <number>   Specify the number of threads to use during kernel compilation.
 	--dtb-name <name>    Specify a DTB filename to build.
     --build-dtb          Build the Device Tree Blob (DTB) separately using 'make dtbs'.
+    --overlays <list>    A comma-separated list of DTBO files to apply as overlays.
 
   Examples:
     1. Compile and package the kernel with a custom configuration file:
@@ -113,6 +115,15 @@ while [[ "$#" -gt 0 ]]; do
       BUILD_DTB_ARG="--build-dtb"
       shift
       ;;
+    --overlays)
+      if [ -n "$2" ]; then
+        OVERLAYS_ARG="--overlays $2"
+        shift 2
+      else
+        echo "Error: --overlays requires a value"
+        exit 1
+      fi
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -126,7 +137,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG $OVERLAYS_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi
