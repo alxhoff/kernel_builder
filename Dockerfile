@@ -32,7 +32,8 @@ RUN apt-get update && apt-get install -y \
     rsync \
     cpio \
 	libelf-dev \
-	dwarves
+	dwarves \
+	device-tree-compiler
 RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/*
 

@@ -166,7 +166,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command).wait()
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -221,6 +221,42 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                 if dtb_name:
                     dtb_path = locate_dtb_file(kernel_name, dtb_name)
                     if dtb_path:
+                        if overlays:
+                            overlay_files = overlays.split(',')
+                            overlay_paths = []
+                            kernel_source_dir = os.path.join("kernels", kernel_name)
+                            for overlay_file in overlay_files:
+                                find_command = f"find {kernel_source_dir} -name {overlay_file}"
+                                try:
+                                    find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+                                    if find_output:
+                                        overlay_paths.append(find_output.splitlines()[0])
+                                    else:
+                                        print(f"Error: Overlay file {overlay_file} not found.")
+                                        return
+                                except subprocess.CalledProcessError:
+                                    print(f"Error: Failed to find overlay file {overlay_file}.")
+                                    return
+                            
+                            output_dtb_name = f"{os.path.splitext(dtb_name)[0]}-merged.dtb"
+                            output_dtb_path = os.path.join(os.path.dirname(dtb_path), output_dtb_name)
+                            
+                            fdtoverlay_command = f"fdtoverlay -i {dtb_path} -o {output_dtb_path} {' '.join(overlay_paths)}"
+                            print(f"Running fdtoverlay command: {fdtoverlay_command}")
+                            if not dry_run:
+                                try:
+                                    subprocess.run(fdtoverlay_command, shell=True, check=True)
+                                except FileNotFoundError:
+                                    print("Error: fdtoverlay command not found. Please install it.")
+                                    return
+                                except subprocess.CalledProcessError as e:
+                                    print(f"Error running fdtoverlay: {e}")
+                                    return
+                            
+                            print(f"Renaming {output_dtb_path} to {dtb_path}")
+                            if not dry_run:
+                                os.rename(output_dtb_path, dtb_path)
+
                         new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
                         combined_command += f"cp {dtb_path} ../modules/boot/{new_dtb_name} && "
                     else:
@@ -265,7 +301,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -370,21 +406,79 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         print(f"Running Docker command (Phase 1): {' '.join(full_command_phase_1)}")
         subprocess.Popen(full_command_phase_1, env=env).wait()
 
+    # Phase 1.5: Handle Overlays
+    if overlays:
+        if not dtb_name:
+            print("Error: --dtb-name must be provided when using --overlays.")
+            return
+
+        # Find the base DTB file path inside the container
+        base_dtb_path_host = locate_dtb_file(kernel_name, dtb_name)
+        if not base_dtb_path_host:
+            print(f"Error: Base DTB file {dtb_name} not found.")
+            return
+        
+        base_dtb_path_docker = base_dtb_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
+
+        # Find the overlay files paths inside the container
+        overlay_files = overlays.split(',')
+        overlay_paths_docker = []
+        kernel_source_dir_host = os.path.join("kernels", kernel_name)
+        for overlay_file in overlay_files:
+            find_command = f"find {kernel_source_dir_host} -name {overlay_file}"
+            try:
+                find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
+                if find_output:
+                    overlay_path_host = find_output.splitlines()[0]
+                    overlay_path_docker = overlay_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
+                    overlay_paths_docker.append(overlay_path_docker)
+                else:
+                    print(f"Error: Overlay file {overlay_file} not found.")
+                    return
+            except subprocess.CalledProcessError:
+                print(f"Error: Failed to find overlay file {overlay_file}.")
+                return
+
+        # Construct the fdtoverlay command for docker
+        output_dtb_name = f"{os.path.splitext(dtb_name)[0]}-merged.dtb"
+        output_dtb_path_docker = os.path.join(os.path.dirname(base_dtb_path_docker), output_dtb_name)
+
+        fdtoverlay_command = f"fdtoverlay -i {base_dtb_path_docker} -o {output_dtb_path_docker} {' '.join(overlay_paths_docker)}"
+
+        if dry_run:
+            print(f"[Dry-run] Would run fdtoverlay command in docker: {fdtoverlay_command}")
+        else:
+            print(f"Running fdtoverlay command in docker: {fdtoverlay_command}")
+            process = subprocess.Popen(docker_command_base + [fdtoverlay_command])
+            process.wait()
+            if process.returncode != 0:
+                print("Error: fdtoverlay command failed.")
+                return
+
+        # Now, on the host, rename the file
+        output_dtb_path_host = os.path.join(os.path.dirname(base_dtb_path_host), output_dtb_name)
+        print(f"Renaming {output_dtb_path_host} to {base_dtb_path_host}")
+        if not dry_run:
+            os.rename(output_dtb_path_host, base_dtb_path_host)
+
     # Phase 2: Copy Image and DTB after kernel build
-    combined_command_phase_2 = ""
+    commands_phase_2 = []
     # Conditional logic for the kernel image filename
     image_filename = f"Image.{localversion}" if localversion else "Image"
-    combined_command_phase_2 += f"mkdir -p /builder/kernels/{kernel_name}/modules/boot && "
-    combined_command_phase_2 += f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/{image_filename} && "
+    commands_phase_2.append(f"mkdir -p /builder/kernels/{kernel_name}/modules/boot")
+    commands_phase_2.append(f"cp /builder/kernels/{kernel_name}/kernel/kernel/arch/{arch}/boot/Image /builder/kernels/{kernel_name}/modules/boot/{image_filename}")
 
     # Copy the DTB file with modified filename to include localversion
     if dtb_name:
         dtb_path = locate_dtb_file(kernel_name, dtb_name)
         if dtb_path:
+            dtb_path_docker = dtb_path.replace(os.path.abspath("kernels"), "/builder/kernels")
             new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
-            combined_command_phase_2 += f"cp {dtb_path} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}"
+            commands_phase_2.append(f"cp {dtb_path_docker} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}")
         else:
             print(f"Warning: DTB file {dtb_name} not found in the kernel directory.")
+
+    combined_command_phase_2 = " && ".join(commands_phase_2)
 
     # Run the second Docker container session to copy the kernel Image and DTB
     if dry_run:
@@ -512,6 +606,7 @@ def main():
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     compile_parser.add_argument("--dtb-name", help="Name of the DTB file to be copied alongside the compiled kernel")
     compile_parser.add_argument("--build-dtb", action="store_true", help="Build the Device Tree Blob (DTB) separately using 'make dtbs'.")
+    compile_parser.add_argument("--overlays", help="Comma-separated list of DTBO files to apply as overlays.")
     compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
     target_modules_parser = subparsers.add_parser("compile-target-modules")
@@ -560,6 +655,7 @@ def main():
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
+                overlays=args.overlays,
                 dry_run=args.dry_run
             )
         else:
@@ -577,6 +673,7 @@ def main():
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
+                overlays=args.overlays,
                 dry_run=args.dry_run
             )
     elif args.command == "compile-target-modules":
