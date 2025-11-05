@@ -30,6 +30,8 @@ DRY_RUN=false
 THREADS_ARG=""
 KERNEL_ONLY=false
 DTB_FLAG=false
+TOOLCHAIN_NAME_ARG=""
+TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
 
 # Function to display help
 show_help() {
@@ -47,6 +49,8 @@ show_help() {
     --localversion <str> Set a custom local version string during kernel compilation. If not provided, a default string is generated.
     --dry-run            Simulate the compilation and/or deployment processes without actually executing them. Useful for debugging.
     --threads <number>   Specify the number of threads to use during kernel compilation for better performance.
+    --toolchain-name <name> Specify the toolchain to use (default: aarch64-buildroot-linux-gnu).
+    --toolchain-version <version> Specify the toolchain version to use (default: 9.3).
     --dtb                Set the newly compiled DTB as the default in the boot configuration.
 
   Examples:
@@ -124,6 +128,24 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --toolchain-name)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_NAME_ARG="--toolchain-name $2"
+        shift 2
+      else
+        echo "Error: --toolchain-name requires a value"
+        exit 1
+      fi
+      ;;
+    --toolchain-version)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_VERSION_ARG="--toolchain-version $2"
+        shift 2
+      else
+        echo "Error: --toolchain-version requires a value"
+        exit 1
+      fi
+      ;;
     --dtb)
       DTB_FLAG=true
       shift
@@ -141,7 +163,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel using the compile_kernel.sh script
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG; then
   echo "Kernel compilation failed. Aborting deployment."
   exit 1
 fi

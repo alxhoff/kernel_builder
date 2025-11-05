@@ -22,7 +22,8 @@ show_help() {
     echo "This script runs menuconfig for a specified kernel."
     echo ""
     echo "Options:"
-    echo "  --help            Display this help message with examples."
+    echo "  --toolchain-name <name>        Specify the toolchain to use (default: aarch64-buildroot-linux-gnu)."
+    echo "  --toolchain-version <version>  Specify the toolchain version to use (default: 9.3)."
     echo ""
     echo "Examples:"
     echo "  Run menuconfig for the 'jetson' kernel:"
@@ -38,20 +39,51 @@ if [[ "$#" -eq 0 || "$1" == "--help" ]]; then
     show_help
 fi
 
-# Parse the kernel name argument
-KERNEL_NAME="$1"
-shift # Remove the kernel name from the arguments
+# Initialize arguments
+TOOLCHAIN_NAME_ARG="--toolchain-name aarch64-buildroot-linux-gnu"
+TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
 
-# Remaining arguments to pass to kernel_builder.py
-EXTRA_ARGS="$@"
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --toolchain-name)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_NAME_ARG="--toolchain-name $2"
+        shift 2
+      else
+        echo "Error: --toolchain-name requires a value"
+        exit 1
+      fi
+      ;;
+    --toolchain-version)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_VERSION_ARG="--toolchain-version $2"
+        shift 2
+      else
+        echo "Error: --toolchain-version requires a value"
+        exit 1
+      fi
+      ;;
+    *)
+      # Assume the first non-option argument is the kernel name
+      if [ -z "$KERNEL_NAME" ]; then
+        KERNEL_NAME="$1"
+        shift
+      else
+        # Pass remaining arguments to kernel_builder.py
+        EXTRA_ARGS+=" $1"
+        shift
+      fi
+      ;;
+  esac
+done
 
 # Set the script directory to be one level up from the current script's directory
-SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
+SCRIPT_DIR="$(realpath "$(dirname "$0")"/..)"
 KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
 
 # Compile the kernel with the menuconfig target
 echo "Running menuconfig for kernel: $KERNEL_NAME"
-COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name \"$KERNEL_NAME\" --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --build-target savedefconfig $EXTRA_ARGS"
+COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name \"$KERNEL_NAME\" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG --build-target savedefconfig $EXTRA_ARGS"
 
 eval $COMMAND
-

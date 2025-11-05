@@ -14,6 +14,7 @@
 KERNEL_NAME=""
 ARCH="arm64"
 TOOLCHAIN_NAME="aarch64-buildroot-linux-gnu"
+TOOLCHAIN_VERSION="9.3"
 DRY_RUN=false
 
 # Parse script arguments
@@ -27,6 +28,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --kernel-name <name>   Specify the name of the kernel to be cleaned (e.g., \"jetson\")."
             echo "  --arch <arch>          Target architecture (default: arm64)."
             echo "  --toolchain-name       Name of the toolchain to use (default: aarch64-buildroot-linux-gnu)."
+    echo "  --toolchain-version    Version of the toolchain to use (default: 9.3)."
             echo "  --dry-run              Optional argument to simulate the mrproper cleaning process without making changes."
             echo
             echo "Description:"
@@ -64,6 +66,15 @@ while [[ "$#" -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        --toolchain-version)
+            if [ -n "$2" ]; then
+                TOOLCHAIN_VERSION="$2"
+                shift 2
+            else
+                echo "Error: --toolchain-version requires a value"
+                exit 1
+            fi
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -86,7 +97,7 @@ SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
 
 # Construct the command to run
-COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name $KERNEL_NAME --arch $ARCH --toolchain-name $TOOLCHAIN_NAME --build-target mrproper"
+COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name $KERNEL_NAME --arch $ARCH --toolchain-name $TOOLCHAIN_NAME --toolchain-version $TOOLCHAIN_VERSION --build-target mrproper"
 
 if [ "$DRY_RUN" == true ]; then
     COMMAND="$COMMAND --dry-run"

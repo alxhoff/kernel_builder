@@ -19,9 +19,9 @@ def clone_kernel(kernel_source_url, kernel_name, git_tag=None):
     else:
         print(f"Kernel directory {kernel_base_dir} already exists. Skipping clone.")
 
-def clone_toolchain(toolchain_url, toolchain_name, git_tag=None):
+def clone_toolchain(toolchain_url, toolchain_name, toolchain_version, git_tag=None):
     # Clones the toolchain source.
-    toolchain_dir = os.path.join("toolchains", toolchain_name)
+    toolchain_dir = os.path.join("toolchains", toolchain_name, toolchain_version)
     if not os.path.exists(toolchain_dir):
         clone_command = f"git clone {toolchain_url} {toolchain_dir}"
         print(f"Running command: {clone_command}")

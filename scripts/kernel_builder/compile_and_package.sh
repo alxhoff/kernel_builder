@@ -29,6 +29,8 @@ THREADS_ARG=""
 BUILD_TARGET_ARG=""
 BUILD_DTB_ARG=""
 OVERLAYS_ARG=""
+TOOLCHAIN_NAME_ARG=""
+TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
 
 # Function to display help
 show_help() {
@@ -43,6 +45,8 @@ show_help() {
     --localversion <str> Set a custom local version string during kernel compilation.
     --dry-run            Simulate the compilation and packaging processes without executing them.
     --threads <number>   Specify the number of threads to use during kernel compilation.
+    --toolchain-name <name> Specify the toolchain to use (default: aarch64-buildroot-linux-gnu).
+    --toolchain-version <version> Specify the toolchain version to use (default: 9.3).
 	--dtb-name <name>    Specify a DTB filename to build.
     --build-dtb          Build the Device Tree Blob (DTB) separately using 'make dtbs'.
     --overlays <list>    A comma-separated list of DTBO files to apply as overlays.
@@ -124,6 +128,24 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --toolchain-name)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_NAME_ARG="--toolchain-name $2"
+        shift 2
+      else
+        echo "Error: --toolchain-name requires a value"
+        exit 1
+      fi
+      ;;
+    --toolchain-version)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_VERSION_ARG="--toolchain-version $2"
+        shift 2
+      else
+        echo "Error: --toolchain-version requires a value"
+        exit 1
+      fi
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -137,7 +159,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG $OVERLAYS_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG $OVERLAYS_ARG $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi

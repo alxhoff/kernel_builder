@@ -22,7 +22,7 @@ def locate_dtb_file(kernel_name, dtb_name):
                 return find_output.splitlines()[0]  # Return the first match found
         except subprocess.CalledProcessError:
             print(f"Info: DTB file {dtb_name} not found in {search_dir}.")
-    
+
     print(f"Warning: DTB file {dtb_name} not found in any of the search paths.")
     return None
 
@@ -68,7 +68,7 @@ def locate_target_modules(kernel_name):
 
     return module_directories
 
-def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
+def compile_target_modules_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, localversion="", dry_run=False):
     """
     Compile targeted kernel modules directly on the host system.
     """
@@ -83,9 +83,9 @@ def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localver
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel")
     base_command = f"make -C {kernel_dir} ARCH={arch}"
 
-    if toolchain_name:
+    if toolchain_name and toolchain_version:
         # Get the absolute path for the cross compiler
-        toolchain_bin_path = os.path.abspath(os.path.join('toolchains', toolchain_name, 'bin', toolchain_name))
+        toolchain_bin_path = os.path.abspath(os.path.join('toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name))
         base_command += f" CROSS_COMPILE={toolchain_bin_path}-"
 
     if localversion:
@@ -100,7 +100,7 @@ def compile_target_modules_host(kernel_name, arch, toolchain_name=None, localver
             print(f"Running command: {module_command} for modules: {', '.join(modules['modules'])}")
             subprocess.Popen(module_command, shell=True).wait()
 
-def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
+def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, localversion="", dry_run=False):
     """
     Compile targeted kernel modules using Docker for encapsulation.
     """
@@ -134,8 +134,8 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
     # Base command for invoking make
     base_command = f"make ARCH={arch} -j{total_cpus if total_cpus else '$(nproc)'}"
 
-    if toolchain_name:
-        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+    if toolchain_name and toolchain_version:
+        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
 
     if localversion:
         base_command += f" LOCALVERSION=-{localversion}"
@@ -166,7 +166,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command).wait()
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -174,8 +174,8 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
     # Base command for invoking make
     base_command = f"make -C {kernel_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
 
-    if toolchain_name:
-        base_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, 'bin', toolchain_name)}-"
+    if toolchain_name and toolchain_version:
+        base_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
 
     if localversion:
         base_command += f" LOCALVERSION=-{localversion}"
@@ -199,10 +199,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         top_level_makefile = os.path.join(kernels_dir, kernel_name, "Makefile")
         if os.path.exists(top_level_makefile):
             make_dir = os.path.join(kernels_dir, kernel_name)
-            
+
             dtbs_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
-            if toolchain_name:
-                dtbs_make_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, 'bin', toolchain_name)}-"
+            if toolchain_name and toolchain_version:
+                dtbs_make_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
 
             dtbs_command = f"{dtbs_make_command} dtbs KERNEL_HEADERS={kernel_dir}"
             combined_command += f"{dtbs_command} && "
@@ -237,10 +237,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                                 except subprocess.CalledProcessError:
                                     print(f"Error: Failed to find overlay file {overlay_file}.")
                                     return
-                            
+
                             output_dtb_name = f"{os.path.splitext(dtb_name)[0]}-merged.dtb"
                             output_dtb_path = os.path.join(os.path.dirname(dtb_path), output_dtb_name)
-                            
+
                             fdtoverlay_command = f"fdtoverlay -i {dtb_path} -o {output_dtb_path} {' '.join(overlay_paths)}"
                             print(f"Running fdtoverlay command: {fdtoverlay_command}")
                             if not dry_run:
@@ -252,7 +252,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
                                 except subprocess.CalledProcessError as e:
                                     print(f"Error running fdtoverlay: {e}")
                                     return
-                            
+
                             print(f"Renaming {output_dtb_path} to {dtb_path}")
                             if not dry_run:
                                 os.rename(output_dtb_path, dtb_path)
@@ -301,7 +301,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, config=None, gen
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -329,15 +329,15 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
     # Base command for invoking make
     base_command = f"make -C /builder/kernels/{kernel_name}/kernel/kernel ARCH={arch} -j{threads if threads else '$(nproc)'}"
 
-    if toolchain_name:
-        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+    if toolchain_name and toolchain_version:
+        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
 
     if localversion:
         base_command += f" LOCALVERSION=-{localversion}"
 
     env = os.environ.copy()
-    if toolchain_name:
-        env["PATH"] = f"/builder/toolchains/{toolchain_name}/bin:" + env["PATH"]
+    if toolchain_name and toolchain_version:
+        env["PATH"] = f"/builder/toolchains/{toolchain_name}/{toolchain_version}/bin:" + env["PATH"]
 
     # If use_current_config is specified, get the current kernel config and place it in the kernel directory
     if use_current_config:
@@ -361,9 +361,9 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
             kernel_source_dir_docker = f"/builder/kernels/{kernel_name}/kernel/kernel"
 
             dtbs_make_command = f"make -C {make_dir_docker} ARCH={arch} -j{threads if threads else '$(nproc)'}"
-            if toolchain_name:
-                dtbs_make_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
-            
+            if toolchain_name and toolchain_version:
+                dtbs_make_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
+
             dtbs_command = f"{dtbs_make_command} dtbs KERNEL_HEADERS={kernel_source_dir_docker}"
             combined_command_phase_1 += f"{dtbs_command} && "
         else:
@@ -417,7 +417,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
         if not base_dtb_path_host:
             print(f"Error: Base DTB file {dtb_name} not found.")
             return
-        
+
         base_dtb_path_docker = base_dtb_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
 
         # Find the overlay files paths inside the container
@@ -492,7 +492,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, rpi_model=None
             print("Error: Docker encountered an error during execution.")
             exit(process.returncode)
 
-def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localversion="", dry_run=False):
+def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, localversion="", dry_run=False):
     """
     Compile targeted kernel modules using Docker for encapsulation.
     """
@@ -526,8 +526,8 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, localv
     # Base command for invoking make
     base_command = f"make ARCH={arch} -j{total_cpus if total_cpus else '$(nproc)'}"
 
-    if toolchain_name:
-        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/bin/{toolchain_name}-"
+    if toolchain_name and toolchain_version:
+        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
 
     if localversion:
         base_command += f" LOCALVERSION=-{localversion}"
@@ -576,6 +576,7 @@ def main():
     clone_toolchain_parser = subparsers.add_parser("clone-toolchain")
     clone_toolchain_parser.add_argument("--toolchain-url", required=True, help="URL of the toolchain to be cloned")
     clone_toolchain_parser.add_argument("--toolchain-name", required=True, help="Name for the toolchain subfolder")
+    clone_toolchain_parser.add_argument("--toolchain-version", required=True, help="Version for the toolchain")
     clone_toolchain_parser.add_argument("--git-tag", help="Git tag to check out after cloning the toolchain")
 
     # Clone overlays command
@@ -595,6 +596,7 @@ def main():
     compile_parser.add_argument("--kernel-name", required=True, help="Name of the kernel subfolder to use for compilation")
     compile_parser.add_argument("--arch", required=True, help="Target architecture (e.g., arm64 for Jetson)")
     compile_parser.add_argument("--toolchain-name", help="Name of the toolchain to use for cross-compiling")
+    compile_parser.add_argument("--toolchain-version", help="Version of the toolchain to use")
     compile_parser.add_argument("--rpi-model", help="Specify the Raspberry Pi model to compile the kernel for (e.g., rpi3 or rpi4)")
     compile_parser.add_argument("--config", help="Kernel configuration to use for compilation (e.g., defconfig, tegra_defconfig)")
     compile_parser.add_argument("--generate-ctags", action="store_true", help="Generate ctags/tags file for the kernel source")
@@ -613,6 +615,7 @@ def main():
     target_modules_parser.add_argument("--kernel-name", required=True, help="Name of the kernel subfolder to use for targeted module compilation")
     target_modules_parser.add_argument("--arch", required=True, help="Target architecture (e.g., arm64 for Jetson)")
     target_modules_parser.add_argument("--toolchain-name", help="Name of the toolchain to use for cross-compiling")
+    target_modules_parser.add_argument("--toolchain-version", help="Set the version of the toolchain to use")
     target_modules_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
     target_modules_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     target_modules_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
@@ -635,7 +638,7 @@ def main():
     elif args.command == "clone-kernel":
         clone_kernel(kernel_source_url=args.kernel_source_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "clone-toolchain":
-        clone_toolchain(toolchain_url=args.toolchain_url, toolchain_name=args.toolchain_name, git_tag=args.git_tag)
+        clone_toolchain(toolchain_url=args.toolchain_url, toolchain_name=args.toolchain_name, toolchain_version=args.toolchain_version, git_tag=args.git_tag)
     elif args.command == "clone-overlays":
         clone_overlays(overlays_url=args.overlays_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "clone-device-tree":
@@ -646,6 +649,7 @@ def main():
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
+                toolchain_version=args.toolchain_version,
                 config=args.config,
                 generate_ctags=args.generate_ctags,
                 build_target=args.build_target,
@@ -663,6 +667,7 @@ def main():
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
+                toolchain_version=args.toolchain_version,
                 rpi_model=args.rpi_model,
                 config=args.config,
                 generate_ctags=args.generate_ctags,
@@ -682,6 +687,7 @@ def main():
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
+                toolchain_version=args.toolchain_version,
                 localversion=args.localversion,
                 dry_run=args.dry_run
             )
@@ -690,6 +696,7 @@ def main():
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
+                toolchain_version=args.toolchain_version,
                 localversion=args.localversion,
                 dry_run=args.dry_run
             )

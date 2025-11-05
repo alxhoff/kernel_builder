@@ -30,6 +30,8 @@ BUILD_DTB_ARG=""
 HOST_BUILD_ARG=""
 DRY_RUN_ARG=""
 OVERLAYS_ARG=""
+TOOLCHAIN_NAME_ARG="--toolchain-name aarch64-buildroot-linux-gnu"
+TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
 
 # Function to display help message
 show_help() {
@@ -44,6 +46,8 @@ show_help() {
     echo "  --threads <number>             Number of threads to use for compilation (default: use all available cores)."
     echo "  --build-target <target>        Specify the make target for the kernel build (e.g., 'kernel', 'modules', 'dtbs')."
     echo "  --dtb-name <dtb-name>          Specify the name of the Device Tree Blob (DTB) file to be copied alongside the compiled kernel (default: tegra234-p3701-0000-p3737-0000.dtb)."
+    echo "  --toolchain-name <name>        Specify the toolchain to use (default: aarch64-buildroot-linux-gnu)."
+    echo "  --toolchain-version <version>  Specify the toolchain version to use (default: 9.3)."
     echo "  --build-dtb                    Build the Device Tree Blob (DTB) separately using 'make dtbs'."
     echo "  --overlays <list>              A comma-separated list of DTBO files to apply as overlays."
     echo "  --host-build                   Compile the kernel directly on the host instead of using Docker."
@@ -114,6 +118,24 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --toolchain-name)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_NAME_ARG="--toolchain-name $2"
+        shift 2
+      else
+        echo "Error: --toolchain-name requires a value"
+        exit 1
+      fi
+      ;;
+    --toolchain-version)
+      if [ -n "$2" ]; then
+        TOOLCHAIN_VERSION_ARG="--toolchain-version $2"
+        shift 2
+      else
+        echo "Error: --toolchain-version requires a value"
+        exit 1
+      fi
+      ;;
     --build-dtb)
       BUILD_DTB_ARG="--build-dtb"
       shift
@@ -147,7 +169,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $OVERLAYS_ARG"
+COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $OVERLAYS_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"

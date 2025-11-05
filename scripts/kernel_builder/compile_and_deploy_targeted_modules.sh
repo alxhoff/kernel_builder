@@ -26,6 +26,8 @@ if [[ "$1" == "--help" ]]; then
   echo "  --localversion <version> Set a custom local version string during kernel compilation."
   echo "  --dry-run                Simulate the deployment process without actually transferring files."
   echo "  --threads <number>       Specify the number of threads to use during kernel compilation."
+  echo "  --toolchain-name <name>  Specify the toolchain to use (default: aarch64-buildroot-linux-gnu)."
+  echo "  --toolchain-version <name>  Specify the toolchain version to use (default: 9.3)."
   echo "  --host-build             Perform the build on the host machine instead of using Docker."
   echo "  --help                   Show this help message and exit."
   echo ""
@@ -49,6 +51,8 @@ LOCALVERSION_ARG=""
 DRY_RUN=false
 THREADS_ARG=""
 HOST_BUILD=false
+TOOLCHAIN_NAME_ARG=""
+TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -100,6 +104,24 @@ while [[ "$#" -gt 0 ]]; do
       HOST_BUILD=true
       shift
       ;;
+    --toolchain-name)
+        if [ -n "$2" ]; then
+            TOOLCHAIN_NAME_ARG="--toolchain-name $2"
+            shift 2
+        else
+            echo "Error: --toolchain-name requires a value"
+            exit 1
+        fi
+        ;;
+    --toolchain-version)
+        if [ -n "$2" ]; then
+            TOOLCHAIN_VERSION_ARG="--toolchain-version $2"
+            shift 2
+        else
+            echo "Error: --toolchain-version requires a value"
+            exit 1
+        fi
+        ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -114,7 +136,7 @@ if [ -z "$KERNEL_NAME" ]; then
 fi
 
 # Run the build script
-BUILD_COMMAND="$BUILD_SCRIPT --kernel-name $KERNEL_NAME $CONFIG_ARG $LOCALVERSION_ARG $THREADS_ARG"
+BUILD_COMMAND="$BUILD_SCRIPT --kernel-name $KERNEL_NAME $CONFIG_ARG $LOCALVERSION_ARG $THREADS_ARG $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG"
 [ "$HOST_BUILD" == true ] && BUILD_COMMAND+=" --host-build"
 
 echo "Running build script: $BUILD_COMMAND"

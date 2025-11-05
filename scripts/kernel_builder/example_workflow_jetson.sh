@@ -42,7 +42,7 @@ KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
 python3 "$KERNEL_BUILDER_PATH" build
 
 # Clone the toolchain
-python3 "$KERNEL_BUILDER_PATH" clone-toolchain --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain --toolchain-name aarch64-buildroot-linux-gnu --git-tag $GIT_TAG
+python3 "$KERNEL_BUILDER_PATH" clone-toolchain --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain --toolchain-name aarch64-buildroot-linux-gnu --toolchain-version 9.3 --git-tag $GIT_TAG
 
 # Clone the kernel source
 python3 "$KERNEL_BUILDER_PATH" clone-kernel --kernel-source-url https://github.com/alxhoff/jetson-kernel --kernel-name jetson --git-tag $GIT_TAG
@@ -54,7 +54,7 @@ python3 "$KERNEL_BUILDER_PATH" clone-overlays --overlays-url https://github.com/
 python3 "$KERNEL_BUILDER_PATH" clone-device-tree --device-tree-url https://github.com/alxhoff/jetson-device-tree-hardware --kernel-name jetson --git-tag $GIT_TAG
 
 # Compile the kernel
-python3 "$KERNEL_BUILDER_PATH" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig
+python3 "$KERNEL_BUILDER_PATH" compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --toolchain-version 9.3 --config tegra_defconfig
 
 # Deploy to Jetson device (if not skipped)
 if [ "$NO_DEPLOY" == false ]; then
