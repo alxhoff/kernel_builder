@@ -27,6 +27,7 @@ THREADS_ARG=""
 BUILD_TARGET_ARG=""
 DTB_NAME_ARG="--dtb-name tegra234-p3701-0000-p3737-0000.dtb"  # Default DTB name
 BUILD_DTB_ARG=""
+BUILD_MODULES_ARG=""
 HOST_BUILD_ARG=""
 DRY_RUN_ARG=""
 OVERLAYS_ARG=""
@@ -49,6 +50,7 @@ show_help() {
     echo "  --toolchain-name <name>        Specify the toolchain to use (default: aarch64-buildroot-linux-gnu)."
     echo "  --toolchain-version <version>  Specify the toolchain version to use (default: 9.3)."
     echo "  --build-dtb                    Build the Device Tree Blob (DTB) separately using 'make dtbs'."
+    echo "  --build-modules                Build kernel modules separately using 'make modules'."
     echo "  --overlays <list>              A comma-separated list of DTBO files to apply as overlays."
     echo "  --host-build                   Compile the kernel directly on the host instead of using Docker."
     echo "  --dry-run                      Print the commands without executing them."
@@ -140,6 +142,10 @@ while [[ "$#" -gt 0 ]]; do
       BUILD_DTB_ARG="--build-dtb"
       shift
       ;;
+    --build-modules)
+      BUILD_MODULES_ARG="--build-modules"
+      shift
+      ;;
     --host-build)
       HOST_BUILD_ARG="--host-build"
       shift
@@ -169,7 +175,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $OVERLAYS_ARG"
+COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $BUILD_MODULES_ARG $OVERLAYS_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"

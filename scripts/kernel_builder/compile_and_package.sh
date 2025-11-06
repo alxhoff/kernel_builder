@@ -28,6 +28,7 @@ DRY_RUN=false
 THREADS_ARG=""
 BUILD_TARGET_ARG=""
 BUILD_DTB_ARG=""
+BUILD_MODULES_ARG=""
 OVERLAYS_ARG=""
 TOOLCHAIN_NAME_ARG=""
 TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
@@ -49,6 +50,7 @@ show_help() {
     --toolchain-version <version> Specify the toolchain version to use (default: 9.3).
 	--dtb-name <name>    Specify a DTB filename to build.
     --build-dtb          Build the Device Tree Blob (DTB) separately using 'make dtbs'.
+    --build-modules      Build kernel modules separately.
     --overlays <list>    A comma-separated list of DTBO files to apply as overlays.
 
   Examples:
@@ -119,6 +121,10 @@ while [[ "$#" -gt 0 ]]; do
       BUILD_DTB_ARG="--build-dtb"
       shift
       ;;
+    --build-modules)
+      BUILD_MODULES_ARG="--build-modules"
+      shift
+      ;;
     --overlays)
       if [ -n "$2" ]; then
         OVERLAYS_ARG="--overlays $2"
@@ -159,7 +165,7 @@ if [ -z "$LOCALVERSION_ARG" ]; then
 fi
 
 # Compile the kernel
-if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG $OVERLAYS_ARG $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG; then
+if ! "$KERNEL_BUILDER_SCRIPT" "$KERNEL_NAME" --localversion "$LOCALVERSION_ARG" $CONFIG_ARG $THREADS_ARG $DTB_NAME_ARG $BUILD_DTB_ARG $BUILD_MODULES_ARG $OVERLAYS_ARG $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG; then
   echo "Kernel compilation failed."
   exit 1
 fi

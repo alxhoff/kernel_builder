@@ -166,7 +166,7 @@ def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, toolch
         print(f"Running Docker command: {' '.join(full_command)}")
         subprocess.Popen(full_command).wait()
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -208,6 +208,20 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
             combined_command += f"{dtbs_command} && "
         else:
              combined_command += f"{base_command} dtbs && "
+
+    if build_modules:
+        top_level_makefile = os.path.join(kernels_dir, kernel_name, "Makefile")
+        if os.path.exists(top_level_makefile):
+            make_dir = os.path.join(kernels_dir, kernel_name)
+
+            modules_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
+            if toolchain_name and toolchain_version:
+                modules_make_command += f" CROSS_COMPILE={os.path.join('toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
+
+            modules_command = f"{modules_make_command} modules KERNEL_HEADERS={kernel_dir}"
+            combined_command += f"{modules_command} && "
+        else:
+             combined_command += f"{base_command} modules && "
 
     if build_target:
         targets = build_target.split(',')
@@ -301,7 +315,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
         print(f"Running combined command: {combined_command}")
         subprocess.Popen(combined_command, shell=True).wait()
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, overlays=None, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("kernels")
     toolchains_dir = os.path.join("toolchains")
@@ -368,6 +382,21 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
             combined_command_phase_1 += f"{dtbs_command} && "
         else:
             combined_command_phase_1 += f"{base_command} dtbs && "
+
+    if build_modules:
+        top_level_makefile_path_host = os.path.join("kernels", kernel_name, "Makefile")
+        if os.path.exists(top_level_makefile_path_host):
+            make_dir_docker = f"/builder/kernels/{kernel_name}"
+            kernel_source_dir_docker = f"/builder/kernels/{kernel_name}/kernel/kernel"
+
+            modules_make_command = f"make -C {make_dir_docker} ARCH={arch} -j{threads if threads else '$(nproc)'}"
+            if toolchain_name and toolchain_version:
+                modules_make_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
+
+            modules_command = f"{modules_make_command} modules KERNEL_HEADERS={kernel_source_dir_docker}"
+            combined_command_phase_1 += f"{modules_command} && "
+        else:
+            combined_command_phase_1 += f"{base_command} modules && "
 
     # Add the kernel and module build targets to the first Docker invocation
     if build_target:
@@ -608,6 +637,7 @@ def main():
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
     compile_parser.add_argument("--dtb-name", help="Name of the DTB file to be copied alongside the compiled kernel")
     compile_parser.add_argument("--build-dtb", action="store_true", help="Build the Device Tree Blob (DTB) separately using 'make dtbs'.")
+    compile_parser.add_argument("--build-modules", action="store_true", help="Build kernel modules separately.")
     compile_parser.add_argument("--overlays", help="Comma-separated list of DTBO files to apply as overlays.")
     compile_parser.add_argument("--dry-run", action="store_true", help="Print the commands without executing them")
 
@@ -659,6 +689,7 @@ def main():
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
+                build_modules=args.build_modules,
                 overlays=args.overlays,
                 dry_run=args.dry_run
             )
@@ -678,6 +709,7 @@ def main():
                 localversion=args.localversion,
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
+                build_modules=args.build_modules,
                 overlays=args.overlays,
                 dry_run=args.dry_run
             )
