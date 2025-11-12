@@ -6,6 +6,7 @@ branch=""
 use_docker=false
 all_args=($@)
 repo_name=""
+in_build_env=false # <-- ADDED
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -24,6 +25,10 @@ while [[ "$#" -gt 0 ]]; do
             fi
             branch="$2"
             shift 2
+            ;;
+        --build-env) # <-- ADDED
+            in_build_env=true
+            shift
             ;;
         *)
             echo "Unknown parameter passed: $1"
@@ -53,7 +58,7 @@ run_git_ops() {
              git reset --hard "origin/$remote_default"
         else
              git reset --hard "origin/$local_branch"
-        fi # <-- This was the missing 'fi'
+        fi
     fi
 
     if [[ -n "$branch" ]]; then
@@ -103,15 +108,20 @@ run_install_and_build() {
 CONTAINER_NAME="realsense-builder"
 
 # --- Main Execution Logic ---
-
-if [[ ! -f "/.dockerenv" ]]; then
-    run_git_ops
-fi
+# THIS SECTION IS REPLACED
 
 if [[ "$use_docker" = true ]]; then
-    if [[ -f "/.dockerenv" ]]; then
+    if [[ "$in_build_env" = true ]]; then
+        # === INSIDE BUILDER CONTAINER ===
+        # We are inside the recursive call. Repo is mounted.
+        # Just install and build.
         run_install_and_build
     else
+        # === ON HOST (or user's container) ===
+        # We need to get the code *before* starting the builder
+        run_git_ops
+
+        # Prep docker args
         docker_args=()
         for arg in "${all_args[@]}"; do
             if [[ "$arg" != "--docker" ]]; then
@@ -121,6 +131,7 @@ if [[ "$use_docker" = true ]]; then
 
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+        # Run or exec into the builder container
         if [[ -z "$(docker ps -a --filter name=$CONTAINER_NAME --format '{{.Names}}')" ]]; then
             docker run -it --name "$CONTAINER_NAME" \
                 -v "${SCRIPT_DIR}":"${SCRIPT_DIR}" \
@@ -128,16 +139,18 @@ if [[ "$use_docker" = true ]]; then
                 -w "${SCRIPT_DIR}" \
                 --privileged \
                 ubuntu:22.04 \
-                "${SCRIPT_DIR}/$(basename "$0")" --docker "${docker_args[@]}"
+                "${SCRIPT_DIR}/$(basename "$0")" --docker --build-env "${docker_args[@]}" # <-- ADDED --build-env
         else
             if [[ -z "$(docker ps --filter name=$CONTAINER_NAME --format '{{.Names}}')" ]]; then
                 docker start "$CONTAINER_NAME"
             fi
-            docker exec -it "$CONTAINER_NAME" /bin/bash -c "cd \"$SCRIPT_DIR\" && ./$(basename "$0") --docker ${docker_args[*]}"
+            docker exec -it "$CONTAINER_NAME" /bin/bash -c "cd \"$SCRIPT_DIR\" && ./$(basename "$0") --docker --build-env ${docker_args[*]}" # <-- ADDED --build-env
         fi
     fi
 else
+    # === LOCAL BUILD (no --docker) ===
+    # Run git ops first
+    run_git_ops
+    # Then install and build locally
     run_install_and_build
 fi
-
-
