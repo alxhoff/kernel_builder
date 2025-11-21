@@ -55,16 +55,38 @@ def send_serial_cobs(args, can_id, payload):
     print(f"Sending via SERIAL ({args.serial}) at {args.baud} baud...")
     print(f"  Index: {args.index}, ID: 0x{can_id:X}, Data: {payload.hex().upper()}")
 
-    # 1. Build the 73-byte Raw Packet
-    RAW_PACKET_FORMAT = '<BIBBBB64s'
-    data_padded = payload + (b'\x00' * (64 - len(payload)))
-    raw_pkt = struct.pack(RAW_PACKET_FORMAT,
-                          args.index,      # Index
-                          can_id,          # CAN ID
-                          len(payload),    # Length
-                          0, 0, 0,         # Flags, Res0, Res1
-                          data_padded      # Data
-                          )
+    if args.classic_can:
+        # --- 1. Build 17-byte Classic CAN Packet ---
+        print("  Mode: Classic CAN")
+
+        # Format: index(B) + can_frame(16 bytes)
+        # can_frame: can_id(I, 4), can_dlc(B, 1), pad(B, 1), res0(B, 1), res1(B, 1), data(8s, 8)
+        # Total format: <B I B B B B 8s (1 + 4 + 1 + 1 + 1 + 1 + 8 = 17 bytes)
+        RAW_PACKET_FORMAT_CLASSIC = '<BIBBBB8s'
+        data_padded = payload + (b'\x00' * (8 - len(payload)))
+        raw_pkt = struct.pack(RAW_PACKET_FORMAT_CLASSIC,
+                              args.index,     # Index
+                              can_id,         # CAN ID
+                              len(payload),   # DLC
+                              0, 0, 0,        # Pad, Res0, Res1
+                              data_padded     # Data
+                              )
+    else:
+        # --- 1. Build 73-byte CAN FD Packet ---
+        print("  Mode: CAN FD (default)")
+
+        # Format: index(B) + canfd_frame(72 bytes)
+        # canfd_frame: can_id(I, 4), len(B, 1), flags(B, 1), res0(B, 1), res1(B, 1), data(64s, 64)
+        # Total format: <B I B B B B 64s (1 + 4 + 1 + 1 + 1 + 1 + 64 = 73 bytes)
+        RAW_PACKET_FORMAT_FD = '<BIBBBB64s'
+        data_padded = payload + (b'\x00' * (64 - len(payload)))
+        raw_pkt = struct.pack(RAW_PACKET_FORMAT_FD,
+                              args.index,     # Index
+                              can_id,         # CAN ID
+                              len(payload),   # Length
+                              0, 0, 0,        # Flags (BRS=0, ESI=0), Res0, Res1
+                              data_padded     # Data
+                              )
 
     # 2. COBS Encode
     cobs_pkt = cobs_encode(raw_pkt)
@@ -89,13 +111,20 @@ def send_native_can(args, can_id, payload):
     print(f"Sending via NATIVE CAN interface ({args.can})...")
 
     is_extended = can_id > 0x7FF
+    is_fd_frame = not args.classic_can
+
+    if is_fd_frame:
+        print("  Mode: CAN FD (default)")
+    else:
+        print("  Mode: Classic CAN")
 
     try:
         # Create the message
         msg = can.Message(
             arbitration_id=can_id,
             data=payload,
-            is_extended_id=is_extended
+            is_extended_id=is_extended,
+            is_fd=is_fd_frame  # <-- Set CAN FD or Classic CAN
         )
 
         # More explicit output
@@ -104,7 +133,6 @@ def send_native_can(args, can_id, payload):
             print(f"  Verbose: {msg}")
 
         # Open the SocketCAN bus, send, and shut down
-        # FIX: Replaced 'bustype' with 'interface' to remove DeprecationWarning
         with can.interface.Bus(channel=args.can, interface='socketcan') as bus:
             bus.send(msg)
 
@@ -127,6 +155,9 @@ def main():
     parser.add_argument("--id", default=DEFAULT_CAN_ID, help=f"CAN ID in hex (default: {DEFAULT_CAN_ID})")
     parser.add_argument("--data", default=DEFAULT_CAN_DATA, help=f"CAN payload in hex (default: {DEFAULT_CAN_DATA})")
 
+    # NEW: Mode flag
+    parser.add_argument("--classic-can", action="store_true", help="Send a Classic CAN 2.0 frame (default is CAN FD)")
+
     # Serial-only options
     parser.add_argument("--index", type=int, default=DEFAULT_DEV_INDEX, help=f"Device index (for serial mode only, default: {DEFAULT_DEV_INDEX})")
     parser.add_argument("-b", "--baud", type=int, default=DEFAULT_BAUD, help=f"Baud rate (for serial mode only, default: {DEFAULT_BAUD})")
@@ -145,9 +176,15 @@ def main():
 
     try:
         payload = bytes.fromhex(args.data)
-        if len(payload) > 64:
-             print(f"Error: CAN data '{args.data}' is too long ({len(payload)} bytes). Max 64.")
+
+        # NEW: Check length based on mode
+        if args.classic_can and len(payload) > 8:
+            print(f"Error: --classic-can specified but data is too long ({len(payload)} bytes). Max 8.")
+            sys.exit(1)
+        elif not args.classic_can and len(payload) > 64:
+             print(f"Error: CAN FD data is too long ({len(payload)} bytes). Max 64.")
              sys.exit(1)
+
     except ValueError:
         print(f"Error: Invalid CAN data '{args.data}'. Must be hex string (e.g., 'DEADBEEF').")
         sys.exit(1)
