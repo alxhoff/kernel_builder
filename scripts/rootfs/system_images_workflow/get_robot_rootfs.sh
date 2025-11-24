@@ -58,17 +58,32 @@ fi
 # download if needed
 if [[ -z "$TAR_FILE" ]]; then
   echo "No tarball provided; downloading via gdown..."
+
+  # Determine which python executable to use for pip, favoring python3.8
+  PYTHON_EXE="python3"
+  if command -v python3.8 &> /dev/null; then
+      PYTHON_EXE="python3.8"
+  fi
+  echo "Using python executable: $PYTHON_EXE"
+
   if grep -qi ubuntu /etc/os-release; then
 	  sudo apt-get update -y
-	  sudo apt-get install -y python3-pip curl
+	  sudo apt-get install --reinstall -y python3-pip python3-setuptools python3-distutils curl
   fi
-  # install gdown
-  if pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
-    pip install --break-system-packages --upgrade gdown
+  # Check if the tarball already exists
+  if [[ -f "$SCRIPT_DIR/$TAR_NAME" ]]; then
+    echo "Tarball '$SCRIPT_DIR/$TAR_NAME' already exists; skipping download."
   else
-    pip install --upgrade gdown
+    # install gdown
+    echo "Installing gdown"
+    if "$PYTHON_EXE" -m pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
+      "$PYTHON_EXE" -m pip install --break-system-packages --upgrade gdown --user
+    else
+      "$PYTHON_EXE" -m pip install --upgrade gdown --user
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+    "$PYTHON_EXE" -m gdown "$FILE_ID" -O "$SCRIPT_DIR/$TAR_NAME"
   fi
-  gdown "$FILE_ID" -O "$SCRIPT_DIR/$TAR_NAME"
   TAR_FILE="$SCRIPT_DIR/$TAR_NAME"
 fi
 
