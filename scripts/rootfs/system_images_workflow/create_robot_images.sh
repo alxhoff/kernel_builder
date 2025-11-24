@@ -13,6 +13,7 @@ IMAGES_DIR="$default_images_dir"
 L4T_DIR="$default_l4t_dir"
 CRED_ZIP=""
 HAVE_CREDENTIALS=false
+ROOTFS_GID=""
 
 usage() {
   cat <<EOF
@@ -23,7 +24,8 @@ Usage: $0 \
   [--vpn-output DIR] \
   [--images-dir DIR] \
   [--credentials-zip ZIP] \
-  [--have-credentials]
+  [--have-credentials] \
+  [--rootfs-gid GID]
 
   --robots           Comma-separated list of robot IDs (required)
   --password         Password for sshpass (required)
@@ -32,6 +34,7 @@ Usage: $0 \
   --images-dir       Root dir for per-robot images (default: $default_images_dir)
   --credentials-zip  Zip containing credentials; if set, unzip into --vpn-output and skip fetching
   --have-credentials For the case that you have already added the robot's credentials to $default_vpn_dir
+  --rootfs-gid       Google Drive file ID for the rootfs tarball
 EOF
   exit 1
 }
@@ -46,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --images-dir)     IMAGES_DIR="$2";   shift 2;;
     --credentials-zip)CRED_ZIP="$2";     shift 2;;
 	--have-credentials) HAVE_CREDENTIALS=true; shift 1;;
+    --rootfs-gid)     ROOTFS_GID="$2";   shift 2;;
     -h|--help)        usage;;
     *)                echo "Unknown arg: $1" >&2; usage;;
   esac
@@ -64,7 +68,11 @@ fi
 # ensure L4T exists, else fetch it
 if [[ ! -d $L4T_DIR ]]; then
   echo "L4T directory '$L4T_DIR' not found; running get_robot_rootfs.sh..."
-  "$SCRIPT_DIR/get_robot_rootfs.sh"
+  if [[ -n "$ROOTFS_GID" ]]; then
+    "$SCRIPT_DIR/get_robot_rootfs.sh" --rootfs-gid "$ROOTFS_GID"
+  else
+    "$SCRIPT_DIR/get_robot_rootfs.sh"
+  fi
   if [[ ! -d $L4T_DIR ]]; then
     echo "❌ failed to obtain L4T directory at '$L4T_DIR'" >&2
     exit 1

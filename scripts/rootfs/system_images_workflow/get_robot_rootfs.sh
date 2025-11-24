@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # --- Config ---
-FILE_ID="1-MEJNanz2eWXEhm5JC2tyiCAf8BLX_9h"
+default_file_id="1-MEJNanz2eWXEhm5JC2tyiCAf8BLX_9h"
+FILE_ID="$default_file_id"
 TAR_NAME="cartken_flash.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXTRACT_DIR="$SCRIPT_DIR/cartken_flash"
@@ -10,11 +11,12 @@ L4T_DIR="$EXTRACT_DIR/Linux_for_Tegra"
 
 usage() {
   cat <<EOF
-Usage: $0 [--tar PATH]
+Usage: $0 [--tar PATH] [--rootfs-gid GID]
 
 Options:
-  --tar <path>    Use a local tarball instead of downloading via gdown
-  -h, --help      Show this help message and exit
+  --tar <path>        Use a local tarball instead of downloading via gdown
+  --rootfs-gid <gid>  Google Drive file ID for the rootfs tarball (default: $default_file_id)
+  -h, --help          Show this help message and exit
 
 This script downloads (or uses a provided) flash bundle and extracts it
 into the "cartken_flash" folder under the script's directory.
@@ -28,6 +30,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --tar)
       TAR_FILE="$2"
+      shift 2
+      ;;
+    --rootfs-gid)
+      FILE_ID="$2"
       shift 2
       ;;
     -h|--help)
