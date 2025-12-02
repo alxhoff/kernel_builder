@@ -1,0 +1,72 @@
+From 161b4f15c35429155cc46063f8bba78a1a969eb2 Mon Sep 17 00:00:00 2001
+From: Anubhav Rai <arai@nvidia.com>
+Date: Wed, 11 Oct 2023 15:52:48 +0000
+Subject: [PATCH 18/20] vi5: continue captures even after corr errors
+
+even if the channel encounters corr error, continue
+captures anticipating that channel might recover in
+future.
+This also prevents high CPU usage of the dequeue thread
+in corr error usecase.
+
+bug 4310063
+
+Change-Id: I49a30f9f5583badf77ecd5c60b94009f786a0b7a
+Signed-off-by: Anubhav Rai <arai@nvidia.com>
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c  | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 6a2064d49..e2d3931bf 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -527,6 +527,7 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+ 	int err = 0;
++	bool frame_err = false;
+ 	int vi_port = 0;
+ 	int gang_prev_frame_id = 0;
+ 	unsigned long flags;
+@@ -570,12 +571,7 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 					"err_data %d\n",
+ 					descr->status.frame_id, descr->status.flags,
+ 					descr->status.err_data);
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
+-					buf->vb2_state = VB2_BUF_STATE_REQUEUEING;
+-#else
+-					buf->vb2_state = VB2_BUF_STATE_ERROR;
+-#endif
+-			goto done;
++				frame_err = true;
+ 			}
+ 		} else if (!vi_port) {
+ 			gang_prev_frame_id = descr->status.frame_id;
+@@ -607,7 +603,14 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ #endif
+ 	vb->vb2_buf.timestamp = descr->status.sof_timestamp;
+ 
+-	buf->vb2_state = VB2_BUF_STATE_DONE;
++	if (frame_err)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
++		buf->vb2_state = VB2_BUF_STATE_REQUEUEING;
++#else
++		buf->vb2_state = VB2_BUF_STATE_ERROR;
++#endif
++	else
++		buf->vb2_state = VB2_BUF_STATE_DONE;
+ 	/* Read EOF from capture descriptor */
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
+ 	ts = ns_to_timespec((s64)descr->status.eof_timestamp);
+@@ -620,7 +623,6 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	trace_tegra_channel_capture_frame("eof", &ts);
+ #endif
+ 
+-done:
+ 	goto rel_buf;
+ 
+ uncorr_err:
+-- 
+2.51.0
+

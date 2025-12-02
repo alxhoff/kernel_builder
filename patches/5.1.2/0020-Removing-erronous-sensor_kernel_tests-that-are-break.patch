@@ -1,0 +1,27 @@
+From a57cba0457544dd87fcd4d4c3a9c7dfbe577e7eb Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Tue, 2 Dec 2025 14:26:43 +0100
+Subject: [PATCH 20/20] Removing erronous sensor_kernel_tests that are breaking
+ build
+
+---
+ .../drivers/media/platform/tegra/camera/tests/Makefile      | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/tests/Makefile b/kernel/nvidia/drivers/media/platform/tegra/camera/tests/Makefile
+index c979ce75a..3922facda 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/tests/Makefile
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/tests/Makefile
+@@ -9,6 +9,6 @@ obj-y += utils/tegracam_log.o
+ 
+ #######################################
+ # Sensor Kernel Tests Module
+-obj-$(CONFIG_VIDEO_CAMERA_SKT) += sensor_kernel_tests.o
+-sensor_kernel_tests-y += modules/sensor_kernel_tests_core.o
+-sensor_kernel_tests-y += modules/sensor_kernel_tests_runner.o
++# obj-$(CONFIG_VIDEO_CAMERA_SKT) += sensor_kernel_tests.o
++# sensor_kernel_tests-y += modules/sensor_kernel_tests_core.o
++# sensor_kernel_tests-y += modules/sensor_kernel_tests_runner.o
+-- 
+2.51.0
+

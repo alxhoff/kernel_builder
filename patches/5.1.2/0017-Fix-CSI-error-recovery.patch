@@ -1,0 +1,125 @@
+From 3a1b3483277e4ca23d4a4f9bad75e40d9658216b Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian@matician.com>
+Date: Mon, 29 Jan 2024 15:31:02 -0800
+Subject: [PATCH 17/20] Fix CSI error recovery
+
+It was happening while the VI error recovery had temporarily freed the
+vi_channel, which means the CSI error recovery failed and left things in
+a bad state.
+
+Also fix leaking opened files by vi_channel_open_ex directly, to
+match with the existing vi_channel_close_ex.
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 49 +++++++------------
+ 1 file changed, 19 insertions(+), 30 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index b5498fc3d..6a2064d49 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -36,9 +36,6 @@
+ #define PG_BITRATE		32
+ #define SLVSEC_STREAM_MAIN	0U
+ 
+-#define VI_CHANNEL_DEV "/dev/capture-vi-channel"
+-#define VI_CHAN_PATH_MAX 40
+-
+ #define CAPTURE_TIMEOUT_MS	2500
+ 
+ static const struct vi_capture_setup default_setup = {
+@@ -234,18 +231,15 @@ static int vi5_add_ctrls(struct tegra_channel *chan)
+ static int vi5_channel_open(struct tegra_channel *chan, u32 vi_port)
+ {
+ 	bool found = false;
+-	char chanFilePath[VI_CHAN_PATH_MAX];
+ 	int channel = 0;
+-	struct file *filp = NULL;
+-	long err = 0;
++	struct tegra_vi_channel *vi_channel = NULL;
++	int err;
+ 
+ 	while (!found) {
+-		sprintf(chanFilePath, "%s%u", VI_CHANNEL_DEV, channel);
+-
+-		filp = filp_open(chanFilePath, O_RDONLY, 0);
++		vi_channel = vi_channel_open_ex(channel, true);
+ 
+-		if (IS_ERR(filp)) {
+-			err = PTR_ERR(filp);
++		if (IS_ERR(vi_channel)) {
++			err = PTR_ERR(vi_channel);
+ 			/* Retry with the next available channel. Opening
+ 			 * a channel number greater than the ones supported
+ 			 * by the platform will trigger a ENODEV from the
+@@ -256,20 +250,18 @@ static int vi5_channel_open(struct tegra_channel *chan, u32 vi_port)
+ 			else {
+ 				dev_err(&chan->video->dev,
+ 					"Error opening VI capture channel \
+-					node %s with err: %ld \n", \
+-					chanFilePath, err);
++					number %d with err: %d\n", \
++					channel, err);
+ 				return -ENODEV;
+ 			}
+ 		} else
+ 			found = true;
+ 	}
+ 
+-	err = 0;
+ 	chan->vi_channel_id[vi_port] = channel;
++	chan->tegra_vi_channel[vi_port] = vi_channel;
+ 
+-	chan->tegra_vi_channel[vi_port] = filp->private_data;
+-
+-	return err;
++	return 0;
+ }
+ 
+ static int vi5_channel_setup_queue(struct tegra_channel *chan,
+@@ -648,8 +640,9 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 	int err = 0;
+ 	int vi_port = 0;
+ 	struct tegra_channel_buffer *buf;
+-	struct tegra_mc_vi *vi = chan->vi;
+-	struct v4l2_subdev *csi_subdev;
++
++	/* csi stream/sensor(s) devices to be stopped before vi channel */
++	tegra_channel_set_stream(chan, false);
+ 
+ 	/* stop vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+@@ -687,17 +680,6 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 	if (queue_error)
+ 		vb2_queue_error(&chan->queue);
+ 
+-	/* reset nvcsi stream */
+-	csi_subdev = tegra_channel_find_linked_csi_subdev(chan);
+-	if (!csi_subdev) {
+-		dev_err(vi->dev, "unable to find linked csi subdev\n");
+-		err = -1;
+-		goto done;
+-	}
+-
+-	v4l2_subdev_call(csi_subdev, core, sync,
+-		V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER);
+-
+ 	/* restart vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+ 		err = vi5_channel_open(chan, vi_port);
+@@ -722,6 +704,13 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 	/* clear capture channel error state */
+ 	chan->capture_state = CAPTURE_IDLE;
+ 
++	/* csi stream/sensor devices should be streamon post vi channel setup */
++	err = tegra_channel_set_stream(chan, true);
++	if (err < 0) {
++		dev_err(&chan->video->dev, "failed to restart CSI stream\n");
++		goto done;
++	}
++
+ done:
+ 	return err;
+ }
+-- 
+2.51.0
+

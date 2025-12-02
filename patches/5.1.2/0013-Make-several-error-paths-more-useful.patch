@@ -1,0 +1,49 @@
+From febcc404a44f5eb8093f8e21fbbe5d050216b1bc Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Thu, 9 Jan 2020 10:48:24 -0800
+Subject: [PATCH 13/20] Make several error paths more useful
+
+Things do a better job recovering this way.
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c       | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 325ff2b78..5e9f1ff3d 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -644,13 +644,14 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 		if (chan->tegra_vi_channel[vi_port]) {
+ 			err = vi_capture_release(chan->tegra_vi_channel[vi_port],
+ 				CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
+-			if (err) {
++			if (err)
+ 				dev_err(&chan->video->dev, "vi capture release failed\n");
+-				goto done;
+-			}
++			/* even if it's half-stopped, we still want to close it */
+ 			vi_channel_close_ex(chan->vi_channel_id[vi_port],
+ 						chan->tegra_vi_channel[vi_port]);
+ 			chan->tegra_vi_channel[vi_port] = NULL;
++			if (err)
++				goto done;
+ 		}
+ 	}
+ 
+@@ -693,8 +694,12 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 			goto done;
+ 		}
+ 		err = tegra_channel_capture_setup(chan, vi_port);
+-		if (err < 0)
++		if (err < 0) {
++			vi_channel_close_ex(chan->vi_channel_id[vi_port],
++					chan->tegra_vi_channel[vi_port]);
++			chan->tegra_vi_channel[vi_port] = NULL;
+ 			goto done;
++		}
+ 	}
+ 
+ 	chan->sequence = 0;
+-- 
+2.51.0
+

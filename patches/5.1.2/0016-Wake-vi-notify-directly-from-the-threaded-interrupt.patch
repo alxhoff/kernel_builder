@@ -1,0 +1,94 @@
+From 2905172627b0c5e1bb0dd23718443b710645bb8e Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Fri, 13 Mar 2020 15:43:05 -0700
+Subject: [PATCH 16/20] Wake vi-notify directly from the threaded interrupt
+
+The work being deferred to the workqueue is small, and it's a threaded
+interrupt anyways.
+
+This removes a context switch and avoids doing work in a context (the
+workqueue) where it can't be prioritized.
+---
+ .../drivers/platform/tegra/rtcpu/capture-ivc-priv.h   |  9 +++------
+ .../nvidia/drivers/platform/tegra/rtcpu/capture-ivc.c | 11 ++---------
+ 2 files changed, 5 insertions(+), 15 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
+index 6fbc18226..c76764f23 100644
+--- a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
++++ b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
+@@ -54,8 +54,6 @@ struct tegra_capture_ivc {
+ 	struct mutex cb_ctx_lock;
+ 	/** Channel write lock */
+ 	struct mutex ivc_wr_lock;
+-	/** Deferred work */
+-	struct work_struct work;
+ 	/** Channel work queue head */
+ 	wait_queue_head_t write_q;
+ 	/** Array holding callbacks registered by each channel */
+@@ -97,13 +95,12 @@ static struct tegra_capture_ivc *__scivc_control;
+ static struct tegra_capture_ivc *__scivc_capture;
+ 
+ /**
+- * @brief Worker thread to handle the asynchronous msgs on the IVC channel.
++ * @brief Handles the asynchronous msgs on the IVC channel.
+ 	This will further calls callbacks registered by Channel drivers.
+  *
+- * @param[in]	work	work_struct pointer
++ * @param[in]	civc	tegra_capture_ivc pointer
+  */
+-static void tegra_capture_ivc_worker(
+-	struct work_struct *work);
++static void tegra_capture_ivc_do_notify(struct tegra_capture_ivc *civc);
+ 
+ /**
+  * @brief Implementation of IVC notify operation which gets called when we any
+diff --git a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc.c b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc.c
+index c5e1bc519..25aee542d 100644
+--- a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc.c
++++ b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc.c
+@@ -356,12 +356,10 @@ static inline void tegra_capture_ivc_recv(struct tegra_capture_ivc *civc)
+ 	}
+ }
+ 
+-static void tegra_capture_ivc_worker(struct work_struct *work)
++static void tegra_capture_ivc_do_notify(struct tegra_capture_ivc *civc)
+ {
+-	struct tegra_capture_ivc *civc;
+ 	struct tegra_ivc_channel *chan;
+ 
+-	civc = container_of(work, struct tegra_capture_ivc, work);
+ 	chan = civc->chan;
+ 
+ 	/*
+@@ -386,7 +384,7 @@ static void tegra_capture_ivc_notify(struct tegra_ivc_channel *chan)
+ 
+ 	/* Only 1 thread can wait on write_q, rest wait for write_lock */
+ 	wake_up(&civc->write_q);
+-	schedule_work(&civc->work);
++	tegra_capture_ivc_do_notify(civc);
+ }
+ 
+ #define NV(x) "nvidia," #x
+@@ -415,9 +413,6 @@ static int tegra_capture_ivc_probe(struct tegra_ivc_channel *chan)
+ 	mutex_init(&civc->cb_ctx_lock);
+ 	mutex_init(&civc->ivc_wr_lock);
+ 
+-	/* Initialize ivc_work */
+-	INIT_WORK(&civc->work, tegra_capture_ivc_worker);
+-
+ 	/* Initialize wait queue */
+ 	init_waitqueue_head(&civc->write_q);
+ 
+@@ -451,8 +446,6 @@ static void tegra_capture_ivc_remove(struct tegra_ivc_channel *chan)
+ {
+ 	struct tegra_capture_ivc *civc = tegra_ivc_channel_get_drvdata(chan);
+ 
+-	cancel_work_sync(&civc->work);
+-
+ 	if (__scivc_control == civc)
+ 		__scivc_control = NULL;
+ 	else if (__scivc_capture == civc)
+-- 
+2.51.0
+

@@ -1,0 +1,84 @@
+From 2a4e96adb475530f3e93522f0c53420857bdc4f7 Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Thu, 9 Jan 2020 10:47:33 -0800
+Subject: [PATCH 12/20] Fix the error paths in vi_capture_setup
+
+They now do a much better job leaving things in the state they started
+if something in the middle fails, and not crashing.
+---
+ .../tegra/camera/fusa-capture/capture-vi.c    | 39 +++++++++++++++++--
+ 1 file changed, 35 insertions(+), 4 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+index 5a3030e13..d82f9d901 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+@@ -815,22 +815,52 @@ int vi_capture_setup(
+ 			transaction);
+ 	if (err < 0) {
+ 		dev_err(chan->dev, "failed to update control callback\n");
+-		goto cb_fail;
++		goto chan_cb_fail;
+ 	}
++	/* At this point, we've unregistered transaction */
++	transaction = 0;
+ 
+ 	err = tegra_capture_ivc_register_capture_cb(
+ 			&vi_capture_ivc_status_callback,
+ 			capture->channel_id, capture);
+ 	if (err < 0) {
+ 		dev_err(chan->dev, "failed to register capture callback\n");
+-		goto cb_fail;
++		goto capture_cb_fail;
+ 	}
+ 
+ 	channels[setup->csi_stream_id][setup->virtual_channel_id] = chan;
+ 
+ 	return 0;
+ 
+-cb_fail:
++capture_cb_fail:
++	err = tegra_capture_ivc_unregister_control_cb(capture->channel_id);
++	if (err < 0)
++		dev_err(chan->dev,
++			"%s: failed to unregister control callback: %d\n",
++			__func__, err);
++chan_cb_fail:
++	memset(&control_desc, 0, sizeof(control_desc));
++	control_desc.header.msg_id = CAPTURE_CHANNEL_RELEASE_REQ;
++	control_desc.header.channel_id = capture->channel_id;
++	control_desc.channel_release_req.reset_flags =
++		CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE;
++
++	/* The locking here is somewhat best-effort. Something went wrong, and
++	 * it's unclear exactly what, so hopefully this will be good enough. At
++	 * least it will prevent somebody from reusing the callback slot
++	 * occupied waiting for the CAPTURE_CHANNEL_RELEASE_RESP. */
++	mutex_lock(&channel_alloc_lock);
++	err = vi_capture_ivc_send_control(chan, &control_desc,
++			sizeof(control_desc), CAPTURE_CHANNEL_RELEASE_RESP);
++	mutex_unlock(&channel_alloc_lock);
++	if (err < 0) {
++		dev_err(chan->dev, "%s: control failed to release\n", __func__);
++		goto resp_fail;
++	}
++	if (resp_msg->channel_release_resp.result != CAPTURE_OK)
++		dev_err(chan->dev, "%s: control failed to release, errno %d",
++				__func__,
++				resp_msg->channel_release_resp.result);
+ resp_fail:
+ submit_fail:
+ 	vfree(capture->unpins_list);
+@@ -844,7 +874,8 @@ unpin_alloc_fail:
+ 		capture->requests_memoryinfo_iova);
+ 	capture->requests_memoryinfo = NULL;
+ memoryinfo_alloc_fail:
+-	tegra_capture_ivc_unregister_control_cb(transaction);
++	if (transaction != 0)
++		tegra_capture_ivc_unregister_control_cb(transaction);
+ control_cb_fail:
+ 	vi_capture_release_syncpts(chan);
+ syncpt_fail:
+-- 
+2.51.0
+

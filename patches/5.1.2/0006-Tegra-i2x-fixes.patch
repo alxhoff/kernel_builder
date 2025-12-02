@@ -1,0 +1,25 @@
+From b687cd18b72b0be30cb247af2dddc3f7e638fee1 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Fri, 28 Nov 2025 14:17:28 +0100
+Subject: [PATCH 06/20] Tegra i2x fixes
+
+---
+ kernel/kernel/drivers/i2c/busses/i2c-tegra.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/kernel/drivers/i2c/busses/i2c-tegra.c b/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
+index 22672c53c..eb89b3aed 100644
+--- a/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
++++ b/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
+@@ -1738,7 +1738,7 @@ static int tegra_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
+ 
+ 	if (adap->bus_clk_rate != i2c_dev->bus_clk_rate) {
+ 		i2c_dev->bus_clk_rate = adap->bus_clk_rate;
+-		 tegra_i2c_change_clock_rate(i2c_dev);
++		 ret = tegra_i2c_change_clock_rate(i2c_dev);
+ 		 if (ret) {
+ 			 dev_err(i2c_dev->dev,
+ 					 "failed changing clock rate: %d\n", ret);
+-- 
+2.51.0
+
