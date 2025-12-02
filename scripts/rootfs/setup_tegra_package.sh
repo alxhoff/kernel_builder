@@ -217,7 +217,25 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 	echo "JetPack \"$JETPACK_VERSION\" detected, extracting kernel sources"
 
 	case "$JETPACK_VERSION" in
-		5.1.2|5.1.3|5.1.4|5.1.5)
+		5.1.2)
+			sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+
+			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
+				if [[ ! -d "$TEGRA_DIR/kernel_src/nvdisplay" && ! -d "$TEGRA_DIR/kernel_src/NVIDIA-kernel-module-source-TempVersion" ]]; then
+					echo "Extracting NVIDIA kernel display driver source..."
+					sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" -C "$TEGRA_DIR/kernel_src"
+					echo "Extraction completed."
+				fi
+
+				if [ -d "$TEGRA_DIR/kernel_src/NVIDIA-kernel-module-source-TempVersion" ]; then
+					echo "Renaming NVIDIA-kernel-module-source-TempVersion to nvdisplay"
+					sudo mv "$TEGRA_DIR/kernel_src/NVIDIA-kernel-module-source-TempVersion" "$TEGRA_DIR/kernel_src/nvdisplay"
+				fi
+			else
+				echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
+			fi
+			;;
+		5.1.3|5.1.4|5.1.5)
 			sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
 
 			if [[ -f "$TMP_DIR/Linux_for_Tegra/source/public/nvidia_kernel_display_driver_source.tbz2" ]]; then
