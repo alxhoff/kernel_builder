@@ -234,26 +234,30 @@ setup_orin_specific_files "$ROOTFS_DIR" "$SOC_TYPE"
 if [ "$SOC_TYPE" == "orin" ]; then
     echo "Compiling fakeroot library for Orin..."
     # Temporarily mount filesystems needed for compilation
-    for mount_point in proc sys dev; do
+    for mount_point in proc sys dev dev/pts dev/shm; do
         if ! mountpoint -q "$ROOTFS_DIR/$mount_point"; then
-            mount --bind "/$mount_point" "$ROOTFS_DIR/$mount_point"
+            case $mount_point in
+                dev/pts) mount -t devpts -o gid=5,mode=620 devpts "$ROOTFS_DIR/$mount_point" ;;
+                dev/shm) mount -t tmpfs shm "$ROOTFS_DIR/$mount_point" ;;
+                *) mount --bind "/$mount_point" "$ROOTFS_DIR/$mount_point" ;;
+            esac
         fi
     done
     if ! chroot "$ROOTFS_DIR" /bin/bash -c "command -v gcc >/dev/null"; then
         echo "Error: gcc is not found in the chroot environment. Cannot compile fakeroot library."
         # Unmount temporary mounts
-        for mount_point in dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
+        for mount_point in dev/pts dev/shm dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
         exit 1
     fi
     chroot "$ROOTFS_DIR" gcc -shared -fPIC /tmp/fakeroot.c -o /lib/fakeroot.so -ldl
     if [ $? -ne 0 ]; then
         echo "Error: Failed to compile fakeroot library."
         # Unmount temporary mounts
-        for mount_point in dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
+        for mount_point in dev/pts dev/shm dev sys proc; do umount -l "$ROOTFS_DIR/$mount_point"; done
         exit 1
     fi
     # Unmount temporary mounts
-    for mount_point in dev sys proc; do
+    for mount_point in dev/pts dev/shm dev sys proc; do
         if mountpoint -q "$ROOTFS_DIR/$mount_point"; then
             umount -l "$ROOTFS_DIR/$mount_point"
         fi
