@@ -1,7 +1,7 @@
 sudo apt update
 sudo apt install -y qemu
 apt-mark hold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
-sudo apt upgrade -y
+sudo apt upgrade -y || true
 apt-mark unhold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
 apt-mark hold nvidia-l4t-kernel nvidia-l4t-kernel-headers nvidia-l4t-kernel-dtbs nvidia-l4t-firmware nvidia-l4t-xusb-firmware
 sudo apt autoremove -y
