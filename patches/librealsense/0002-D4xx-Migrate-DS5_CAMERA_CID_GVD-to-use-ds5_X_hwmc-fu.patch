@@ -1,0 +1,97 @@
+From 0ef3b994ed08785424a3a03eaa3ae63c991ea494 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 16 Apr 2025 18:34:25 +0200
+Subject: [PATCH 2/4] [D4xx] Migrate DS5_CAMERA_CID_GVD to use ds5_X_hwmc
+ functions
+
+The DS5_CAMERA_CID_GVD control was not handling retry logic itself instead
+of making use of ds5_send_hwmc and ds5_get_hwmc
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 64 +++++++++++++-------------
+ 1 file changed, 32 insertions(+), 32 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index e9e544bae..f575407a3 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -2317,37 +2317,6 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 	return 0;
+ }
+ 
+-static int ds5_gvd(struct ds5 *state, unsigned char *data)
+-{
+-	struct hwm_cmd cmd;
+-	int ret = -1;
+-	u16 length = 0;
+-	u16 status = 2;
+-	u8 retries = 3;
+-
+-	memcpy(&cmd, &gvd, sizeof(gvd));
+-	ds5_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 3)
+-			msleep_range(10);
+-
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (ret && retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev,
+-				"%s(): Failed to read GVD, HWM cmd status: %x\n",
+-				__func__, status);
+-		return status;
+-	}
+-
+-	ret = regmap_raw_read(state->regmap, 0x4908, &length, sizeof(length));
+-	ds5_raw_read_with_check(state, 0x4900, data, length);
+-
+-	return ret;
+-}
+-
+ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
+@@ -2520,7 +2489,38 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		*ctrl->p_new.p_u32 |= state->fw_build;
+ 		break;
+ 	case DS5_CAMERA_CID_GVD:
+-		ret = ds5_gvd(state, ctrl->p_new.p_u8);
++		if (ctrl->p_new.p_u8) {
++			u16 cmd_len = sizeof(struct hwm_cmd);
++			u16 buf_len = ctrl->elems * ctrl->elem_size;
++			u16 total_len = cmd_len + buf_len;
++			u16 actual_len = 0;
++
++			struct hwm_cmd *gvd_cmd = devm_kzalloc(&state->client->dev, total_len,
++					GFP_KERNEL);
++			if (!gvd_cmd){
++				ret = -ENOMEM;
++				break;
++			}
++
++			memcpy(gvd_cmd, &gvd, sizeof(struct hwm_cmd));
++
++			ret = ds5_send_hwmc(state, cmd_len, gvd_cmd);
++			if (ret){
++				dev_err(&state->client->dev, "%s(): failed to send hwmc\n",
++						__func__);
++				goto out;
++			}
++
++			ret = ds5_get_hwmc(state, gvd_cmd->Data, buf_len, &actual_len);
++			if (!ret && actual_len <= buf_len)
++				memcpy(ctrl->p_new.p_u8, gvd_cmd->Data, actual_len);
++			else
++				dev_err(&state->client->dev, "%s(): failed to get hwmc\n",
++						__func__);
++
++out:
++			devm_kfree(&state->client->dev, gvd_cmd);
++		}
+ 		break;
+ 	case DS5_CAMERA_CID_AE_ROI_GET:
+ 		if (ctrl->p_new.p_u16) {
+-- 
+2.49.0
+
