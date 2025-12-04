@@ -1,0 +1,133 @@
+From 4c9d1c0927ab56ff26473d4ead91d7be20e91fb6 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 4 Dec 2025 13:58:28 +0100
+Subject: [PATCH 26/26] camera: vi5: fix stream on/off memory leakage
+
+adapted from patch 001-camera-vi5-fix-stream-on-off-memory-leakage.patch
+
+- Remove redundant vi_capture_release to free unpin_memory
+- Use filp_close() to close vi channel
+Bug 4206070
+---
+ .../tegra/camera/fusa-capture/capture-vi.c    |  9 ++++---
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 25 ++++---------------
+ kernel/nvidia/include/media/mc_common.h       |  3 ++-
+ 3 files changed, 12 insertions(+), 25 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+index d82f9d901..a8bb2aec1 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2022 NVIDIA Corporation.  All rights reserved.
++ * Copyright (c) 2016-2023, NVIDIA CORPORATION.  All rights reserved.
+  *
+  * This program is free software; you can redistribute it and/or modify it
+  * under the terms and conditions of the GNU General Public License,
+@@ -544,9 +544,10 @@ void vi_capture_shutdown(
+ 			destroy_buffer_table(capture->buf_ctx);
+ 			capture->buf_ctx = NULL;
+ 		}
+-
+-		vfree(capture->unpins_list);
+-		capture->unpins_list = NULL;
++		if (capture->unpins_list) {
++			vfree(capture->unpins_list);
++			capture->unpins_list = NULL;
++		}
+ 	}
+ 	kfree(capture);
+ 	chan->capture_data = NULL;
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index e2d3931bf..23644b3a9 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -1,7 +1,7 @@
+ /*
+  * Tegra Video Input 5 device common APIs
+  *
+- * Copyright (c) 2016-2022, NVIDIA CORPORATION.  All rights reserved.
++ * Copyright (c) 2016-2023, NVIDIA CORPORATION. All rights reserved.
+  *
+  * Author: Frank Chen <frank@nvidia.com>
+  *
+@@ -990,7 +990,7 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 
+ 		ret = vi5_channel_start_kthreads(chan);
+ 		if (ret != 0)
+-			goto err_start_kthreads;
++			goto err_setup;
+ 	}
+ 
+ 	/* csi stream/sensor devices should be streamon post vi channel setup */
+@@ -1011,17 +1011,10 @@ err_set_stream:
+ 	if (!chan->bypass)
+ 		vi5_channel_stop_kthreads(chan);
+ 
+-err_start_kthreads:
+-	if (!chan->bypass)
+-		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++)
+-			vi_capture_release(chan->tegra_vi_channel[vi_port],
+-				CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
+-
+ err_setup:
+ 	if (!chan->bypass)
+ 		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+-			vi_channel_close_ex(chan->vi_channel_id[vi_port],
+-						chan->tegra_vi_channel[vi_port]);
++			filp_close(chan->fp[vi_port], NULL);
+ 			chan->tegra_vi_channel[vi_port] = NULL;
+ 		}
+ 
+@@ -1035,7 +1028,6 @@ err_open_ex:
+ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ {
+ 	struct tegra_channel *chan = vb2_get_drv_priv(vq);
+-	long err;
+ 	int vi_port = 0;
+ 	if (!chan->bypass)
+ 		vi5_channel_stop_kthreads(chan);
+@@ -1047,16 +1039,9 @@ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ 		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+ 			/* if vi5_channel_error_recover fails, it will leave this NULL */
+ 			if (chan->tegra_vi_channel[vi_port]) {
+-				err = vi_capture_release(chan->tegra_vi_channel[vi_port],
+-					CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
+-
+-				if (err)
+-					dev_err(&chan->video->dev,
+-						"vi capture release failed\n");
+-
+-				vi_channel_close_ex(chan->vi_channel_id[vi_port],
+-							chan->tegra_vi_channel[vi_port]);
++				filp_close(chan->fp[vi_port], NULL);
+ 				chan->tegra_vi_channel[vi_port] = NULL;
++				kfree(chan->tegra_vi_channel[vi_port]);
+ 			}
+ 		}
+ 
+diff --git a/kernel/nvidia/include/media/mc_common.h b/kernel/nvidia/include/media/mc_common.h
+index 0db50c41d..790319071 100644
+--- a/kernel/nvidia/include/media/mc_common.h
++++ b/kernel/nvidia/include/media/mc_common.h
+@@ -3,7 +3,7 @@
+  *
+  * Tegra Media controller common APIs
+  *
+- * Copyright (c) 2012-2022, NVIDIA CORPORATION. All rights reserved.
++ * Copyright (c) 2012-2023, NVIDIA CORPORATION.  All rights reserved.
+  *
+  * This program is free software; you can redistribute it and/or modify it
+  * under the terms and conditions of the GNU General Public License,
+@@ -171,6 +171,7 @@ struct tegra_channel {
+ 	unsigned int num_video_formats;
+ 	struct mutex stop_kthread_lock;
+ 
++	struct file *fp[TEGRA_CSI_BLOCKS];
+ 	unsigned int vi_channel_id[TEGRA_CSI_BLOCKS];
+ 	unsigned char port[TEGRA_CSI_BLOCKS];
+ 	unsigned int virtual_channel;
+-- 
+2.51.0
+

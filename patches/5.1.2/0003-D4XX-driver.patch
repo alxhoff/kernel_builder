@@ -1,7 +1,7 @@
 From 42009f6478718461cc70ba25e092f128782d225b Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:15:15 +0100
-Subject: [PATCH 03/20] D4XX driver
+Subject: [PATCH 03/26] D4XX driver
 
 ---
  kernel/nvidia/drivers/media/i2c/Kconfig       |   20 +

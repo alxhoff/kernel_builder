@@ -1,7 +1,7 @@
 From a57cba0457544dd87fcd4d4c3a9c7dfbe577e7eb Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Tue, 2 Dec 2025 14:26:43 +0100
-Subject: [PATCH 20/20] Removing erronous sensor_kernel_tests that are breaking
+Subject: [PATCH 20/26] Removing erronous sensor_kernel_tests that are breaking
  build
 
 ---

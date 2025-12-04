@@ -1,7 +1,7 @@
 From 2905172627b0c5e1bb0dd23718443b710645bb8e Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Fri, 13 Mar 2020 15:43:05 -0700
-Subject: [PATCH 16/20] Wake vi-notify directly from the threaded interrupt
+Subject: [PATCH 16/26] Wake vi-notify directly from the threaded interrupt
 
 The work being deferred to the workqueue is small, and it's a threaded
 interrupt anyways.

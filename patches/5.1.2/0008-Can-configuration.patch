@@ -1,7 +1,7 @@
 From 5b1e30de76711516aad31c4adb275a128ea6c96b Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:18:08 +0100
-Subject: [PATCH 08/20] Can configuration
+Subject: [PATCH 08/26] Can configuration
 
 ---
  .../tegra234-soc/tegra234-soc-base.dtsi       | 38 ++++++++++++++++++-

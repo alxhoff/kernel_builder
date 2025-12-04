@@ -1,7 +1,7 @@
 From febcc404a44f5eb8093f8e21fbbe5d050216b1bc Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Thu, 9 Jan 2020 10:48:24 -0800
-Subject: [PATCH 13/20] Make several error paths more useful
+Subject: [PATCH 13/26] Make several error paths more useful
 
 Things do a better job recovering this way.
 ---

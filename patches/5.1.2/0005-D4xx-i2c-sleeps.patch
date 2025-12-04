@@ -1,7 +1,7 @@
 From bfaec70aecde28f8232ac182cea7ed9537a5d75f Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:17:08 +0100
-Subject: [PATCH 05/20] D4xx i2c sleeps
+Subject: [PATCH 05/26] D4xx i2c sleeps
 
 ---
  kernel/nvidia/drivers/media/i2c/d4xx.c | 10 ++++++++--

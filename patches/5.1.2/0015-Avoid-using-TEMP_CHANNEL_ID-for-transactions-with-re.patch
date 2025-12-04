@@ -1,7 +1,7 @@
 From 18e40f83189bcb9fcd547a0ca3e17b220653694b Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Mon, 13 Jan 2020 15:07:21 -0800
-Subject: [PATCH 15/20] Avoid using TEMP_CHANNEL_ID for transactions with
+Subject: [PATCH 15/26] Avoid using TEMP_CHANNEL_ID for transactions with
  responses
 
 Otherwise, this happens:

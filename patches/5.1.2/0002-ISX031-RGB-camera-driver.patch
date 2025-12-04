@@ -1,7 +1,7 @@
 From 27d0d8f93f4784a496182db0bb05c9a2cea3ffbd Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:14:32 +0100
-Subject: [PATCH 02/20] ISX031 RGB camera driver
+Subject: [PATCH 02/26] ISX031 RGB camera driver
 
 ---
  kernel/nvidia/drivers/media/i2c/Kconfig       |   7 +

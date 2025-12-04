@@ -1,7 +1,7 @@
 From 369260c65246597c0f2960096edc597c6df80f68 Mon Sep 17 00:00:00 2001
 From: Jerry Chang <jerchang@nvidia.com>
 Date: Thu, 18 Jan 2024 14:59:33 +0800
-Subject: [PATCH 19/20] capture-ivc: fix multi-cam race condition
+Subject: [PATCH 19/26] capture-ivc: fix multi-cam race condition
 
 Change-Id: Idf318465ed5cf8fe16a5d395452ba104a9f7cbd3
 ---

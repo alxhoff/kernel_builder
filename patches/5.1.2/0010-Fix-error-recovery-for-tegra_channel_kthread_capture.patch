@@ -1,7 +1,7 @@
 From 844b29147168f9a550fb13cd07c5af2f4d5938d3 Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Mon, 23 Dec 2019 12:52:45 -0800
-Subject: [PATCH 10/20] Fix error recovery for
+Subject: [PATCH 10/26] Fix error recovery for
  tegra_channel_kthread_capture_dequeue
 
 Previously, it allowed the main application thread to sneak in the

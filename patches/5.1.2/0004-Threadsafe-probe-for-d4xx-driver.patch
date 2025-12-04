@@ -1,7 +1,7 @@
 From 67e330025f37e97f5a394a8dc4c2fcd47ebd72f1 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:16:44 +0100
-Subject: [PATCH 04/20] Threadsafe probe for d4xx driver
+Subject: [PATCH 04/26] Threadsafe probe for d4xx driver
 
 ---
  kernel/nvidia/drivers/media/i2c/d4xx.c    | 399 ++++++++++++----------

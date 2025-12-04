@@ -1,0 +1,25 @@
+From 76445f14472056519b70b11e4a3e36aada20d2b5 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 4 Dec 2025 13:09:57 +0100
+Subject: [PATCH 22/26] Relax start stream timeout
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 66cf9e944..897db8086 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -179,7 +179,7 @@ enum ds5_mux_pad {
+ #define DFU_WAIT_RET_LEN 6
+ 
+ #define DS5_START_POLL_TIME	10
+-#define DS5_START_MAX_TIME	1000
++#define DS5_START_MAX_TIME	2000
+ #define DS5_START_MAX_COUNT	(DS5_START_MAX_TIME / DS5_START_POLL_TIME)
+ 
+ /* DFU definition section */
+-- 
+2.51.0
+

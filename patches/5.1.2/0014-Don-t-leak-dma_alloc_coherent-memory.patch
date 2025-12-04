@@ -1,7 +1,7 @@
 From c84740313bfc9d647ada6276366ec85fe70488a7 Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Mon, 13 Jan 2020 12:49:23 -0800
-Subject: [PATCH 14/20] Don't leak dma_alloc_coherent memory
+Subject: [PATCH 14/26] Don't leak dma_alloc_coherent memory
 
 Eventually it runs out and then can't recover from errors.
 ---

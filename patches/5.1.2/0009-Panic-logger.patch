@@ -1,7 +1,7 @@
 From ddeed15ea06f5d10a427205c7d824d96eed51642 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:18:20 +0100
-Subject: [PATCH 09/20] Panic logger
+Subject: [PATCH 09/26] Panic logger
 
 ---
  kernel/kernel/drivers/misc/Kconfig         |   6 +

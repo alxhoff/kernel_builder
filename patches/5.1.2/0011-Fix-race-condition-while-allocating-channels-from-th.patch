@@ -1,7 +1,7 @@
 From d4a9402e5ef5e53a7755d5e8d346c2f9196813c2 Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Wed, 8 Jan 2020 17:34:08 -0800
-Subject: [PATCH 11/20] Fix race condition while allocating channels from the
+Subject: [PATCH 11/26] Fix race condition while allocating channels from the
  VI hardware
 
 ---

@@ -1,7 +1,7 @@
 From 3e6616c937d8c7f0a1244d9afcb2b5512fd55af0 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:14:17 +0100
-Subject: [PATCH 01/20] Device tree for SW v1.1 board
+Subject: [PATCH 01/26] Device tree for SW v1.1 board
 
 ---
  ...4-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi | 1496 +++++++++++++++++

@@ -1,7 +1,7 @@
 From 3a1b3483277e4ca23d4a4f9bad75e40d9658216b Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian@matician.com>
 Date: Mon, 29 Jan 2024 15:31:02 -0800
-Subject: [PATCH 17/20] Fix CSI error recovery
+Subject: [PATCH 17/26] Fix CSI error recovery
 
 It was happening while the VI error recovery had temporarily freed the
 vi_channel, which means the CSI error recovery failed and left things in

@@ -1,7 +1,7 @@
 From d14b254df9b37ecd5bc2d7737e83c77d97141120 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:17:56 +0100
-Subject: [PATCH 07/20] D4xx triggers
+Subject: [PATCH 07/26] D4xx triggers
 
 ---
  kernel/nvidia/drivers/media/i2c/max9295.c | 23 +++++++++++++++++++++++

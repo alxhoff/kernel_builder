@@ -1,7 +1,7 @@
 From 2a4e96adb475530f3e93522f0c53420857bdc4f7 Mon Sep 17 00:00:00 2001
 From: Brian Silverman <brian.silverman@bluerivert.com>
 Date: Thu, 9 Jan 2020 10:47:33 -0800
-Subject: [PATCH 12/20] Fix the error paths in vi_capture_setup
+Subject: [PATCH 12/26] Fix the error paths in vi_capture_setup
 
 They now do a much better job leaving things in the state they started
 if something in the middle fails, and not crashing.

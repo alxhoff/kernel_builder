@@ -1,7 +1,7 @@
 From b687cd18b72b0be30cb247af2dddc3f7e638fee1 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Fri, 28 Nov 2025 14:17:28 +0100
-Subject: [PATCH 06/20] Tegra i2x fixes
+Subject: [PATCH 06/26] Tegra i2x fixes
 
 ---
  kernel/kernel/drivers/i2c/busses/i2c-tegra.c | 2 +-

@@ -1,7 +1,7 @@
 From 161b4f15c35429155cc46063f8bba78a1a969eb2 Mon Sep 17 00:00:00 2001
 From: Anubhav Rai <arai@nvidia.com>
 Date: Wed, 11 Oct 2023 15:52:48 +0000
-Subject: [PATCH 18/20] vi5: continue captures even after corr errors
+Subject: [PATCH 18/26] vi5: continue captures even after corr errors
 
 even if the channel encounters corr error, continue
 captures anticipating that channel might recover in

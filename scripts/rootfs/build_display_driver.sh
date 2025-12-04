@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 TOOLCHAIN_PATH=""
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 		--target-bsp)
 			TARGET_BSP="$2"
 			shift 2
-			;; 
+			;;
         -h|--help)
             show_help
             ;;
@@ -79,20 +79,20 @@ fi
 case "$TARGET_BSP" in
     5.1.2)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2"
-        ;; 
+        ;;
     5.1.3)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2"
-        ;; 
+        ;;
     5.1.4)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.0/sources/public_sources.tbz2"
-        ;; 
+        ;;
     5.1.5)
         BSP_SOURCES_TAR_URL="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
-        ;; 
+        ;;
     *)
         echo "Unsupported target BSP: $TARGET_BSP"
         exit 1
-        ;; 
+        ;;
 esac
 BSP_SOURCES_TAR="$WORK_DIR/public_sources.tbz2"
 NVDISPLAY_TAR_DIR="$WORK_DIR/Linux_for_Tegra/source/public"
@@ -107,7 +107,8 @@ fi
 
 if [[ ! -d "$NVDISPLAY_SOURCE_DIR" ]]; then
 	echo "Extracting display driver sources..."
-	tar -xpf "$NVDISPLAY_TAR" -C "$NVDISPLAY_TAR_DIR"
+	mkdir -p "$NVDISPLAY_SOURCE_DIR"
+	tar -xpf "$NVDISPLAY_TAR" -C "$NVDISPLAY_SOURCE_DIR" --strip-components=2
 fi
 
 CROSS_COMPILE_PATH="${TOOLCHAIN_PATH}/bin/${CROSS_PREFIX}"
