@@ -26,6 +26,7 @@ Options:
   --crt                  Provide the VPN certificate directly.
   --key                  Provide the VPN key directly.
   --zip                  Provide a zip file containing the VPN certificate and key.
+  --l4t-dir <path>       Specify the L4T directory path. (Optional, default is derived from TARGET_BSP)
   -h, --help             Show this help message and exit.
 
 Examples:
@@ -45,6 +46,7 @@ DRY_RUN=0
 PASSWORD=""
 SKIP_VPN=0
 ZIP_PATH=""
+L4T_DIR_ARG=""
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -96,6 +98,10 @@ while [[ $# -gt 0 ]]; do
       ZIP_PATH="$2"
       shift 2
       ;;
+    --l4t-dir)
+      L4T_DIR_ARG="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"; exit 1
       ;;
@@ -117,7 +123,11 @@ fi
 
 # --- Set up paths ---
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-L4T_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+if [[ -n "$L4T_DIR_ARG" ]]; then
+  L4T_DIR="$L4T_DIR_ARG"
+else
+  L4T_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+fi
 ROOTFS_PATH="$L4T_DIR/rootfs"
 FLASH_SCRIPT="$L4T_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 CHROOT_CMD_FILE="chroot_configured_commands.txt"
