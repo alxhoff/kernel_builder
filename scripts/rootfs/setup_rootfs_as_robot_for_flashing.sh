@@ -38,11 +38,12 @@ EOF
 }
 
 # --- Parse args ---
+TARGET_BSP="5.1.5"
+SOC="orin"
 ROBOT_NUMBER=""
 DRY_RUN=0
 PASSWORD=""
 SKIP_VPN=0
-SOC=""
 ZIP_PATH=""
 
 run() {
@@ -101,14 +102,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# --- Validate required args ---
-if [[ -z "${TARGET_BSP-}" || -z "${SOC-}" ]]; then
-  echo "Error: --target-bsp and --soc are required arguments." >&2
-  show_help
-  exit 1
-fi
 
-# --- Check for sudo ---
+
+# --- Validate required args ---
+if [[ -z "${ROBOT_NUMBER-}" && -z "${CERT_PATH-}" && -z "${KEY_PATH-}" && -z "${ZIP_PATH-}" && "$SKIP_VPN" -eq 0 ]]; then
+    echo "Error: Either --robot-number, --crt/--key, --zip or --skip-vpn must be provided if not skipping VPN." >&2
+    show_help
+    exit 1
+fi
 if [[ "$EUID" -ne 0 ]]; then
     echo "This script must be run as root." >&2
     exit 1
