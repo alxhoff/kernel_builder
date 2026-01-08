@@ -1,0 +1,53 @@
+From ac600ef94a7e3145ddd9e28661298088edb566ff Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Fri, 19 Dec 2025 14:08:59 +0100
+Subject: [PATCH 31/33] Compatible changes from
+ 0026-camera-vi5-fix-stream-on-off-memory-leakage.patch
+
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c        | 12 ++----------
+ 1 file changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 2edc0fbe4..175aa937a 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -1002,7 +1002,7 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 
+ 		ret = vi5_channel_start_kthreads(chan);
+ 		if (ret != 0)
+-			goto err_start_kthreads;
++			goto err_setup;
+ 	}
+ 
+ 	/* csi stream/sensor devices should be streamon post vi channel setup */
+@@ -1023,17 +1023,10 @@ err_set_stream:
+ 	if (!chan->bypass)
+ 		vi5_channel_stop_kthreads(chan);
+ 
+-err_start_kthreads:
+-	if (!chan->bypass)
+-		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++)
+-			vi_capture_release(chan->tegra_vi_channel[vi_port],
+-				CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
+-
+ err_setup:
+ 	if (!chan->bypass)
+ 		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+-			vi_channel_close_ex(chan->vi_channel_id[vi_port],
+-						chan->tegra_vi_channel[vi_port]);
++			filp_close(chan->fp[vi_port], NULL);
+ 			chan->tegra_vi_channel[vi_port] = NULL;
+ 		}
+ 
+@@ -1047,7 +1040,6 @@ err_open_ex:
+ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ {
+ 	struct tegra_channel *chan = vb2_get_drv_priv(vq);
+-	long err;
+ 	int vi_port = 0;
+ 	if (!chan->bypass)
+ 		vi5_channel_stop_kthreads(chan);
+-- 
+2.52.0
+

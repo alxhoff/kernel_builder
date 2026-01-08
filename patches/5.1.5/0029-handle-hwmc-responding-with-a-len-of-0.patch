@@ -1,0 +1,29 @@
+From c85ea29fb8923a31af8778a99c6fb393f9f06923 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 4 Dec 2025 13:12:12 +0100
+Subject: [PATCH 29/33] handle hwmc responding with a len of 0
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 7c87a9ac3..29296c48f 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -1851,6 +1851,12 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 	if (tmp_len > cmdDataLen)
+ 		return -ENOBUFS;
+ 
++	if (tmp_len ==0 ) {
++		dev_err(&state->client->dev, "%s():  HWMC response length is 0\n",
++				__func__);
++		return -ENODATA;
++	}
++
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): HWMC read len: %d, lrs_len: %d\n",
+ 			__func__, tmp_len, tmp_len - 4);
+-- 
+2.52.0
+

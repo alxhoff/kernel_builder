@@ -1,0 +1,103 @@
+From b7580bb3d558de690d83d5ce7367f84832052f9f Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 4 Dec 2025 13:13:39 +0100
+Subject: [PATCH 30/33] Refactored hardcoded HWMC addresses
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 28 +++++++++++++-------------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 29296c48f..1f471a4db 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -2285,12 +2285,12 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 
+ 	memcpy(cmd, &get_calib_data, sizeof(get_calib_data));
+ 	cmd->param1 = id;
+-	ds5_raw_write_with_check(state, 0x4900, cmd, sizeof(struct hwm_cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA, cmd, sizeof(struct hwm_cmd));
++	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+ 	do {
+ 		if (retries != 3)
+ 			msleep_range(10);
+-		ret = ds5_read(state, 0x4904, &status);
++		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
+ 	} while (ret && retries-- && status != 0);
+ 
+ 	if (ret || status != 0) {
+@@ -2306,7 +2306,7 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 			&table_length, sizeof(table_length));
+ 
+ 	// read table
+-	ds5_raw_read_with_check(state, 0x4900, cmd->Data, table_length);
++	ds5_raw_read_with_check(state, DS5_HWMC_DATA, cmd->Data, table_length);
+ 
+ 	// first 4 bytes are opcode HWM, not part of calibration table
+ 	memcpy(table, cmd->Data + 4, length);
+@@ -2323,13 +2323,13 @@ static int ds5_gvd(struct ds5 *state, unsigned char *data)
+ 	u8 retries = 3;
+ 
+ 	memcpy(&cmd, &gvd, sizeof(gvd));
+-	ds5_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA, &cmd, sizeof(cmd));
++	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+ 	do {
+ 		if (retries != 3)
+ 			msleep_range(10);
+ 
+-		ret = ds5_read(state, 0x4904, &status);
++		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
+ 	} while (ret && retries-- && status != 0);
+ 
+ 	if (ret || status != 0) {
+@@ -2339,8 +2339,8 @@ static int ds5_gvd(struct ds5 *state, unsigned char *data)
+ 		return status;
+ 	}
+ 
+-	ret = regmap_raw_read(state->regmap, 0x4908, &length, sizeof(length));
+-	ds5_raw_read_with_check(state, 0x4900, data, length);
++	ret = ds5_raw_read(state, DS5_HWMC_RESP_LEN, &length, sizeof(length));
++	ds5_raw_read_with_check(state, DS5_HWMC_DATA, data, length);
+ 
+ 	return ret;
+ }
+@@ -2463,18 +2463,18 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		//       2. send command
+ 		//       3. execute command
+ 		//       4. wait for ccompletion
+-		ret = regmap_raw_write(state->regmap, 0x4900,
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_DATA,
+ 				log_prepare, sizeof(log_prepare));
+ 		if (ret < 0)
+ 			break;
+ 
+-		ret = regmap_raw_write(state->regmap, 0x490C, &execute_cmd, 
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_EXEC, &execute_cmd,
+ 				sizeof(execute_cmd));
+ 		if (ret < 0)
+ 			 break;
+ 
+ 		for (i = 0; i < DS5_MAX_LOG_POLL; i++) {
+-			ret = regmap_raw_read(state->regmap, 0x4904,
++			ret = ds5_raw_read(state, DS5_HWMC_STATUS,
+ 					&data, sizeof(data));
+ 			dev_dbg(&state->client->dev, "%s(): log ready 0x%x\n",
+ 				 __func__, data);
+@@ -4778,9 +4778,9 @@ static int ds5_dfu_switch_to_dfu(struct ds5 *state)
+ 	int i = DS5_START_MAX_COUNT;
+ 	u16 status;
+ 
+-	ds5_raw_write_with_check(state, 0x4900,
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA,
+ 			&cmd_switch_to_dfu, sizeof(cmd_switch_to_dfu));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+ 	/*Wait for DFU fw to boot*/
+ 	do {
+ 		msleep_range(DS5_START_POLL_TIME*10);
+-- 
+2.52.0
+

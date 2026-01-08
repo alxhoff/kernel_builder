@@ -1,0 +1,221 @@
+From 0c32a84da67d14ed676775acc23c1af76519bf0d Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 9 Apr 2025 10:13:51 +0200
+Subject: [PATCH 17/33] Debugging statements for i2c
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 77 ++++++++++++++++++++------
+ 1 file changed, 60 insertions(+), 17 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 2b10ced0c..d641ceea4 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -30,7 +30,6 @@
+ #include <linux/string.h>
+ #include <linux/videodev2.h>
+ #include <linux/version.h>
+-#include <linux/stacktrace.h>
+ #ifdef CONFIG_VIDEO_INTEL_IPU6
+ #include <linux/ipu-isys.h>
+ #include <media/d4xx_pdata.h>
+@@ -218,6 +217,7 @@ enum ds5_mux_pad {
+ #define D4XX_LINK_FREQ_240MHZ		240000000ULL
+ #define D4XX_LINK_FREQ_225MHZ		22500000ULL
+ #endif
++
+ enum dfu_fw_state {
+ 	appIDLE                = 0x0000,
+ 	appDETACH              = 0x0001,
+@@ -538,12 +538,8 @@ static int ds5_write(struct ds5 *state, u16 reg, u16 val)
+ 	ret = regmap_raw_write(state->regmap, reg, value, sizeof(value));
+ 	if (ret < 0) {
+ 		dev_err(&state->client->dev,
+-				"%s(): writing to register: 0x%04x, value1: 0x%x, value2:0x%x\n",
++				"%s(): error writing to register: 0x%04x, value1: 0x%x, value2:0x%x\n",
+ 				__func__, reg, value[1], value[0]);
+-		dev_err(&state->client->dev,
+-				"%s(): i2c write failed %d, 0x%04x = 0x%x\n",
+-				__func__, ret, reg, val);
+-		stack_trace_print(NULL, 0, 4);
+ 	} else {
+ 		if (state->dfu_dev.dfu_state_flag == DS5_DFU_IDLE)
+ 			dev_dbg(&state->client->dev, "%s(): i2c write 0x%04x: 0x%x\n",
+@@ -559,11 +555,12 @@ static int ds5_raw_write(struct ds5 *state, u16 reg,
+ 		const void *val, size_t val_len)
+ {
+ 	int ret = regmap_raw_write(state->regmap, reg, val, val_len);
+-	if (ret < 0)
++	if (ret < 0){
+ 		dev_err(&state->client->dev,
+-				"%s(): i2c raw write failed %d, %04x size(%d) bytes\n",
++				"%s(): i2c raw write failed (%d) to reg: 0x%04x sending %d bytes\n",
+ 				__func__, ret, reg, (int)val_len);
+-	else
++		dump_stack();
++	} else
+ 		if (state->dfu_dev.dfu_state_flag == DS5_DFU_IDLE)
+ 			dev_dbg(&state->client->dev,
+ 					"%s(): i2c raw write 0x%04x: %d bytes\n",
+@@ -576,9 +573,9 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
+ {
+ 	int ret = regmap_raw_read(state->regmap, reg, val, 2);
+ 	if (ret < 0){
+-		dev_err(&state->client->dev, "%s(): i2c read failed %d, 0x%04x\n",
++		dev_err(&state->client->dev, "%s(): i2c read failed (%d), reg: 0x%04x\n",
+ 				__func__, ret, reg);
+-		stack_trace_print(NULL, 0, 4);
++		dump_stack();
+ 	} else {
+ 		if (state->dfu_dev.dfu_state_flag == DS5_DFU_IDLE)
+ 			dev_dbg(&state->client->dev, "%s(): i2c read 0x%04x: 0x%x\n",
+@@ -591,9 +588,11 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
+ static int ds5_raw_read(struct ds5 *state, u16 reg, void *val, size_t val_len)
+ {
+ 	int ret = regmap_raw_read(state->regmap, reg, val, val_len);
+-	if (ret < 0)
+-		dev_err(&state->client->dev, "%s(): i2c read failed %d, 0x%04x\n",
++	if (ret < 0){
++		dev_err(&state->client->dev, "%s(): i2c raw read failed (%d), 0x%04x\n",
+ 			__func__, ret, reg);
++		dump_stack();
++	}
+ 
+ 	usleep_range(100,110);
+ 
+@@ -2059,6 +2058,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 				&ae_roi_cmd);
+ 			if (!ret)
+ 				ret = ds5_get_hwmc_status(state);
++			else
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_AE_ROI_SET");
+ 		}
+ 		break;
+ 	case DS5_CAMERA_CID_AE_SETPOINT_SET:
+@@ -2081,6 +2083,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 					ae_setpoint_cmd);
+ 			if (!ret)
+ 				ret = ds5_get_hwmc_status(state);
++			else
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_AE_SETPOINT_SET");
+ 			devm_kfree(&state->client->dev, ae_setpoint_cmd);
+ 		}
+ 		break;
+@@ -2113,6 +2118,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), erb_cmd);
+ 			if (!ret)
+ 				ret = ds5_get_hwmc(state, erb_cmd->Data, len, &size);
++			else
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_ERB");
+ 			if (ret) {
+ 				dev_err(&state->client->dev,
+ 					"%s(): ERB cmd failed, ret: %d,"
+@@ -2173,6 +2181,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd) + size, ewb_cmd);
+ 			if (!ret)
+ 				ret = ds5_get_hwmc_status(state);
++			else
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_EWB");
+ 			if (ret) {
+ 				dev_err(&state->client->dev,
+ 					"%s(): EWB cmd failed, ret: %d,"
+@@ -2194,6 +2205,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			size |= *((u8 *)ctrl->p_new.p_u8 + 0);
+ 			ret = ds5_send_hwmc(state, size + 4, cmd);
+ 			ret = ds5_get_hwmc(state, cmd->Data, ctrl->dims[0], &size);
++			if (ret)
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_HWMC");
+ 			if (ctrl->dims[0] < DS5_HWMC_BUFFER_SIZE) {
+ 				ret = -ENODATA;
+ 				break;
+@@ -2210,6 +2224,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			size |= *((u8 *)ctrl->p_new.p_u8 + 0);
+ 			ret = ds5_send_hwmc(state, size + 4,
+ 					(struct hwm_cmd *)ctrl->p_new.p_u8);
++			if (ret)	
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_HWMC_RW");
+ 		}
+ 		break;
+ 	case DS5_CAMERA_CID_PWM:
+@@ -2515,6 +2532,9 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 				devm_kfree(&state->client->dev, ae_roi_cmd);
+ 				break;
+ 			}
++			else
++				dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++						__func__, "DS5_CAMERA_CID_AE_ROI_GET");
+ 			ret = ds5_get_hwmc(state, ae_roi_cmd->Data, len, &dataLen);
+ 			if (!ret && dataLen <= ctrl->dims[0])
+ 				memcpy(ctrl->p_new.p_u16, ae_roi_cmd->Data + 4, 8);
+@@ -2540,6 +2560,9 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			devm_kfree(&state->client->dev, ae_setpoint_cmd);
+ 			break;
+ 		}
++		else
++			dev_err(&state->client->dev, "%s(): ds5_send_hwmc failed %s",
++					__func__, "DS5_CAMERA_CID_AE_SETPOINT_GET");
+ 		ret = ds5_get_hwmc(state, ae_setpoint_cmd->Data, len, &dataLen);
+ 		memcpy(ctrl->p_new.p_s32, ae_setpoint_cmd->Data + 4, 4);
+ 		dev_dbg(&state->client->dev, "%s(): len: %d, 0x%x \n",
+@@ -5115,21 +5138,40 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
+ 			i2c_get_adapter_bus_clk_rate(parent),
+ 			state->dfu_dev.bus_clk_rate);
+ 
+-	i2c_set_adapter_bus_clk_rate(parent, state->dfu_dev.bus_clk_rate);
++	if (i2c_set_adapter_bus_clk_rate(parent, state->dfu_dev.bus_clk_rate))
++		dev_err(&state->client->dev, "%s(): failed to restore clk_rate",
++				__func__);
++
++	dev_err(&state->client->dev, "%s(): state->client i2c bus speed is: %d\n",
++		__func__, i2c_get_adapter_bus_clk_rate(state->client->adapter));
++	dev_err(&state->client->dev, "%s(): parent i2c bus speed is: %d\n",
++		__func__, i2c_get_adapter_bus_clk_rate(parent));
++	dev_err(&state->client->dev, "%s(): dfu i2c bus speed is: %d\n",
++		__func__, DFU_I2C_BUS_CLK_RATE);
+ #endif
+ 	/* Verify communication */
+ 	do {
+ 		ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
+-		if (ret)
++		if (ret){
+ 			msleep_range(10);
++			dev_warn(&state->client->dev,
++				"%s(): reading firmware from 0x%04x failed, sleeping", 
++				__func__, DS5_FW_VERSION);
++		}
+ 	} while (retry-- && ret != 0 );
+ 	if (ret) {
+ 		dev_warn(&state->client->dev,
+ 			"%s(): no communication with d4xx\n", __func__);
+-		mutex_unlock(&state->lock);
+-		return ret;
++		/** mutex_unlock(&state->lock); */
++		/** return ret; */
+ 	}
+ 	ret = ds5_read(state, DS5_FW_BUILD, &state->fw_build);
++	if(!ret)
++		dev_err(&state->client->dev, "%s(): was able to get DS5_FW_BUILD",
++				__func__);
++	else
++		dev_err(&state->client->dev, "%s(): was NOT able to get DS5_FW_BUILD",
++				__func__);
+ 	mutex_unlock(&state->lock);
+ 	return ret;
+ };
+@@ -5190,6 +5232,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
+ 	snprintf(dev_name, sizeof(dev_name), "%s-%c",
+ 		DS5_DRIVER_NAME_DFU, suffix);
+ #else
++
+ 	snprintf (dev_name, sizeof(dev_name), "%s-%d-%04x",
+ 			DS5_DRIVER_NAME_DFU, i2c_adapter_id(c->adapter), c->addr);
+ #endif
+-- 
+2.52.0
+

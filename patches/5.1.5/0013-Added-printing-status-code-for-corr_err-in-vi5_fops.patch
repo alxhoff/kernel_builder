@@ -1,0 +1,28 @@
+From f59450ffcac5791d03ee2d8d1aed5220babaf06c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 7 Apr 2025 14:37:34 +0200
+Subject: [PATCH 13/33] Added printing status code for corr_err in vi5_fops
+
+---
+ .../nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c  | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index b9954d737..4b8113f67 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -587,9 +587,9 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 			} else {
+ 				dev_warn(vi->dev,
+ 					"corr_err: discarding frame %d, flags: %d, "
+-					"err_data %d\n",
++					"err_data %d, status %d\n",
+ 					descr->status.frame_id, descr->status.flags,
+-					descr->status.err_data);
++					descr->status.err_data, descr->status.status);
+ 				frame_err = true;
+ 			}
+ 		} else if (!vi_port) {
+-- 
+2.52.0
+

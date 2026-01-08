@@ -1,0 +1,53 @@
+From 0db0f7717fe237236765485b37e82e1a1853c645 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 4 Dec 2025 13:11:10 +0100
+Subject: [PATCH 28/33] Refactored regmap_raw_read calls to go through
+ ds5_raw_read
+
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 1793f7b22..7c87a9ac3 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -1843,7 +1843,7 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 		}
+ 	}
+ 
+-	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
++	ret = ds5_raw_read(state, DS5_HWMC_RESP_LEN,
+ 			&tmp_len, sizeof(tmp_len));
+ 	if (ret)
+ 		return -EBADMSG;
+@@ -2296,7 +2296,7 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 	}
+ 
+ 	// get table length from fw
+-	ret = regmap_raw_read(state->regmap, 0x4908,
++	ret = ds5_raw_read(state, DS5_HWMC_RESP_LEN,
+ 			&table_length, sizeof(table_length));
+ 
+ 	// read table
+@@ -2482,7 +2482,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ //		if (i == DS5_MAX_LOG_POLL)
+ //			return -ETIMEDOUT;
+ 
+-		ret = regmap_raw_read(state->regmap, 0x4908, &data, sizeof(data));
++		ret = ds5_raw_read(state, DS5_HWMC_RESP_LEN, &data, sizeof(data));
+ 		dev_dbg(&state->client->dev, "%s(): log size 0x%x\n", __func__, data);
+ 		if (ret < 0)
+ 			break;
+@@ -2494,7 +2494,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = -ENOBUFS;
+ 			break;
+ 		}
+-		ret = regmap_raw_read(state->regmap, 0x4900, ctrl->p_new.p_u8, data);
++		ret = ds5_raw_read(state, DS5_HWMC_DATA, ctrl->p_new.p_u8, data);
+ 		break;
+ 	case DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
+ 		ret = ds5_get_calibration_data(state, DEPTH_CALIBRATION_ID,
+-- 
+2.52.0
+

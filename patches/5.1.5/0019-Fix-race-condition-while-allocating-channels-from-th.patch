@@ -1,0 +1,70 @@
+From a6465c5e856f8faf35cf39a9923ef001f8754082 Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Wed, 8 Jan 2020 17:34:08 -0800
+Subject: [PATCH 19/33] Fix race condition while allocating channels from the
+ VI hardware
+
+---
+ .../tegra/camera/fusa-capture/capture-vi.c    | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+index e76ca1ba0..527563e67 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+@@ -89,6 +89,14 @@
+  */
+ #define MAX_VIRTUAL_CHANNEL_PER_STREAM  U32_C(16)
+ 
++/* Protects the process of setting up and releasing channels.
++ * Per-tegra_vi_channel locking doesn't work for this because a VI channel
++ * can/will be reused between multiple tegra_vi_channel structures. We need to
++ * ensure all the state is cleared up after a CAPTURE_CHANNEL_RELEASE_REQ before
++ * code for another tegra_vi_channel gets a CAPTURE_CHANNEL_SETUP_RESP and then
++ * tries using the resulting channel. */
++static DEFINE_MUTEX(channel_alloc_lock);
++
+ /**
+  * @brief A 2-D array for storing all possible tegra_vi_channel struct pointers.
+  */
+@@ -779,8 +787,14 @@ int vi_capture_setup(
+ 	config->embdata_sp = capture->embdata_sp;
+ 	config->linetimer_sp = capture->linetimer_sp;
+ 
++	/* We only need to hold the lock around sending the message. Anybody
++	 * releasing a channel will either be done before we get the lock (which
++	 * means it is fine if we reuse their channel) or not started (which
++	 * means we will not reuse their channel). */
++	mutex_lock(&channel_alloc_lock);
+ 	err = vi_capture_ivc_send_control(chan, &control_desc,
+ 			sizeof(control_desc), CAPTURE_CHANNEL_SETUP_RESP);
++	mutex_unlock(&channel_alloc_lock);
+ 	if (err < 0)
+ 		goto submit_fail;
+ 
+@@ -972,9 +986,11 @@ int vi_capture_release(
+ 	control_desc.header.channel_id = capture->channel_id;
+ 	control_desc.channel_release_req.reset_flags = reset_flags;
+ 
++	mutex_lock(&channel_alloc_lock);
+ 	err = vi_capture_ivc_send_control(chan, &control_desc,
+ 			sizeof(control_desc), CAPTURE_CHANNEL_RELEASE_RESP);
+ 	if (err < 0) {
++		mutex_unlock(&channel_alloc_lock);
+ 		dev_err(chan->dev,
+ 				"%s: release channel IVC failed\n", __func__);
+ 		WARN_ON("RTCPU is in a bad state. Reboot to recover");
+@@ -1009,6 +1025,10 @@ int vi_capture_release(
+ 			"failed to unregister control callback\n");
+ 		err = ret;
+ 	}
++	/* Need to keep it locked until we clear out our callbacks, so nobody
++	 * else can allocate the channel in between and then get confused by
++	 * our callbacks. */
++	mutex_unlock(&channel_alloc_lock);
+ 
+ 	for (i = 0; i < capture->queue_depth; i++)
+ 		complete(&capture->capture_resp);
+-- 
+2.52.0
+

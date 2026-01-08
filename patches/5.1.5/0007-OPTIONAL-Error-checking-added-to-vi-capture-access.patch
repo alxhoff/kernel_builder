@@ -1,0 +1,36 @@
+From 5e43cc816cf70f5796e06aaa90a68af68d7dca77 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 7 Apr 2025 14:31:27 +0200
+Subject: [PATCH 07/33] [OPTIONAL] Error checking added to vi capture access
+
+---
+ .../platform/tegra/camera/fusa-capture/capture-vi.c    | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+index d6e2bae4f..e76ca1ba0 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+@@ -351,11 +351,17 @@ static int vi_capture_ivc_send_control(
+ 	size_t size,
+ 	uint32_t resp_id)
+ {
+-	struct vi_capture *capture = chan->capture_data;
+-	struct CAPTURE_MSG_HEADER resp_header = msg->header;
++	struct vi_capture *capture;
++	struct CAPTURE_MSG_HEADER resp_header;
+ 	uint32_t timeout = HZ;
+ 	int err = 0;
+ 
++	if (!chan || !chan->dev || !chan->capture_data || !msg)
++		return -EINVAL;
++
++	capture = chan->capture_data;
++	resp_header = msg->header;
++
+ 	dev_dbg(chan->dev, "%s: sending chan_id %u msg_id %u\n",
+ 			__func__, resp_header.channel_id, resp_header.msg_id);
+ 	resp_header.msg_id = resp_id;
+-- 
+2.52.0
+

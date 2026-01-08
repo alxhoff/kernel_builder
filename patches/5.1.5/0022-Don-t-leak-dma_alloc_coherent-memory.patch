@@ -1,0 +1,74 @@
+From 27e805d746ba231babaed3764e126cecc9e79db2 Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Mon, 13 Jan 2020 12:49:23 -0800
+Subject: [PATCH 22/33] Don't leak dma_alloc_coherent memory
+
+Eventually it runs out and then can't recover from errors.
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 29 ++++++++++++++-----
+ kernel/nvidia/include/media/mc_common.h       |  3 +-
+ 2 files changed, 23 insertions(+), 9 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index fe64d0119..fb662f704 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -330,20 +330,33 @@ static int tegra_channel_capture_setup(struct tegra_channel *chan, unsigned int
+ {
+ 	struct vi_capture_setup setup = default_setup;
+ 	long err;
++	size_t new_size;
+ 
+ 	setup.queue_depth = chan->capture_queue_depth;
+ 
+ 	trace_tegra_channel_capture_setup(chan, 0);
+-
+-	chan->request[vi_port] = dma_alloc_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
+-					setup.queue_depth * setup.request_size,
+-					&setup.iova, GFP_KERNEL);
++	
+ 	chan->request_iova[vi_port] = setup.iova;
+ 
+-	if (chan->request[vi_port] == NULL) {
+-		dev_err(chan->vi->dev, "dma_alloc_coherent failed\n");
+-		return -ENOMEM;
+-	}
++   new_size = setup.queue_depth * setup.request_size;                           
++
++   if (!chan->request[vi_port] || chan->request_dma_size[vi_port] < new_size) { 
++       if (chan->request[vi_port]) {                                            
++           dma_free_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,        
++                   chan->request_dma_size[vi_port],                             
++                   chan->request[vi_port],                                      
++                   chan->request_dma_handle[vi_port]);                          
++       }                                                                        
++       chan->request[vi_port] = dma_alloc_coherent(                             
++               chan->tegra_vi_channel[vi_port]->rtcpu_dev,                      
++               new_size, &chan->request_dma_handle[vi_port], GFP_KERNEL);       
++       if (chan->request[vi_port] == NULL) {                                    
++           dev_err(chan->vi->dev, "dma_alloc_coherent failed\n");               
++           return -ENOMEM;                                                      
++       }                                                                        
++       chan->request_dma_size[vi_port] = new_size;                              
++   }                                                                            
++   setup.iova = chan->request_dma_handle[vi_port];
+ 
+ 	if (chan->is_slvsec) {
+ 		setup.channel_flags |= CAPTURE_CHANNEL_FLAG_SLVSEC;
+diff --git a/kernel/nvidia/include/media/mc_common.h b/kernel/nvidia/include/media/mc_common.h
+index 12caca207..9299d397b 100644
+--- a/kernel/nvidia/include/media/mc_common.h
++++ b/kernel/nvidia/include/media/mc_common.h
+@@ -280,7 +280,8 @@ struct tegra_channel {
+ 	struct tegra_vi_channel *tegra_vi_channel[TEGRA_CSI_BLOCKS];
+ 	struct capture_descriptor *request[TEGRA_CSI_BLOCKS];
+ 	dma_addr_t request_iova[TEGRA_CSI_BLOCKS];
+-
++	dma_addr_t request_dma_handle[TEGRA_CSI_BLOCKS]; /* for request */           
++	size_t request_dma_size[TEGRA_CSI_BLOCKS]; /* for request */
+ 	bool is_slvsec;
+ 	int is_interlaced;
+ 	enum interlaced_type interlace_type;
+-- 
+2.52.0
+

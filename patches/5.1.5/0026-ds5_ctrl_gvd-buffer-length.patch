@@ -1,0 +1,27 @@
+From cf8bbb067edda8dab8c31115143df13335670892 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 16 Apr 2025 18:35:04 +0200
+Subject: [PATCH 26/33] ds5_ctrl_gvd buffer length
+
+    DS5_CAMERA_CID_GVD g_ctrl call has a buffer size mismatch to userspace
+    call in v4l_uvc_device::get_mipi_device_pid. Buffer size is now matched
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index d641ceea4..cbd2be868 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -2669,7 +2669,7 @@ static const struct v4l2_ctrl_config ds5_ctrl_gvd = {
+ 	.id = DS5_CAMERA_CID_GVD,
+ 	.name = "GVD",
+ 	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {239},
++	.dims = {276},
+ 	.elem_size = sizeof(u8),
+ 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+ 	.step = 1,
+-- 
+2.52.0
+

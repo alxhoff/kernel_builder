@@ -1,0 +1,37 @@
+From 36f1b78b4d950da81d1cfd94fe201438bda2f879 Mon Sep 17 00:00:00 2001
+From: Brian Silverman <brian.silverman@bluerivert.com>
+Date: Mon, 13 Jan 2020 15:07:21 -0800
+Subject: [PATCH 23/33] Avoid using TEMP_CHANNEL_ID for transactions with
+ responses
+
+Otherwise, this happens:
+  1. csi5_fops uses TEMP_CHANNEL_ID for a temporary transaction
+  2. capture-ivc allocates TEMP_CHANNEL_ID as a transaction
+  3. code uses TEMP_CHANNEL_ID via capture-ivc to send something
+  4. capture-ivc sees a responses on TEMP_CHANNEL_ID, and freaks out
+     because it's not to its message
+---
+ .../nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
+index c4eaa4eec..f064ee0c0 100644
+--- a/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
++++ b/kernel/nvidia/drivers/platform/tegra/rtcpu/capture-ivc-priv.h
+@@ -27,7 +27,12 @@
+ 
+ /** Total number of channels including Temporary IDs */
+ #define TOTAL_CHANNELS (NUM_CAPTURE_CHANNELS + NUM_CAPTURE_TRANSACTION_IDS)
+-#define TRANS_ID_START_IDX NUM_CAPTURE_CHANNELS
++/* NUM_CAPTURE_CHANNELS+1 is used as TEMP_CHANNEL_ID in csi5_fops.c, so we want
++ * to skip that one.
++ * TODO(Brian): Is NUM_CAPTURE_CHANNELS itself used anywhere? Given that I did
++ * not observe races on it, probably not? Should TEMP_CHANNEL_ID be switched to
++ * that to avoid wasting a channel ID? Does it even matter? */
++#define TRANS_ID_START_IDX (NUM_CAPTURE_CHANNELS + 2)
+ 
+ /**
+  * @brief Callback context of an IVC channel.
+-- 
+2.52.0
+

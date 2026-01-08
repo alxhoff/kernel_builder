@@ -1,0 +1,26 @@
+From ca1a4b90cd65fdc70b7ec83d96e36f1c2558bed6 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 7 Apr 2025 14:30:42 +0200
+Subject: [PATCH 06/33] [PATCH] tegra-i2c: fix return value for
+ tegra_i2c_change_clock_rate
+
+---
+ kernel/kernel/drivers/i2c/busses/i2c-tegra.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/kernel/drivers/i2c/busses/i2c-tegra.c b/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
+index cc6386834..129caa5b9 100644
+--- a/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
++++ b/kernel/kernel/drivers/i2c/busses/i2c-tegra.c
+@@ -1742,7 +1742,7 @@ static int tegra_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
+ 
+ 	if (adap->bus_clk_rate != i2c_dev->bus_clk_rate) {
+ 		i2c_dev->bus_clk_rate = adap->bus_clk_rate;
+-		 tegra_i2c_change_clock_rate(i2c_dev);
++		 ret = tegra_i2c_change_clock_rate(i2c_dev);
+ 		 if (ret) {
+ 			 dev_err(i2c_dev->dev,
+ 					 "failed changing clock rate: %d\n", ret);
+-- 
+2.52.0
+

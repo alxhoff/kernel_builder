@@ -1,0 +1,86 @@
+From cd8e6d5cb66ff4ef64539392f104303d7d8713e7 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 7 Apr 2025 14:34:10 +0200
+Subject: [PATCH 09/33] [PATCH] vi5_fops: fix mem leak, release capture
+ requests and embedded data buffers before closing and exiting the stream
+
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 34 +++++++++++++++++--
+ kernel/nvidia/include/media/mc_common.h       |  2 ++
+ 2 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 6b1f70b50..b9954d737 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -338,6 +338,8 @@ static int tegra_channel_capture_setup(struct tegra_channel *chan, unsigned int
+ 	chan->request[vi_port] = dma_alloc_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
+ 					setup.queue_depth * setup.request_size,
+ 					&setup.iova, GFP_KERNEL);
++	chan->request_iova[vi_port] = setup.iova;
++
+ 	if (chan->request[vi_port] == NULL) {
+ 		dev_err(chan->vi->dev, "dma_alloc_coherent failed\n");
+ 		return -ENOMEM;
+@@ -1026,6 +1028,7 @@ err_open_ex:
+ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ {
+ 	struct tegra_channel *chan = vb2_get_drv_priv(vq);
++	long err;
+ 	int vi_port = 0;
+ 	if (!chan->bypass)
+ 		vi5_channel_stop_kthreads(chan);
+@@ -1035,9 +1038,34 @@ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ 
+ 	if (!chan->bypass) {
+ 		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+-			filp_close(chan->fp[vi_port], NULL);
+-			chan->tegra_vi_channel[vi_port] = NULL;
+-			kfree(chan->tegra_vi_channel[vi_port]);
++            err = vi_capture_release(chan->tegra_vi_channel[vi_port],
++                CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
++
++            if (err)
++                dev_err(&chan->video->dev,
++                    "vi capture release failed\n");
++
++			/* Release capture requests */
++			if (chan->request[vi_port] != NULL) {
++					dma_free_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
++					chan->capture_queue_depth * sizeof(struct capture_descriptor),
++					chan->request[vi_port], chan->request_iova[vi_port]);
++			}
++			chan->request[vi_port] = NULL;
++
++			/* Release emd data buffers */
++			if (chan->emb_buf_size > 0) {
++					struct device *vi_unit_dev;
++					vi5_unit_get_device_handle(chan->vi->ndev, chan->port[0],\
++																	&vi_unit_dev);
++					dma_free_coherent(vi_unit_dev, chan->emb_buf_size,
++													chan->emb_buf_addr, chan->emb_buf);
++					chan->emb_buf_size = 0;
++			}
++
++            vi_channel_close_ex(chan->vi_channel_id[vi_port],
++                        chan->tegra_vi_channel[vi_port]);
++            chan->tegra_vi_channel[vi_port] = NULL;
+ 		}
+ 
+ 		/* release all remaining buffers to v4l2 */
+diff --git a/kernel/nvidia/include/media/mc_common.h b/kernel/nvidia/include/media/mc_common.h
+index b03108c7f..12caca207 100644
+--- a/kernel/nvidia/include/media/mc_common.h
++++ b/kernel/nvidia/include/media/mc_common.h
+@@ -279,6 +279,8 @@ struct tegra_channel {
+ 	struct nvcsi_deskew_context *deskew_ctx;
+ 	struct tegra_vi_channel *tegra_vi_channel[TEGRA_CSI_BLOCKS];
+ 	struct capture_descriptor *request[TEGRA_CSI_BLOCKS];
++	dma_addr_t request_iova[TEGRA_CSI_BLOCKS];
++
+ 	bool is_slvsec;
+ 	int is_interlaced;
+ 	enum interlaced_type interlace_type;
+-- 
+2.52.0
+
