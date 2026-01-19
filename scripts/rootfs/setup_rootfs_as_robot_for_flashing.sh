@@ -1,6 +1,170 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This script can be run inside a Docker container to provide a consistent environment.
+# If the --docker flag is provided, the script will re-launch itself inside a
+# pre-configured Docker container.
+
+DOCKER_FLAG_PRESENT=0
+# We do a quick pre-scan for the --docker flag.
+# This is because the script consumes arguments in the main parsing loop,
+# and we need to act on --docker before that happens.
+for arg in "$@"; do
+    if [[ "$arg" == "--docker" ]]; then
+        DOCKER_FLAG_PRESENT=1
+        break
+    fi
+done
+
+# If --docker is present, set up the environment and re-launch.
+if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
+    # Ensure the script is run with sudo for docker commands and host setup.
+    if [[ "$EUID" -ne 0 ]]; then
+        echo "This script must be run with sudo when using the --docker flag." >&2
+        exit 1
+    fi
+
+    # --- Host Dependency Installation for Docker ---
+    echo "Checking for and installing host dependencies for cross-architecture container support..."
+
+    if [ -f /etc/os-release ]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        OS=$NAME
+    else
+        echo "Cannot determine the operating system." >&2
+        exit 1
+    fi
+
+    if [[ "$OS" == "Ubuntu" || "$OS" == "Debian GNU/Linux" ]]; then
+        if ! dpkg -l | grep -q "qemu-user-static" || ! dpkg -l | grep -q "binfmt-support"; then
+            echo "Installing QEMU and binfmt support for Debian/Ubuntu..."
+            apt-get update
+            apt-get install -y qemu-user-static binfmt-support
+        else
+            echo "QEMU and binfmt support are already installed."
+        fi
+    elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" ]]; then
+        if ! pacman -Q | grep -q "qemu-user-static" || ! pacman -Q | grep -q "binfmt-support"; then
+            echo "Installing QEMU and binfmt support for Arch Linux..."
+            pacman -Syu --noconfirm qemu-user-static qemu-user-static-binfmt
+        else
+            echo "QEMU and binfmt support are already installed."
+        fi
+    else
+        echo "Unsupported operating system for automatic dependency installation: $OS" >&2
+        exit 1
+    fi
+
+    # Register QEMU handlers with the kernel for ARM64 emulation.
+    echo "Registering QEMU handlers with the kernel..."
+    docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
+
+    # --- Docker Image and Container Setup ---
+    SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+    IMAGE="ubuntu:22.04"
+    CONTAINER_NAME="rootfs_flasher_setup"
+    DOCKER_TAG="jetson_builder:latest"
+
+    # Build the 'jetson_builder' Docker image if it doesn't already exist.
+    if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" ]]; then
+        echo "Building the Docker image '$DOCKER_TAG'..."
+        docker pull "$IMAGE"
+        # This Dockerfile is based on the one in setup_tegra_package_docker.sh
+        docker build -t "$DOCKER_TAG" - <<EOF
+        FROM $IMAGE
+        RUN apt-get update && apt-get install -y sudo tar bzip2 git wget curl openssh-client iputils-ping docker.io
+        RUN apt-get update && apt-get install -y jq qemu-user-static binfmt-support
+        RUN apt-get update && apt-get install -y unzip build-essential kmod flex bison
+        RUN apt-get update && apt-get install -y libelf-dev bc dwarves ccache libncurses5-dev
+        RUN apt-get update && apt-get install -y vim-common rsync zlib1g libssl-dev
+EOF
+    else
+        echo "Using existing Docker image: $DOCKER_TAG"
+    fi
+
+    # Clean up any previous container with the same name.
+    if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
+        echo "Removing existing container: $CONTAINER_NAME"
+        docker rm -f "$CONTAINER_NAME"
+    fi
+
+    # Reconstruct arguments, filtering out --docker and handling local file paths.
+    # A temporary directory is created to hold copies of files like certificates,
+    # making them available inside the Docker container.
+    TEMP_ASSETS_DIR=$(mktemp -d -p "$SCRIPT_DIR" "docker_assets.XXXXXX")
+    trap 'rm -rf "$TEMP_ASSETS_DIR"' EXIT # Ensure cleanup on script exit
+
+    ARGS=()
+    # Use a state machine to parse arguments that take a value.
+    next_arg_is_path_for=""
+    for arg in "$@"; do
+        if [[ -n "$next_arg_is_path_for" ]]; then
+            host_path="$arg"
+            # Ensure the file exists on the host.
+            if [[ ! -f "$host_path" ]]; then
+                echo "Error: File not found for $next_arg_is_path_for: $host_path" >&2
+                exit 1
+            fi
+
+            filename=$(basename "$host_path")
+            cp "$host_path" "$TEMP_ASSETS_DIR/"
+
+            # The path inside the container will be relative to the workspace.
+            container_path="./$(basename "$TEMP_ASSETS_DIR")/$filename"
+            ARGS+=("$(printf '%q' "$container_path")")
+
+            next_arg_is_path_for="" # Reset for the next argument.
+        else
+            case "$arg" in
+                --docker)
+                    # The --docker flag is consumed and not passed into the container.
+                    ;;
+                --crt|--key|--zip)
+                    # These flags expect a file path as the next argument.
+                    ARGS+=("$(printf '%q' "$arg")")
+                    next_arg_is_path_for="$arg"
+                    ;;
+                *)
+                    # Other arguments are passed through as-is.
+                    ARGS+=("$(printf '%q' "$arg")")
+                    ;;
+            esac
+        fi
+    done
+
+    # If an option like --crt was given but was the last argument.
+    if [[ -n "$next_arg_is_path_for" ]]; then
+        echo "Error: Missing path for $next_arg_is_path_for option." >&2
+        exit 1
+    fi
+
+    # The command to execute inside the container is this script itself.
+    CONTAINER_CMD="./$(basename "${BASH_SOURCE[0]}") ${ARGS[*]}"
+
+    echo "Re-launching script inside Docker container. All subsequent output will be from the container."
+    # Run the container.
+    # --privileged is crucial for USB device access needed for flashing.
+    # --network=host allows scp/ping to other devices on the local network.
+    # -it provides an interactive tty for prompts.
+    docker run --rm -it \
+        --name "$CONTAINER_NAME" \
+        --privileged \
+        --network=host \
+        -v "$SCRIPT_DIR:/workspace" \
+        -v "/var/run/docker.sock:/var/run/docker.sock" \
+        -w "/workspace" \
+        -e HOME="/workspace" \
+        -e SUDO_USER="${SUDO_USER-}" \
+        "$DOCKER_TAG" \
+        /bin/bash -c "$CONTAINER_CMD"
+
+    # Exit the host script. The exit code of the container will be propagated.
+    exit $?
+fi
+
+
+
 # --- Config ---
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
@@ -20,6 +184,7 @@ Options:
   --target-bsp <version> Target JetPack version (e.g., 5.1.2). (Required)
   --soc <soc>            Target SoC (e.g., t234 for Orin). (Required)
   --robot-number <id>    Set robot number and fetch certs + inject hostname/env.
+  --docker               Run the script inside a Docker container for a consistent environment.
   --dry-run              Simulate connectivity and cert fetch without execution.
   --password             Password for pulling VPN credentials.
   --skip-vpn	    Skips pulling and updaing the VPN certificates
@@ -245,7 +410,7 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   else
       echo "--skip-vpn active, skipping VPN certificate copy."
   fi
-  
+
   echo "Running chroot..."
   touch "$CHROOT_CMD_FILE"
   run sudo "$L4T_DIR/jetson_chroot.sh" "$ROOTFS_PATH" "$SOC" "$CHROOT_CMD_FILE"
@@ -292,6 +457,18 @@ echo "Running flash script: $FLASH_SCRIPT"
 curl -fsSL \
 https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/flash_jetson_ALL_sdmmc_partition_qspi.sh \
 -o "$FLASH_SCRIPT"
+
+# Add a check to ensure curl succeeded
+if [ ! -f "$FLASH_SCRIPT" ]; then
+    echo "Error: Failed to download flash script." >&2
+    echo "Attempted to download from: https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/rootfs/flash_jetson_ALL_sdmmc_partition_qspi.sh" >&2
+    exit 1
+fi
+
+# For debugging, show that the file exists and has the right permissions
+echo "Flash script downloaded. Listing directory contents:"
+ls -la "$(dirname "$FLASH_SCRIPT")"
+
 chmod +x "$FLASH_SCRIPT"
 
 MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)
@@ -299,7 +476,7 @@ MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)
 if [[ "$MAJOR_VERSION" -ge 6 ]]; then
   DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
   echo "Jetpack 6.0+ detected, using DTB file: $DTB_FILE"
-  "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR" --dtb-file "$DTB_FILE"
+  sudo "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR" --dtb-file "$DTB_FILE"
 else
-  "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
+  sudo "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
 fi
