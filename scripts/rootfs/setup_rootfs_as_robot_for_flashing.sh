@@ -71,13 +71,35 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
         echo "Building the Docker image '$DOCKER_TAG'..."
         docker pull "$IMAGE"
         # This Dockerfile is based on the one in setup_tegra_package_docker.sh
-        docker build -t "$DOCKER_TAG" - <<EOF
+        docker build --dns=8.8.8.8 --dns=8.8.4.4 -t "$DOCKER_TAG" - <<EOF
         FROM $IMAGE
-        RUN apt-get update && apt-get install -y sudo tar bzip2 git wget curl openssh-client iputils-ping docker.io
-        RUN apt-get update && apt-get install -y jq qemu-user-static binfmt-support
-        RUN apt-get update && apt-get install -y unzip build-essential kmod flex bison
-        RUN apt-get update && apt-get install -y libelf-dev bc dwarves ccache libncurses5-dev
-        RUN apt-get update && apt-get install -y vim-common rsync zlib1g libssl-dev
+        RUN apt-get update && apt-get install -y \
+            sudo \
+            tar \
+            bzip2 \
+            git \
+            wget \
+            curl \
+            openssh-client \
+            iputils-ping \
+            docker.io \
+            jq \
+            qemu-user-static \
+            binfmt-support \
+            unzip \
+            build-essential \
+            kmod \
+            flex \
+            bison \
+            libelf-dev \
+            bc \
+            dwarves \
+            ccache \
+            libncurses5-dev \
+            vim-common \
+            rsync \
+            zlib1g \
+            libssl-dev
 EOF
     else
         echo "Using existing Docker image: $DOCKER_TAG"
