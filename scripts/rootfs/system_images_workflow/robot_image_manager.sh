@@ -141,18 +141,18 @@ ensure_l4t_rootfs() {
             echo "Installing gdown..."
             local python_exe="python3"
             command -v python3.8 &>/dev/null && python_exe="python3.8"
-            
+
             if grep -qi ubuntu /etc/os-release; then
                 sudo apt-get update -y
                 sudo apt-get install --reinstall -y python3-pip python3-setuptools python3-distutils curl
             fi
-            
+
             local pip_opts=""
             if "$python_exe" -m pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
                 pip_opts="--break-system-packages"
             fi
             "$python_exe" -m pip install $pip_opts --upgrade gdown --user
-            
+
             export PATH="$HOME/.local/bin:$PATH"
             "$python_exe" -m gdown "$rootfs_gid" -O "$tar_file_path"
         fi
@@ -178,10 +178,10 @@ fetch_credentials() {
     local robot_list="$1"
     local ssh_pass="$2"
     local output_dir="$3"
-    
+
     echo "--- Fetching credentials from live robots ---"
     mkdir -p "$output_dir"
-    
+
     IFS=',' read -ra robots_to_fetch <<< "$robot_list"
     for robot in "${robots_to_fetch[@]}"; do
         echo "[*] Resolving $robot …"
@@ -245,7 +245,7 @@ setup_rootfs() {
   else
     echo "CARTKEN_CART_NUMBER=$robot_id" | sudo tee -a "$env_file" > /dev/null
   fi
-  
+
   local hotspot_file="$rootfs_path/etc/NetworkManager/system-connections/Hotspot.nmconnection"
   if [[ -f "$hotspot_file" ]]; then
       sudo sed -i "s/^ssid=.*/ssid=$new_hostname/" "$hotspot_file"
@@ -283,10 +283,10 @@ generate_images() {
   local l4t_path="$1"
   echo "--- Generating partition images ---"
   ensure_sudo
-  
+
   l4t_path=$(to_absolute_path "$l4t_path")
   local l4t_version; l4t_version=$(basename "$(dirname "$l4t_path")")
-  
+
   local bootloader_partition_xml
   case "$l4t_version" in
       "6"*) bootloader_partition_xml="$l4t_path/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml";;
@@ -307,7 +307,7 @@ generate_images() {
   sudo /bin/bash -c "$cmd"
   local flash_exit_code=$?
   set -e
-  
+
   if [[ $flash_exit_code -ne 0 ]]; then
       echo "⚠️  WARNING: NVIDIA flash.sh script finished with a non-zero exit code ($flash_exit_code)." >&2
       echo "Proceeding based on original script behavior, but generated images may be incomplete." >&2
@@ -327,7 +327,7 @@ save_images() {
   ensure_sudo
   local target_dir="$output_base/$robot_id"
   sudo mkdir -p "$target_dir"
-  
+
   echo "Saving .img files from '$l4t_path/bootloader' to '$target_dir'…"
   sudo find "$l4t_path/bootloader" -xdev -type f -name '*.img' -print0 | \
   while IFS= read -r -d '' IMG;
@@ -337,7 +337,7 @@ save_images() {
     sudo mkdir -p "$dest_dir_inner"
     sudo cp -- "$IMG" "$dest_dir_inner/"
   done
-  
+
   echo "✓ Images for robot $robot_id saved to '$target_dir'"
 }
 
@@ -350,13 +350,13 @@ restore_images() {
     local robot_id="$1"
     local images_base_dir="$2"
     local l4t_dir="$3"
-    
+
     echo "--- Restoring images for robot $robot_id ---"
     ensure_sudo
 
     local images_dir="$images_base_dir/$robot_id"
     [[ -d "$images_dir" ]] || { echo "❌ Images dir '$images_dir' not found" >&2; exit 1; }
-    
+
     echo "Restoring .img files from '$images_dir' into '$l4t_dir/bootloader'…"
     # Copy files from the "bootloader" subdirectory of the robot's image dir
     local source_bootloader_dir="$images_dir/bootloader"
@@ -381,7 +381,7 @@ flash_device() {
 
     echo "--- Flashing device ---"
     ensure_sudo
-    
+
     local l4t_path; l4t_path=$(to_absolute_path "$l4t_dir")
     local l4t_version; l4t_version=$(basename "$(dirname "$l4t_path")")
 
@@ -404,11 +404,11 @@ disable_watchdog() {
     local robot_id="$1"
     local user="$2"
     local pass="$3"
-    
+
     echo "--- Disabling watchdog on physical robot ---"
     local ip_out
     ip_out=$(timeout 5s cartken r ip "$robot_id" 2>&1) || true
-    
+
     local robot_ip=""
     while read -r iface ip _;
  do
@@ -420,12 +420,12 @@ disable_watchdog() {
             fi
         done
     done <<< "$ip_out"
-    
+
     if [[ -z "$robot_ip" ]]; then
       echo "❌ Could not reach robot $robot_id. Cannot disable watchdog." >&2
       exit 1
     fi
-    
+
     echo "Disabling watchdog on robot $robot_id at $robot_ip..."
     sshpass -p "$pass" ssh -o StrictHostKeyChecking=no "$user@$robot_ip" \
       "echo '$pass' | sudo -S cartken-toggle-watchdog off"
@@ -457,26 +457,26 @@ main_prepare() {
 
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --robots) robots="$2"; shift 2;; 
-            --credentials-zip) cred_zip="$2"; shift 2;; 
-            --credentials-dir) vpn_dir="$2"; shift 2;; 
+            --robots) robots="$2"; shift 2;;
+            --credentials-zip) cred_zip="$2"; shift 2;;
+            --credentials-dir) vpn_dir="$2"; shift 2;;
             --crt) crt_file="$2"; shift 2;;
             --key) key_file="$2"; shift 2;;
-            --fetch-credentials) fetch_creds=true; shift 1;; 
-            --password) password="$2"; shift 2;; 
-            --l4t-dir) l4t_dir="$2"; shift 2;; 
-            --images-dir) images_dir="$2"; shift 2;; 
-            --rootfs-gid) rootfs_gid="$2"; shift 2;; 
-            --ssh-key) ssh_key="$2"; shift 2;; 
-            --tar) tar_file="$2"; shift 2;; 
-            -h|--help) usage; exit 0;; 
-            *) echo "Unknown prepare option: $1" >&2; usage;; 
+            --fetch-credentials) fetch_creds=true; shift 1;;
+            --password) password="$2"; shift 2;;
+            --l4t-dir) l4t_dir="$2"; shift 2;;
+            --images-dir) images_dir="$2"; shift 2;;
+            --rootfs-gid) rootfs_gid="$2"; shift 2;;
+            --ssh-key) ssh_key="$2"; shift 2;;
+            --tar) tar_file="$2"; shift 2;;
+            -h|--help) usage; exit 0;;
+            *) echo "Unknown prepare option: $1" >&2; usage;;
         esac
     done
-    
+
     # Validation
     : "${robots:?--robots is required for prepare mode.}"
-    
+
     # New validation logic to avoid set -e trap
     local cred_source_count=0
     if [[ -n "$cred_zip" ]]; then
@@ -509,11 +509,11 @@ main_prepare() {
     if ((cred_source_count == 0)); then
         vpn_dir="$DEFAULT_VPN_DIR"
     fi
-    
+
     # Main logic
     echo "Starting PREPARE mode (v2) for robots: $robots"
     ensure_l4t_rootfs "$l4t_dir" "$rootfs_gid" "$tar_file"
-    
+
     if [[ -n "$crt_file" && -n "$key_file" ]]; then
         echo "Using credentials from --crt and --key flags."
         vpn_dir="$SCRIPT_DIR/temp_credentials"
@@ -527,7 +527,7 @@ main_prepare() {
         done
     elif [[ -n "$cred_zip" ]]; then
         echo "Unpacking credentials from zip: $cred_zip"
-        vpn_dir="$SCRIPT_DIR/unzipped_credentials"
+        vpn_dir="$SCRIPT_DIR/robot_credentials"
         rm -rf "$vpn_dir" && mkdir -p "$vpn_dir" && unzip -o "$cred_zip" -d "$vpn_dir"
         mapfile -t entries < <(find "$vpn_dir" -mindepth 1 -maxdepth 1)
         if [[ ${#entries[@]} -eq 1 && -d "${entries[0]}" ]]; then
@@ -546,7 +546,7 @@ main_prepare() {
         generate_images "$l4t_dir"
         save_images "$r" "$images_dir" "$l4t_dir"
     done
-    
+
     echo "✓ All images created successfully under $images_dir"
 }
 
@@ -561,20 +561,20 @@ main_flash() {
 
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --robot) robot_id="$2"; shift 2;; 
-            --password) password="$2"; shift 2;; 
-            --l4t-dir) l4t_dir="$2"; shift 2;; 
-            --images-dir) images_dir="$2"; shift 2;; 
-            --user) user="$2"; shift 2;; 
-            -h|--help) usage; exit 0;; 
-            *) echo "Unknown flash option: $1" >&2; usage;; 
+            --robot) robot_id="$2"; shift 2;;
+            --password) password="$2"; shift 2;;
+            --l4t-dir) l4t_dir="$2"; shift 2;;
+            --images-dir) images_dir="$2"; shift 2;;
+            --user) user="$2"; shift 2;;
+            -h|--help) usage; exit 0;;
+            *) echo "Unknown flash option: $1" >&2; usage;;
         esac
     done
 
     # Validation
     : "${robot_id:?--robot is required for flash mode.}"
     : "${password:?--password is required for flash mode.}"
-    
+
     # Main logic
     echo "Starting FLASH mode for robot: $robot_id"
     read -rp "Is the Jetson inside a physical robot? [y/N] " yn
@@ -583,10 +583,10 @@ main_flash() {
     fi
 
     read -rp "Please place the robot into RECOVERY MODE, then press ENTER to continue..."
-    
+
     restore_images "$robot_id" "$images_dir" "$l4t_dir"
     flash_device "$l4t_dir"
-    
+
     echo "✓ Robot $robot_id flash complete."
 }
 
@@ -621,17 +621,17 @@ main() {
     case "$mode" in
         prepare)
             main_prepare "$@"
-            ;; 
+            ;;
         flash)
             main_flash "$@"
-            ;; 
+            ;;
         -h|--help)
             usage
-            ;; 
+            ;;
         *)
             echo "Unknown mode: $mode" >&2
             usage
-            ;; 
+            ;;
     esac
 }
 
