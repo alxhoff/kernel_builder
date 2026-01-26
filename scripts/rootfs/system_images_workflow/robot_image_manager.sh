@@ -49,6 +49,8 @@ Required:
 Credential Options (choose one):
   --credentials-zip ZIP   Path to a zip file with robot credentials.
   --credentials-dir DIR   Path to a directory with robot credentials.
+  --crt FILE              Path to the robot's certificate file.
+  --key FILE              Path to the robot's key file.
   --fetch-credentials     Fetch credentials from live robots (requires --password).
 
 Other Options:
@@ -449,12 +451,16 @@ main_prepare() {
     local fetch_creds=false
     local password=""
     local tar_file=""
+    local crt_file=""
+    local key_file=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
             --robots) robots="$2"; shift 2;; 
             --credentials-zip) cred_zip="$2"; shift 2;; 
             --credentials-dir) vpn_dir="$2"; shift 2;; 
+            --crt) crt_file="$2"; shift 2;;
+            --key) key_file="$2"; shift 2;;
             --fetch-credentials) fetch_creds=true; shift 1;; 
             --password) password="$2"; shift 2;; 
             --l4t-dir) l4t_dir="$2"; shift 2;; 
@@ -481,10 +487,17 @@ main_prepare() {
     if [[ "$fetch_creds" == true ]]; then
         cred_source_count=$((cred_source_count + 1))
     fi
+    if [[ -n "$crt_file" || -n "$key_file" ]]; then
+        cred_source_count=$((cred_source_count + 1))
+    fi
 
     if ((cred_source_count > 1)); then
-        echo "❌ Please specify only one credential source: --credentials-zip, --credentials-dir, or --fetch-credentials." >&2
+        echo "❌ Please specify only one credential source: --credentials-zip, --credentials-dir, (--crt and --key), or --fetch-credentials." >&2
         exit 1
+    fi
+
+    if [[ -n "$crt_file" && -z "$key_file" ]] || [[ -z "$crt_file" && -n "$key_file" ]]; then
+        echo "❌ Both --crt and --key must be specified together." >&2; exit 1;
     fi
 
     if [[ "$fetch_creds" == true && -z "$password" ]]; then
@@ -500,7 +513,18 @@ main_prepare() {
     echo "Starting PREPARE mode (v2) for robots: $robots"
     ensure_l4t_rootfs "$l4t_dir" "$rootfs_gid" "$tar_file"
     
-    if [[ -n "$cred_zip" ]]; then
+    if [[ -n "$crt_file" && -n "$key_file" ]]; then
+        echo "Using credentials from --crt and --key flags."
+        vpn_dir="$SCRIPT_DIR/temp_credentials"
+        rm -rf "$vpn_dir"
+        IFS=',' read -ra robot_array_for_creds <<< "$robots"
+        for r_cred in "${robot_array_for_creds[@]}"; do
+            local temp_robot_dir="$vpn_dir/$r_cred"
+            mkdir -p "$temp_robot_dir"
+            cp -- "$crt_file" "$temp_robot_dir/robot.crt"
+            cp -- "$key_file" "$temp_robot_dir/robot.key"
+        done
+    elif [[ -n "$cred_zip" ]]; then
         echo "Unpacking credentials from zip: $cred_zip"
         vpn_dir="$SCRIPT_DIR/unzipped_credentials"
         rm -rf "$vpn_dir" && mkdir -p "$vpn_dir" && unzip -o "$cred_zip" -d "$vpn_dir"
