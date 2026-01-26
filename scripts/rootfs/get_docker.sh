@@ -8,6 +8,7 @@ DEPLOY_TAG="latest"
 UBUNTU_VERSION="20.04"
 REGISTRY="registry.gitlab.com"
 REPO="cartken/repo"
+UPDATE_MODE=false
 
 # --- Help Message Function ---
 print_help() {
@@ -34,6 +35,9 @@ OPTIONS:
   --ubuntu        The Ubuntu version associated with the fallback image name.
                   (Default: "${UBUNTU_VERSION}")
 
+  --update        Force a check for remote updates. If not set, the script will use a
+                  local image if it exists, instead of re-pulling.
+
   --help          Display this help message and exit.
 
 EXAMPLE:
@@ -41,7 +45,8 @@ EXAMPLE:
     --username myuser \
     --access-token glpat-xxxxxxxxxxxx \
     --soc orin \
-    --tag v7.1.0
+    --tag v7.1.0 \
+    --update
 EOF
 }
 
@@ -67,6 +72,10 @@ while [[ $# -gt 0 ]]; do
     --ubuntu)
       UBUNTU_VERSION="$2"
       shift 2
+      ;;
+    --update)
+      UPDATE_MODE=true
+      shift 1
       ;;
     --help)
       print_help
@@ -119,14 +128,28 @@ fi
 
 echo "Selected image to process: ${IMAGE_TO_PROCESS}"
 
-# Step 3: Pull the Docker image
-echo "Pulling Docker image '${IMAGE_TO_PROCESS}'..."
-docker pull "${IMAGE_TO_PROCESS}"
-if [ $? -ne 0 ]; then
-    echo "Error: Docker pull failed for '${IMAGE_TO_PROCESS}'. Aborting."
-    exit 1
+# Step 3: Pull the Docker image (if necessary)
+LOCAL_IMAGE_EXISTS=false
+if docker image inspect "${IMAGE_TO_PROCESS}" > /dev/null 2>&1; then
+  LOCAL_IMAGE_EXISTS=true
 fi
-echo "Docker image pulled successfully."
+
+if [[ "$LOCAL_IMAGE_EXISTS" = true && "$UPDATE_MODE" = false ]]; then
+  echo "Image '${IMAGE_TO_PROCESS}' already exists locally. Skipping pull."
+  echo "Use --update to force a check for remote updates."
+else
+  if [[ "$UPDATE_MODE" = true ]]; then
+    echo "Update mode: Checking for remote updates for '${IMAGE_TO_PROCESS}'..."
+  else
+    echo "Image not found locally. Pulling from registry..."
+  fi
+  docker pull "${IMAGE_TO_PROCESS}"
+  if [ $? -ne 0 ]; then
+      echo "Error: Docker pull failed for '${IMAGE_TO_PROCESS}'. Aborting."
+      exit 1
+  fi
+  echo "Docker image pull successful."
+fi
 
 # Step 4: Save the Docker image to a portable .tar archive
 SAVE_FILE_NAME="${IMAGE_TO_PROCESS//[:\/]/_}.tar" # Sanitize image name for a valid filename
