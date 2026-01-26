@@ -1,5 +1,6 @@
 *.tbz2
 robot_*
+!robot_image_manager.sh
 certs
 jetson_bsp
 *.deb
