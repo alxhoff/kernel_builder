@@ -42,10 +42,11 @@ GENERAL OPTIONS:
   -h, --help        Show this help message.
 
 --- PREPARE MODE ---
-Usage: $0 prepare --robots R1,R2,... [OPTIONS]
+Usage: $0 prepare [robot selection] [OPTIONS]
 
-Required:
-  --robots R1,R2,...    Comma-separated list of robot IDs.
+Robot Selection (mutually exclusive):
+  --robots R1,R2,...       Comma-separated list of robot IDs.
+  --robot-range START END  A range of robot IDs (e.g., 100 200).
 
 Credential Options (choose one):
   --credentials-zip ZIP   Path to a zip file with robot credentials.
@@ -454,10 +455,13 @@ main_prepare() {
     local tar_file=""
     local crt_file=""
     local key_file=""
+    local robot_range_start=""
+    local robot_range_end=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
             --robots) robots="$2"; shift 2;;
+            --robot-range) robot_range_start="$2"; robot_range_end="$3"; shift 3;;
             --credentials-zip) cred_zip="$2"; shift 2;;
             --credentials-dir) vpn_dir="$2"; shift 2;;
             --crt) crt_file="$2"; shift 2;;
@@ -474,12 +478,24 @@ main_prepare() {
         esac
     done
 
-    # Validation
-    : "${robots:?--robots is required for prepare mode.}"
+	# Validation
+	if [[ -n "$robots" && -n "$robot_range_start" ]]; then
+		echo "❌ --robots and --robot-range are mutually exclusive." >&2; exit 1;
+	fi
 
-    # New validation logic to avoid set -e trap
+	if [[ -n "$robot_range_start" ]]; then
+		if ! [[ "$robot_range_start" =~ ^[0-9]+$ && "$robot_range_end" =~ ^[0-9]+$ ]]; then
+			echo "❌ --robot-range requires two numeric arguments." >&2; exit 1;
+		fi
+		if (( robot_range_start > robot_range_end )); then
+			echo "❌ Start of --robot-range cannot be greater than the end." >&2; exit 1;
+		fi
+		robots=$(seq "$robot_range_start" "$robot_range_end" | paste -sd, -)
+	fi
+
+	# New validation logic to avoid set -e trap
     local cred_source_count=0
-    if [[ -n "$cred_zip" ]]; then
+	if [[ -n "$cred_zip" ]]; then
         cred_source_count=$((cred_source_count + 1))
     fi
     if [[ -n "$vpn_dir" ]]; then
