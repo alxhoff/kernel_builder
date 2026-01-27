@@ -63,6 +63,12 @@ Other Options:
   --ssh-key "KEY"         SSH public key to inject.
   --tar PATH              Use a local L4T tarball instead of downloading.
 
+Docker Options (for embedding image in rootfs):
+  --gitlab-username USER  GitLab username for Docker registry.
+  --gitlab-access-token TOKEN GitLab Personal Access Token (PAT).
+  --docker-soc SOC        Target SOC for Docker image (default: orin).
+  --docker-tag TAG        Tag of the Docker image (default: latest).
+
 --- FLASH MODE ---
 Usage: $0 flash --robot N [OPTIONS]
 
@@ -343,6 +349,106 @@ save_images() {
 }
 
 
+# Prepare and cache the main Docker image inside the rootfs.
+prepare_docker_image() {
+    local l4t_dir="$1"
+    local gitlab_user="$2"
+    local gitlab_token="$3"
+    local soc_type="$4"
+    local deploy_tag="$5"
+
+    echo "--- Preparing Docker Image ---"
+    command -v docker >/dev/null 2>&1 || { echo "❌ 'docker' command not found. Please install Docker." >&2; exit 1; }
+
+    # Define constants from get_docker.sh
+    local REGISTRY="registry.gitlab.com"
+    local REPO="cartken/repo"
+    local UBUNTU_VERSION="20.04"
+
+    echo "Logging in to Docker registry: ${REGISTRY}..."
+    if ! echo "${gitlab_token}" | docker login "${REGISTRY}" --username "${gitlab_user}" --password-stdin; then
+        echo "❌ Docker login failed. Please check credentials." >&2
+        docker logout "${REGISTRY}" &>/dev/null || true
+        exit 1
+    fi
+    echo "✓ Docker login successful."
+
+    # Determine which image name to pull
+    local IMAGE_NAME_NEW="${REPO}/jetson-release-${soc_type}"
+    local FULL_IMAGE_NEW_FORMAT="${REGISTRY}/${IMAGE_NAME_NEW}:${deploy_tag}"
+
+    echo "Checking for image: ${FULL_IMAGE_NEW_FORMAT}"
+    local IMAGE_TO_PROCESS=""
+    if docker manifest inspect "${FULL_IMAGE_NEW_FORMAT}" > /dev/null 2>&1; then
+        echo "✓ Modern image format found."
+        IMAGE_TO_PROCESS="${FULL_IMAGE_NEW_FORMAT}"
+    else
+        echo "⚠️ Modern image format not found, falling back to legacy format."
+        local IMAGE_NAME_OLD="${REPO}/ros-${soc_type}-${UBUNTU_VERSION}-release"
+        IMAGE_TO_PROCESS="${REGISTRY}/${IMAGE_NAME_OLD}:${deploy_tag}"
+    fi
+    echo "Selected image to process: ${IMAGE_TO_PROCESS}"
+
+    local rootfs_docker_dir="$l4t_dir/rootfs/home/cartken/docker_images"
+    local image_filename; image_filename="${IMAGE_TO_PROCESS//[:\/]/_}.tar"
+    local target_archive_path="$rootfs_docker_dir/$image_filename"
+
+    ensure_sudo
+    sudo mkdir -p "$rootfs_docker_dir"
+
+    # Check if archive exists beforehand
+    local archive_exists=false
+    if sudo test -f "$target_archive_path"; then
+        archive_exists=true
+    fi
+
+    # Pull the image and capture output
+    echo "Pulling Docker image '${IMAGE_TO_PROCESS}' to check for updates..."
+    local pull_output; pull_output=$(docker pull "${IMAGE_TO_PROCESS}" 2>&1)
+    local pull_exit_code=$?
+
+    if [[ $pull_exit_code -ne 0 ]]; then
+        echo "❌ Docker pull failed for '${IMAGE_TO_PROCESS}'." >&2
+        echo "$pull_output" >&2
+        docker logout "${REGISTRY}" &>/dev/null || true
+        exit 1
+    fi
+    echo "$pull_output"
+
+    # Decide if the .tar archive needs to be (re)generated.
+    local should_save=false
+    if [[ "$archive_exists" == false ]]; then
+        echo "Docker image archive does not exist. Creating a new one."
+        should_save=true
+    elif echo "$pull_output" | grep -q -e "Downloaded newer image" -e "Pulling fs layer"; then
+        echo "A newer or previously un-cached image was downloaded. Regenerating archive."
+        should_save=true
+    else
+        echo "✓ Image is up-to-date and archive already exists. No changes needed."
+    fi
+
+    if [[ "$should_save" == true ]]; then
+        echo "Saving Docker image to file: ${target_archive_path}..."
+        local temp_tar_file; temp_tar_file=$(mktemp --suffix=.tar)
+        if ! docker save "${IMAGE_TO_PROCESS}" -o "${temp_tar_file}"; then
+            echo "❌ Docker save failed." >&2
+            rm -f "$temp_tar_file"
+            docker logout "${REGISTRY}" &>/dev/null || true
+            exit 1
+        fi
+
+        sudo mv "$temp_tar_file" "$target_archive_path"
+        sudo chown 1000:1000 "$target_archive_path"
+        sudo chown 1000:1000 "$rootfs_docker_dir"
+        echo "✓ Docker image successfully saved."
+    fi
+
+    docker logout "${REGISTRY}" &>/dev/null || true
+    echo "--- Docker Image Preparation Complete ---"
+}
+
+
+
 
 # --- HELPERS: FLASH MODE ---
 
@@ -457,6 +563,10 @@ main_prepare() {
     local key_file=""
     local robot_range_start=""
     local robot_range_end=""
+    local gitlab_username=""
+    local gitlab_access_token=""
+    local docker_soc="orin"
+    local docker_tag="latest"
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -473,6 +583,10 @@ main_prepare() {
             --rootfs-gid) rootfs_gid="$2"; shift 2;;
             --ssh-key) ssh_key="$2"; shift 2;;
             --tar) tar_file="$2"; shift 2;;
+            --gitlab-username) gitlab_username="$2"; shift 2;;
+            --gitlab-access-token) gitlab_access_token="$2"; shift 2;;
+            --docker-soc) docker_soc="$2"; shift 2;;
+            --docker-tag) docker_tag="$2"; shift 2;;
             -h|--help) usage; exit 0;;
             *) echo "Unknown prepare option: $1" >&2; usage;;
         esac
@@ -529,6 +643,10 @@ main_prepare() {
     # Main logic
     echo "Starting PREPARE mode (v2) for robots: $robots"
     ensure_l4t_rootfs "$l4t_dir" "$rootfs_gid" "$tar_file"
+
+    if [[ -n "$gitlab_username" && -n "$gitlab_access_token" ]]; then
+        prepare_docker_image "$l4t_dir" "$gitlab_username" "$gitlab_access_token" "$docker_soc" "$docker_tag"
+    fi
 
     if [[ -n "$crt_file" && -n "$key_file" ]]; then
         echo "Using credentials from --crt and --key flags."
