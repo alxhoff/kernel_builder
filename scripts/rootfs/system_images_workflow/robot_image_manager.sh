@@ -498,8 +498,12 @@ flash_device() {
         *) bootloader_partition_xml="$l4t_path/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml";;
     esac
 
+    local kernel_image; kernel_image=$(to_absolute_path "$l4t_path/kernel/Image")
+    local dtb_file; dtb_file=$(to_absolute_path "$l4t_path/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb")
+    bootloader_partition_xml=$(to_absolute_path "$bootloader_partition_xml")
+
     pushd "$l4t_path" >/dev/null
-    local cmd="./flash.sh -r -c $bootloader_partition_xml -K kernel/Image -d kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb jetson-agx-orin-devkit mmcblk0p1"
+    local cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./flash.sh -r -c \"$bootloader_partition_xml\" -K \"$kernel_image\" -d \"$dtb_file\" jetson-agx-orin-devkit mmcblk0p1"
     echo "Running command: $cmd"
     sudo /bin/bash -c "$cmd"
     popd >/dev/null
