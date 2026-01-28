@@ -20,7 +20,7 @@ DEFAULT_IMAGES_DIR="robot_images"
 DEFAULT_VPN_DIR="robot_credentials"
 DEFAULT_SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 REMOTE_CRT_PATH="/etc/openvpn/cartken/2.0/crt"
-DEFAULT_ROOTFS_GID="1aHlryEeOnbWYCbRkq6yZ8Xfys8VV4SmK"
+DEFAULT_ROOTFS_GID="11t3rheY_I3wjBifJeyr7gAXxasbqeDHW"
 #DEFAULT_ROOTFS_GID="1-MEJNanz2eWXEhm5JC2tyiCAf8BLX_9h"
 DEFAULT_FLASH_USER="cartken"
 FLASH_INTERFACES=(wlan0 modem1 modem2 modem3)
@@ -503,7 +503,7 @@ flash_device() {
     bootloader_partition_xml=$(to_absolute_path "$bootloader_partition_xml")
 
     pushd "$l4t_path" >/dev/null
-    local cmd="BOARDID=3701 BOARDSKU=0000 FAB=TS4 ./flash.sh -r -c \"$bootloader_partition_xml\" -K \"$kernel_image\" -d \"$dtb_file\" jetson-agx-orin-devkit mmcblk0p1"
+    local cmd="./flash.sh -r -c \"$bootloader_partition_xml\" -K \"$kernel_image\" -d \"$dtb_file\" jetson-agx-orin-devkit mmcblk0p1"
     echo "Running command: $cmd"
     sudo /bin/bash -c "$cmd"
     popd >/dev/null
@@ -720,9 +720,10 @@ main_flash() {
         disable_watchdog "$robot_id" "$user" "$password"
     fi
 
+    restore_images "$robot_id" "$images_dir" "$l4t_dir"
+
     read -rp "Please place the robot into RECOVERY MODE, then press ENTER to continue..."
 
-    restore_images "$robot_id" "$images_dir" "$l4t_dir"
     flash_device "$l4t_dir"
 
     echo "✓ Robot $robot_id flash complete."
