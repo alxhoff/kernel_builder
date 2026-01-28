@@ -10,7 +10,7 @@ apt install -y python3-pip ifupdown v4l-utils apt-utils tree fail2ban tmux vim
 apt install -y screen htop can-utils iptraf libqt5core5a cmake libssl-dev
 apt install -y libc6-dev build-essential libudev-dev libqmi-utils uhubctl ffmpeg
 apt install -y libqt5widgets5 uuid-runtime nvme-cli nvidia-container-runtime
-apt install -y nvidia-docker2 nvidia-cuda
+apt install -y nvidia-docker2 nvidia-cuda chrony
 pip install -U sphinx python-can
 echo "Installing viki"
 python3 -m pip install /root/packages/cartken-wheels/viki-*.whl
