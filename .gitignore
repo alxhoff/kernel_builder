@@ -11,5 +11,7 @@ tags
 .vscode
 .dockerfile_hash
 kernel_debs
+kernel_archive/*
+!kernel_archive/.gitkeep
 
 __pycache__

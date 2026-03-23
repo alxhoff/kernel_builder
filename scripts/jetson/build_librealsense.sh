@@ -8,8 +8,23 @@ all_args=($@)
 repo_name=""
 in_build_env=false # <-- ADDED
 
+print_usage() {
+    echo "Usage: $(basename "$0") [OPTIONS]"
+    echo "Builds the librealsense library, optionally inside a Docker container."
+    echo ""
+    echo "Options:"
+    echo "  --docker        Build inside a dedicated Docker container. If the container doesn't exist, it will be created."
+    echo "  --cartken       Use the Cartken private repository for librealsense."
+    echo "  --branch <name> Specify a git branch to check out and build."
+    echo "  --help          Display this help message and exit."
+}
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        --help)
+            print_usage
+            exit 0
+            ;;
         --docker)
             use_docker=true
             shift
@@ -32,6 +47,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown parameter passed: $1"
+            print_usage
             exit 1
             ;;
     esac
@@ -88,16 +104,32 @@ run_install_and_build() {
     SETUP_DONE_FLAG="/opt/realsense_build_setup_done"
 
     if [[ ! -f "$SETUP_DONE_FLAG" ]]; then
-        if [[ "$(id -u)" == "0" ]]; then
-            apt-get update
-            apt-get install -y \
+        IS_UBUNTU_LIKE=false
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            if [[ "$ID" == "ubuntu" || "${ID_LIKE}" == *"debian"* ]]; then
+                IS_UBUNTU_LIKE=true
+            fi
+        fi
+
+        if [[ "$IS_UBUNTU_LIKE" = true ]]; then
+            echo "Ubuntu/Debian-like system detected. Installing dependencies..."
+            SUDO=""
+            if [[ "$(id -u)" -ne 0 ]]; then
+                SUDO="sudo"
+            fi
+
+            $SUDO apt-get update
+            $SUDO apt-get install -y \
                 libssl-dev libusb-1.0-0-dev libudev-dev pkg-config libgtk-3-dev \
                 git wget cmake build-essential \
                 libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev at \
                 libxrandr-dev \
                 openssh-client
 
-            touch "$SETUP_DONE_FLAG"
+            $SUDO touch "$SETUP_DONE_FLAG"
+        else
+            echo "Warning: Non-Ubuntu/Debian-like system detected. Skipping dependency installation."
         fi
     fi
 

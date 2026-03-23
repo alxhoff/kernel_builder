@@ -133,7 +133,8 @@ def send_native_can(args, can_id, payload):
             print(f"  Verbose: {msg}")
 
         # Open the SocketCAN bus, send, and shut down
-        with can.interface.Bus(channel=args.can, interface='socketcan') as bus:
+        # For CAN FD, the 'fd=True' flag is ESSENTIAL.
+        with can.interface.Bus(channel=args.can, interface='socketcan', fd=is_fd_frame) as bus:
             bus.send(msg)
 
         print("Successfully sent packet on bus.")

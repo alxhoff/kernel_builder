@@ -32,6 +32,9 @@ BUILD_MODULES_ARG=""
 OVERLAYS_ARG=""
 TOOLCHAIN_NAME_ARG=""
 TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
+TAG_NAME=""
+TAG_DESCRIPTION=""
+TAG_STATUS="development"
 
 # Function to display help
 show_help() {
@@ -52,6 +55,9 @@ show_help() {
     --build-dtb          Build the Device Tree Blob (DTB) separately using 'make dtbs'.
     --build-modules      Build kernel modules separately.
     --overlays <list>    A comma-separated list of DTBO files to apply as overlays.
+    --tag <name>         Tag this build for tracking (recorded in kernel_tags.json).
+    --description <text> Description of what this build adds/changes (used with --tag).
+    --tag-status <status> Initial tag status: development|testing|staging|production (default: development).
 
   Examples:
     1. Compile and package the kernel with a custom configuration file:
@@ -65,6 +71,10 @@ show_help() {
 
     4. Perform a dry-run (only print commands without executing them):
        ./compile_and_package.sh jetson --dry-run --localversion custom_version
+
+    5. Compile, package, and tag the build for tracking:
+       ./compile_and_package.sh cartken_5_1_5_realsense --localversion cartken5.1.5realsense2400 \\
+         --tag v5.1.5-rs-2400 --description \"Added RealSense D435 support\"
   "
   exit 0
 }
@@ -152,6 +162,33 @@ while [[ "$#" -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --tag)
+      if [ -n "$2" ]; then
+        TAG_NAME="$2"
+        shift 2
+      else
+        echo "Error: --tag requires a value"
+        exit 1
+      fi
+      ;;
+    --description)
+      if [ -n "$2" ]; then
+        TAG_DESCRIPTION="$2"
+        shift 2
+      else
+        echo "Error: --description requires a value"
+        exit 1
+      fi
+      ;;
+    --tag-status)
+      if [ -n "$2" ]; then
+        TAG_STATUS="$2"
+        shift 2
+      else
+        echo "Error: --tag-status requires a value"
+        exit 1
+      fi
+      ;;
     *)
       echo "Invalid argument: $1"
       exit 1
@@ -179,6 +216,32 @@ echo "Running command: $CMD"
 if ! eval $CMD; then
   echo "Failed to create Debian package."
   exit 1
+fi
+
+# Tag the build if --tag was provided
+if [ -n "$TAG_NAME" ]; then
+  TAG_SCRIPT="$SCRIPT_DIR/kernel_builder/kernel_tags.sh"
+  if [ -x "$TAG_SCRIPT" ]; then
+    TAG_CMD="\"$TAG_SCRIPT\" tag \"$TAG_NAME\" --kernel \"$KERNEL_NAME\" --localversion \"$LOCALVERSION_ARG\""
+    [ -n "$TAG_DESCRIPTION" ] && TAG_CMD="$TAG_CMD --description \"$TAG_DESCRIPTION\""
+    [ -n "$TAG_STATUS" ] && TAG_CMD="$TAG_CMD --status \"$TAG_STATUS\""
+
+    # Extract config name if provided
+    CONFIG_NAME=$(echo "$CONFIG_ARG" | sed 's/--config //')
+    [ -n "$CONFIG_NAME" ] && TAG_CMD="$TAG_CMD --config \"$CONFIG_NAME\""
+
+    # Extract DTB name if provided
+    DTB_NAME=$(echo "$DTB_NAME_ARG" | sed 's/--dtb-name //')
+    [ -n "$DTB_NAME" ] && TAG_CMD="$TAG_CMD --dtb-name \"$DTB_NAME\""
+
+    echo ""
+    echo "Tagging build as: $TAG_NAME"
+    if ! eval $TAG_CMD; then
+      echo "Warning: Failed to tag build, but compilation and packaging succeeded."
+    fi
+  else
+    echo "Warning: kernel_tags.sh not found or not executable, skipping tagging."
+  fi
 fi
 
 echo "Kernel compilation and packaging completed successfully."
