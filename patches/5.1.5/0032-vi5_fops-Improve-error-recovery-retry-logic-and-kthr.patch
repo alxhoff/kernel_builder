@@ -1,0 +1,120 @@
+From c3138f8c32caf70e941e6152f4e6d228f2827a44 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:47:28 +0100
+Subject: [PATCH 32/32] vi5_fops: Improve error recovery retry logic and
+ kthread stop handling
+
+Error recovery:
+- Add retry limit (max 10 attempts) to prevent infinite recovery loops
+- Call vb2_queue_error() when recovery is exhausted so userspace is
+  notified
+- Drop video_lock during msleep(300) between retries so VIDIOC_STREAMOFF
+  is not blocked
+- Improve error_recover open channel check with IS_ERR_OR_NULL
+
+Kthread stop:
+- Replace send_sig(SIGINT) with wake_up_interruptible() for cleaner
+  dequeue kthread shutdown
+- Add lockdep_assert_held and documentation for the video_lock
+  hand-off pattern in vi5_channel_stop_kthreads
+---
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 52 ++++++++++++++-----
+ 1 file changed, 38 insertions(+), 14 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 694965693..04b1c6503 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -708,8 +708,11 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 	/* restart vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+ 		err = vi5_channel_open(chan, vi_port);
+-		if (IS_ERR(chan->tegra_vi_channel[vi_port])) {
+-			err = PTR_ERR(chan);
++		if (err || IS_ERR_OR_NULL(chan->tegra_vi_channel[vi_port])) {
++			if (!err)
++				err = chan->tegra_vi_channel[vi_port] ?
++					PTR_ERR(chan->tegra_vi_channel[vi_port]) :
++					-ENOMEM;
+ 			goto done;
+ 		}
+ 		err = tegra_channel_capture_setup(chan, vi_port);
+@@ -823,25 +826,35 @@ static int tegra_channel_kthread_capture_dequeue(void *data)
+ 		capture_state = chan->capture_state;
+ 		spin_unlock_irqrestore(&chan->capture_state_lock, flags);
+ 		if (capture_state == CAPTURE_ERROR) {
+-			/* We deliberately keep this lock held even across
+-			 * msleep calls so that no other context can observe
+-			 * the invalid state produced by failed error_recover
+-			 * calls. */
++			int retries = 0;
++			const int max_retries = 10;
++
+ 			mutex_lock(&chan->video_lock);
+ 			while (!kthread_should_stop()) {
+ 				err = tegra_channel_error_recover(chan, false);
+-				if (!err) {
++				if (!err)
+ 					break;
+-				}
++
++				retries++;
+ 				dev_err(chan->vi->dev,
+-					"fatal: error recovery failed: %d\n",
+-					err);
+-				if (kthread_should_stop()) {
++					"error recovery failed (attempt %d/%d): %d\n",
++					retries, max_retries, err);
++
++				if (retries >= max_retries) {
++					dev_err(chan->vi->dev,
++						"error recovery exhausted, giving up\n");
++					vb2_queue_error(&chan->queue);
+ 					break;
+ 				}
+-				/* kthread_stop won't interrupt this, but it's
+-				 * pretty short so it's fine */
++
++				if (kthread_should_stop())
++					break;
++
++				/* Drop the lock during sleep so userspace
++				 * VIDIOC_STREAMOFF is not blocked. */
++				mutex_unlock(&chan->video_lock);
+ 				msleep(300);
++				mutex_lock(&chan->video_lock);
+ 			}
+ 			mutex_unlock(&chan->video_lock);
+ 		}
+@@ -891,8 +904,19 @@ done:
+ 	return err;
+ }
+ 
++/*
++ * Stop capture kthreads. Caller MUST hold chan->video_lock.
++ *
++ * We temporarily drop video_lock while stopping kthreads because the
++ * dequeue kthread acquires video_lock during error recovery. Without
++ * dropping it here, kthread_stop() would deadlock waiting for the
++ * kthread to exit. stop_kthread_lock serializes concurrent stop
++ * attempts and ensures the lock hand-off is safe.
++ */
+ static void vi5_channel_stop_kthreads(struct tegra_channel *chan)
+ {
++	lockdep_assert_held(&chan->video_lock);
++
+ 	mutex_lock(&chan->stop_kthread_lock);
+ 	mutex_unlock(&chan->video_lock);
+ 
+@@ -904,7 +928,7 @@ static void vi5_channel_stop_kthreads(struct tegra_channel *chan)
+ 
+ 	/* Stop the kthread for capture dequeue */
+ 	if (chan->kthread_capture_dequeue) {
+-		send_sig(SIGINT, chan->kthread_capture_dequeue, 1);
++		wake_up_interruptible(&chan->dequeue_wait);
+ 		kthread_stop(chan->kthread_capture_dequeue);
+ 		chan->kthread_capture_dequeue = NULL;
+ 	}
+-- 
+2.52.0
+

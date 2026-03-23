@@ -1,0 +1,39 @@
+From d5fbe47736ef46e822bd1c9f5fbd1b30009b6bee Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:47:27 +0100
+Subject: [PATCH 29/32] capture-vi-channel: Add NULL safety checks in
+ vi_capture_request_unpin
+
+Add guards against NULL capture data and NULL unpins_list in
+vi_capture_request_unpin() to prevent kernel panics during error
+recovery when capture channels are torn down prematurely.
+---
+ .../tegra/camera/fusa-capture/capture-vi-channel.c    | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
+index c340a9ce6..82e335a44 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi-channel.c
+@@ -188,7 +188,18 @@ void vi_capture_request_unpin(
+ 	struct capture_common_unpins *unpins;
+ 	int i = 0;
+ 
++	if (capture == NULL) {
++		dev_err(chan->dev, "%s: capture data is NULL\n", __func__);
++		return;
++	}
++
+ 	mutex_lock(&capture->unpins_list_lock);
++
++	if (capture->unpins_list == NULL) {
++		mutex_unlock(&capture->unpins_list_lock);
++		return;
++	}
++
+ 	unpins = &capture->unpins_list[buffer_index];
+ 
+ 	if (unpins->num_unpins != 0) {
+-- 
+2.52.0
+

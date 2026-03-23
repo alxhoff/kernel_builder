@@ -1,0 +1,47 @@
+From f523f4884df686f4fee05f2bd24479630c5efc8f Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:44:42 +0100
+Subject: [PATCH 26/32] d4xx: Harden driver probe with DT node and regmap
+ validation
+
+- Add NULL check for Device Tree node in ds5_board_setup() to fail
+  early with a clear error instead of dereferencing NULL
+- Ensure regmap is initialized in the non-SERDES (#else) path of
+  ds5_probe() so I2C communication works regardless of build config
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index bb03a896c..47e83be7e 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -3017,6 +3017,11 @@ static int ds5_board_setup(struct ds5 *state)
+ 	const char *str_value;
+ 	int err;
+ 
++	if (!node) {
++		dev_err(dev, "Device Tree node not found\n");
++		return -EINVAL;
++	}
++
+ 	err = of_property_read_u32(node, "def-addr",
+ 					&state->g_ctx.sdev_def);
+ 	if (err < 0) {
+@@ -5610,6 +5615,13 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 	if (ret < 0)
+ 		goto e_regulator;
+ 
++#else
++	state->regmap = devm_regmap_init_i2c(c, &ds5_regmap_config);
++	if (IS_ERR(state->regmap)) {
++		ret = PTR_ERR(state->regmap);
++		dev_err(&c->dev, "failed to init i2c regmap: %d\n", ret);
++		goto e_regulator;
++	}
+ #endif // CONFIG_VIDEO_D4XX_SERDES
+ 	//Verify communication
+ 	retry = 5;
+-- 
+2.52.0
+

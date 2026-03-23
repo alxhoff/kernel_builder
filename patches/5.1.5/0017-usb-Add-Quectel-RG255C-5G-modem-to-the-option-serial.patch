@@ -1,0 +1,63 @@
+From 5c56cf51438ec924a2b1af4f37e774c281c79b3b Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 7 Aug 2025 16:01:57 +0200
+Subject: [PATCH 17/32] usb: Add Quectel RG255C 5G modem to the option serial
+ driver
+
+Add USB product ID for the Quectel RG255C-GL 5G cellular modem to the
+option serial driver so that the modem's serial AT-command and data
+interfaces are properly enumerated.
+---
+ kernel/kernel/drivers/usb/serial/option.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/kernel/kernel/drivers/usb/serial/option.c b/kernel/kernel/drivers/usb/serial/option.c
+index 400e3e10b..f27567d9c 100644
+--- a/kernel/kernel/drivers/usb/serial/option.c
++++ b/kernel/kernel/drivers/usb/serial/option.c
+@@ -263,6 +263,7 @@ static void option_instat_callback(struct urb *urb);
+ #define QUECTEL_PRODUCT_EG95			0x0195
+ #define QUECTEL_PRODUCT_BG96			0x0296
+ #define QUECTEL_PRODUCT_EP06			0x0306
++#define QUECTEL_PRODUCT_RG255C_GL		0x0316
+ #define QUECTEL_PRODUCT_EM05G			0x030a
+ #define QUECTEL_PRODUCT_EM060K			0x030b
+ #define QUECTEL_PRODUCT_EM05G_CS		0x030c
+@@ -1200,6 +1201,9 @@ static const struct usb_device_id option_ids[] = {
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EP06, 0xff, 0xff, 0xff),
+ 	  .driver_info = RSVD(1) | RSVD(2) | RSVD(3) | RSVD(4) | NUMEP2 },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EP06, 0xff, 0, 0) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0xff, 0xff),
++	  .driver_info = RSVD(3) | NUMEP2 },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RG255C_GL, 0xff, 0, 0) },
+ 	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM05CN, 0xff),
+ 	  .driver_info = RSVD(6) | ZLP },
+ 	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM05CN_SG, 0xff),
+@@ -2406,6 +2410,24 @@ static int option_probe(struct usb_serial *serial,
+ 	if (device_flags & NUMEP2 && iface_desc->bNumEndpoints != 2)
+ 		return -ENODEV;
+ 
++#if 1 // Added by Quectel (5G Linux USB driver User Guide)
++	if (serial->dev->descriptor.idVendor == cpu_to_le16(0x2C7C)) {
++		__u16 idProduct = le16_to_cpu(serial->dev->descriptor.idProduct);
++
++		struct usb_interface_descriptor *intf = &serial->interface->cur_altsetting->desc;
++		if (intf->bInterfaceClass != 0xFF || intf->bInterfaceSubClass == 0x42) {
++			// ECM, RNDIS, NCM, MBIM, ACM, UAC, ADB
++			return -ENODEV;
++		}
++		if ((idProduct & 0xF000) == 0x0000) {
++			// MDM interface 4 is QMI
++			if (intf->bInterfaceNumber == 4 && intf->bNumEndpoints == 3
++				&& intf->bInterfaceSubClass == 0xFF && intf->bInterfaceProtocol == 0xFF)
++			return -ENODEV;
++		}
++	}
++#endif
++
+ 	/* Store the device flags so we can use them during attach. */
+ 	usb_set_serial_data(serial, (void *)device_flags);
+ 
+-- 
+2.52.0
+

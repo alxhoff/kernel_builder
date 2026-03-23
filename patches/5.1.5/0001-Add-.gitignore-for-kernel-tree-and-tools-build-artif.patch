@@ -1,0 +1,404 @@
+From 51e9b2bc7c7188e9d97f111de03c3374d4546a48 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 14:48:18 +0100
+Subject: [PATCH 01/32] Add .gitignore for kernel tree and tools build
+ artifacts
+
+Ignore common build outputs including compiled objects, kernel images,
+module files, and perf tool build artifacts to keep the working tree
+clean.
+---
+ .gitignore               | 170 +++++++++++++++++++++++++++++++++++++++
+ kernel/kernel/.gitignore | 154 +++++++++++++++++++++++++++++------
+ 2 files changed, 298 insertions(+), 26 deletions(-)
+ create mode 100644 .gitignore
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 000000000..cd6361ba1
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,170 @@
++kernel/kernel/.clang-format
++kernel/kernel/arch/arm64/configs/defconfig.orig
++kernel/kernel/tools/build/feature/test-all.d
++kernel/kernel/tools/build/feature/test-all.make.output
++kernel/kernel/tools/build/feature/test-backtrace.d
++kernel/kernel/tools/build/feature/test-backtrace.make.output
++kernel/kernel/tools/build/feature/test-bionic.make.output
++kernel/kernel/tools/build/feature/test-bpf.d
++kernel/kernel/tools/build/feature/test-bpf.make.output
++kernel/kernel/tools/build/feature/test-cplus-demangle.d
++kernel/kernel/tools/build/feature/test-cplus-demangle.make.output
++kernel/kernel/tools/build/feature/test-disassembler-four-args.make.output
++kernel/kernel/tools/build/feature/test-dwarf.make.output
++kernel/kernel/tools/build/feature/test-dwarf_getlocations.make.output
++kernel/kernel/tools/build/feature/test-eventfd.d
++kernel/kernel/tools/build/feature/test-eventfd.make.output
++kernel/kernel/tools/build/feature/test-file-handle.d
++kernel/kernel/tools/build/feature/test-file-handle.make.output
++kernel/kernel/tools/build/feature/test-fortify-source.d
++kernel/kernel/tools/build/feature/test-fortify-source.make.output
++kernel/kernel/tools/build/feature/test-get_cpuid.make.output
++kernel/kernel/tools/build/feature/test-get_current_dir_name.d
++kernel/kernel/tools/build/feature/test-get_current_dir_name.make.output
++kernel/kernel/tools/build/feature/test-gettid.d
++kernel/kernel/tools/build/feature/test-gettid.make.output
++kernel/kernel/tools/build/feature/test-glibc.d
++kernel/kernel/tools/build/feature/test-glibc.make.output
++kernel/kernel/tools/build/feature/test-libaio.d
++kernel/kernel/tools/build/feature/test-libaio.make.output
++kernel/kernel/tools/build/feature/test-libaudit.make.output
++kernel/kernel/tools/build/feature/test-libbabeltrace.make.output
++kernel/kernel/tools/build/feature/test-libbfd-buildid.make.output
++kernel/kernel/tools/build/feature/test-libbfd.make.output
++kernel/kernel/tools/build/feature/test-libbpf.d
++kernel/kernel/tools/build/feature/test-libbpf.make.output
++kernel/kernel/tools/build/feature/test-libcap.make.output
++kernel/kernel/tools/build/feature/test-libcrypto.make.output
++kernel/kernel/tools/build/feature/test-libdebuginfod.d
++kernel/kernel/tools/build/feature/test-libdebuginfod.make.output
++kernel/kernel/tools/build/feature/test-libdw-dwarf-unwind.make.output
++kernel/kernel/tools/build/feature/test-libelf-gelf_getnote.make.output
++kernel/kernel/tools/build/feature/test-libelf-getphdrnum.make.output
++kernel/kernel/tools/build/feature/test-libelf-getshdrstrndx.make.output
++kernel/kernel/tools/build/feature/test-libelf.make.output
++kernel/kernel/tools/build/feature/test-libnuma.make.output
++kernel/kernel/tools/build/feature/test-libperl.d
++kernel/kernel/tools/build/feature/test-libperl.make.output
++kernel/kernel/tools/build/feature/test-libpython.d
++kernel/kernel/tools/build/feature/test-libpython.make.output
++kernel/kernel/tools/build/feature/test-libslang-include-subdir.make.output
++kernel/kernel/tools/build/feature/test-libslang.make.output
++kernel/kernel/tools/build/feature/test-libunwind-aarch64.make.output
++kernel/kernel/tools/build/feature/test-libunwind-debug-frame.make.output
++kernel/kernel/tools/build/feature/test-libunwind-x86.d
++kernel/kernel/tools/build/feature/test-libunwind-x86.make.output
++kernel/kernel/tools/build/feature/test-libunwind.make.output
++kernel/kernel/tools/build/feature/test-libzstd.make.output
++kernel/kernel/tools/build/feature/test-lzma.make.output
++kernel/kernel/tools/build/feature/test-numa_num_possible_cpus.make.output
++kernel/kernel/tools/build/feature/test-pthread-attr-setaffinity-np.d
++kernel/kernel/tools/build/feature/test-pthread-attr-setaffinity-np.make.output
++kernel/kernel/tools/build/feature/test-pthread-barrier.d
++kernel/kernel/tools/build/feature/test-pthread-barrier.make.output
++kernel/kernel/tools/build/feature/test-reallocarray.d
++kernel/kernel/tools/build/feature/test-reallocarray.make.output
++kernel/kernel/tools/build/feature/test-sched_getcpu.d
++kernel/kernel/tools/build/feature/test-sched_getcpu.make.output
++kernel/kernel/tools/build/feature/test-sdt.make.output
++kernel/kernel/tools/build/feature/test-setns.d
++kernel/kernel/tools/build/feature/test-setns.make.output
++kernel/kernel/tools/build/feature/test-stackprotector-all.d
++kernel/kernel/tools/build/feature/test-stackprotector-all.make.output
++kernel/kernel/tools/build/feature/test-sync-compare-and-swap.d
++kernel/kernel/tools/build/feature/test-sync-compare-and-swap.make.output
++kernel/kernel/tools/build/feature/test-timerfd.d
++kernel/kernel/tools/build/feature/test-timerfd.make.output
++kernel/kernel/tools/build/feature/test-zlib.make.output
++kernel/kernel/tools/build/fixdep
++kernel/kernel/tools/lib/bpf/bpf_helper_defs.h
++kernel/kernel/tools/lib/traceevent/plugins/libtraceevent-dynamic-list
++kernel/kernel/tools/perf/FEATURE-DUMP
++kernel/kernel/tools/perf/PERF-VERSION-FILE
++kernel/kernel/tools/perf/arch/arm64/include/generated/
++kernel/kernel/tools/perf/arch/x86/include/generated/
++kernel/kernel/tools/perf/common-cmds.h
++kernel/kernel/tools/perf/perf
++kernel/kernel/tools/perf/perf-archive
++kernel/kernel/tools/perf/perf-read-vdso32
++kernel/kernel/tools/perf/perf-with-kcore
++kernel/kernel/tools/perf/pmu-events/jevents
++kernel/kernel/tools/perf/pmu-events/pmu-events.c
++kernel/kernel/tools/perf/tests/llvm-src-base.c
++kernel/kernel/tools/perf/tests/llvm-src-kbuild.c
++kernel/kernel/tools/perf/tests/llvm-src-prologue.c
++kernel/kernel/tools/perf/tests/llvm-src-relocation.c
++kernel/kernel/tools/perf/trace/beauty/generated/
++kernel/kernel/tools/perf/util/expr-bison.c
++kernel/kernel/tools/perf/util/expr-bison.h
++kernel/kernel/tools/perf/util/expr-bison.output
++kernel/kernel/tools/perf/util/expr-flex.c
++kernel/kernel/tools/perf/util/expr-flex.h
++kernel/kernel/tools/perf/util/intel-pt-decoder/inat-tables.c
++kernel/kernel/tools/perf/util/parse-events-bison.c
++kernel/kernel/tools/perf/util/parse-events-bison.h
++kernel/kernel/tools/perf/util/parse-events-bison.output
++kernel/kernel/tools/perf/util/parse-events-flex.c
++kernel/kernel/tools/perf/util/parse-events-flex.h
++kernel/kernel/tools/perf/util/pmu-bison.c
++kernel/kernel/tools/perf/util/pmu-bison.h
++kernel/kernel/tools/perf/util/pmu-bison.output
++kernel/kernel/tools/perf/util/pmu-flex.c
++kernel/kernel/tools/perf/util/pmu-flex.h
++kernel/kernel/.cocciconfig
++kernel/kernel/.get_maintainer.ignore
++kernel/kernel/arch/arm64/boot/Image
++kernel/kernel/arch/arm64/crypto/sha256-core.S
++kernel/kernel/arch/arm64/crypto/sha512-core.S
++kernel/kernel/arch/arm64/kernel/vdso/vdso.lds
++kernel/kernel/arch/arm64/kernel/vmlinux.lds
++kernel/kernel/arch/arm64/kvm/hyp/nvhe/hyp.lds
++kernel/kernel/certs/x509_certificate_list
++kernel/kernel/drivers/scsi/scsi_devinfo_tbl.c
++kernel/kernel/drivers/tty/vt/conmakehash
++kernel/kernel/drivers/tty/vt/consolemap_deftbl.c
++kernel/kernel/drivers/tty/vt/defkeymap.c
++kernel/kernel/drivers/video/tegra/
++kernel/kernel/kernel/config_data
++kernel/kernel/lib/crc32table.h
++kernel/kernel/lib/gen_crc32table
++kernel/kernel/lib/oid_registry_data.c
++kernel/kernel/lib/raid6/int1.c
++kernel/kernel/lib/raid6/int16.c
++kernel/kernel/lib/raid6/int2.c
++kernel/kernel/lib/raid6/int32.c
++kernel/kernel/lib/raid6/int4.c
++kernel/kernel/lib/raid6/int8.c
++kernel/kernel/lib/raid6/mktables
++kernel/kernel/lib/raid6/neon1.c
++kernel/kernel/lib/raid6/neon2.c
++kernel/kernel/lib/raid6/neon4.c
++kernel/kernel/lib/raid6/neon8.c
++kernel/kernel/lib/raid6/tables.c
++kernel/kernel/scripts/asn1_compiler
++kernel/kernel/scripts/basic/fixdep
++kernel/kernel/scripts/dtc/dtc
++kernel/kernel/scripts/extract-cert
++kernel/kernel/scripts/genksyms/genksyms
++kernel/kernel/scripts/kallsyms
++kernel/kernel/scripts/kconfig/conf
++kernel/kernel/scripts/kconfig/mconf
++kernel/kernel/scripts/kconfig/mconf-cfg
++kernel/kernel/scripts/mod/devicetable-offsets.h
++kernel/kernel/scripts/mod/elfconfig.h
++kernel/kernel/scripts/mod/mk_elfconfig
++kernel/kernel/scripts/mod/modpost
++kernel/kernel/scripts/module.lds
++kernel/kernel/scripts/recordmcount
++kernel/kernel/scripts/selinux/genheaders/genheaders
++kernel/kernel/scripts/selinux/mdp/mdp
++kernel/kernel/scripts/sign-file
++kernel/kernel/scripts/sorttable
++kernel/kernel/security/selinux/av_permissions.h
++kernel/kernel/security/selinux/flask.h
++kernel/kernel/usr/gen_init_cpio
++kernel/kernel/usr/initramfs_data.cpio
++kernel/kernel/usr/initramfs_inc_data
++modules/
++tags
++
++
+diff --git a/kernel/kernel/.gitignore b/kernel/kernel/.gitignore
+index 9dacde0a4..f2f63e47f 100644
+--- a/kernel/kernel/.gitignore
++++ b/kernel/kernel/.gitignore
+@@ -1,63 +1,126 @@
++# SPDX-License-Identifier: GPL-2.0-only
+ #
+ # NOTE! Don't add files that are generated in specific
+ # subdirectories here. Add them in the ".gitignore" file
+ # in that subdirectory instead.
+ #
+-# NOTE! Please use 'git ls-files -i --exclude-standard'
++# NOTE! Please use 'git ls-files -i -c --exclude-per-directory=.gitignore'
+ # command after changing this file, to see if there are
+ # any tracked files which get ignored after the change.
+ #
+-# Normal rules
++# Normal rules (sorted alphabetically)
+ #
+ .*
++*.a
++*.asn1.[ch]
++*.bin
++*.bz2
++*.c.[012]*.*
++*.dt.yaml
++*.dtb
++*.dtbo
++*.dtb.S
++*.dtbo.S
++*.dwo
++*.dylib
++*.elf
++*.gcno
++*.gcda
++*.gz
++*.i
++*.ko
++*.lex.c
++*.ll
++*.lst
++*.lz4
++*.lzma
++*.lzo
++*.mod
++*.mod.c
+ *.o
+ *.o.*
+-*.a
++*.patch
++*.rmeta
++*.rpm
++*.rsi
+ *.s
+-*.ko
+ *.so
+ *.so.dbg
+-*.mod.c
+-*.i
+-*.lst
++*.su
+ *.symtypes
+-*.order
+-modules.builtin
+-*.elf
+-*.bin
+-*.gz
+-*.bz2
+-*.lzma
++*.tab.[ch]
++*.tar
+ *.xz
+-*.lzo
+-*.patch
+-*.gcno
++*.zst
++Module.symvers
++dtbs-list
++modules.order
+ 
+ #
+ # Top-level generic files
+ #
+-/tags
+-/TAGS
+ /linux
++/modules-only.symvers
+ /vmlinux
++/vmlinux.32
++/vmlinux.map
++/vmlinux.symvers
++/vmlinux.unstripped
++/vmlinux-gdb.py
+ /vmlinuz
+ /System.map
+ /Module.markers
+-/Module.symvers
++/modules.builtin
++/modules.builtin.modinfo
++/modules.builtin.ranges
++/modules.nsdeps
+ 
+ #
+-# git files that we don't want to ignore even it they are dot-files
++# RPM spec file (make rpm-pkg)
+ #
++/rpmbuild/
++
++#
++# Debian directory (make deb-pkg)
++#
++/debian/
++
++#
++# Snap directory (make snap-pkg)
++#
++/snap/
++
++#
++# tar directory (make tar*-pkg)
++#
++/tar-install/
++
++#
++# pacman files (make pacman-pkg)
++#
++/PKGBUILD
++/pacman/
++
++#
++# We don't want to ignore the following even if they are dot-files
++#
++!.clang-format
++!.clippy.toml
++!.cocciconfig
++!.editorconfig
++!.get_maintainer.ignore
++!.gitattributes
+ !.gitignore
++!.kunitconfig
+ !.mailmap
++!.rustfmt.toml
+ 
+ #
+ # Generated include files
+ #
+-include/config
+-include/linux/version.h
+-include/generated
+-arch/*/include/generated
++/include/config/
++/include/generated/
++/arch/*/include/generated/
+ 
+ # stgit generated dirs
+ patches-*
+@@ -66,6 +129,11 @@ patches-*
+ patches
+ series
+ 
++# ctags files
++tags
++!tags/
++TAGS
++
+ # cscope files
+ cscope.*
+ ncscope.*
+@@ -76,6 +144,40 @@ GRTAGS
+ GSYMS
+ GTAGS
+ 
+-*.orig
++# id-utils files
++ID
++
+ *~
+ \#*#
++
++#
++# Leavings from module signing
++#
++extra_certificates
++signing_key.pem
++signing_key.priv
++signing_key.x509
++x509.genkey
++
++# Kconfig presets
++/all.config
++/alldef.config
++/allmod.config
++/allno.config
++/allrandom.config
++/allyes.config
++
++# Kconfig savedefconfig output
++/defconfig
++
++# Kdevelop4
++*.kdev4
++
++# Clang's compilation database file
++/compile_commands.json
++
++# Documentation toolchain
++sphinx_*/
++
++# Rust analyzer configuration
++/rust-project.json
+-- 
+2.52.0
+

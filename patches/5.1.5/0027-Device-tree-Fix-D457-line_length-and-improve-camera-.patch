@@ -1,0 +1,170 @@
+From 91a8a673ec7f2034391c476e51b82a81501a39db Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:44:59 +0100
+Subject: [PATCH 27/32] Device tree: Fix D457 line_length and improve camera
+ port documentation
+
+- Fix D457 line_length from "1280" to "2200" for all 8 camera modes
+  to match the actual sensor timing and prevent CSI CRC errors
+- Replace legacy comments with clear documentation mapping each
+  camera group to its CSI port and deserializer
+- Add section headers for D457 and ISX031 camera groups
+---
+ ...4-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi | 36 +++++++++++++------
+ 1 file changed, 25 insertions(+), 11 deletions(-)
+
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+index cf9ab2181..d5fd82dbe 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+@@ -42,7 +42,8 @@
+ 		ports {
+ 			#address-cells = <0x1>;
+ 			#size-cells = <0x0>;
+-			//SG10A_ORIN_GMSL2 adapt board port J25/J26 for D457
++			/* --- Intel D457 Realsense Cameras --- */
++            /* D457 - Group 1 (dser0): d4m0 depth+IR -> CSI port E (serial_e) */
+ 			port@0 {
+ 				reg = <0>;
+ 				status = "ok";
+@@ -67,6 +68,8 @@
+ 					remote-endpoint = <&csi_out1>;
+ 				};
+ 			};
++
++			/* D457 - Group 2 (dser0): d4m1 depth+IR -> CSI port E (serial_e) */
+ 			port@2 {
+ 				reg = <2>;
+ 				status = "ok";
+@@ -91,7 +94,8 @@
+ 					remote-endpoint = <&csi_out3>;
+ 				};
+ 			};
+-			//SG10A_ORIN_GMSL2 adapt board port J23/J24 for D457
++
++			/* D457 - Group 3 (dser1): d4m2 depth+IR -> CSI port C (serial_c) */
+ 			port@4 {
+ 				reg = <4>;
+ 				status = "ok";
+@@ -116,6 +120,8 @@
+ 					remote-endpoint = <&csi_out5>;
+ 				};
+ 			};
++
++			/* D457 - Group 4 (dser1): d4m3 depth+IR -> CSI port C (serial_c) */
+ 			port@6 {
+ 				reg = <6>;
+ 				status = "ok";
+@@ -140,7 +146,9 @@
+ 					remote-endpoint = <&csi_out7>;
+ 				};
+ 			};
+-			//isx031 camera
++
++			/* --- ISX031 ("fzcam") RGB Cameras --- */
++			/* ISX031 Camera 1 -> VI Port 0 */
+ 			port@8 {
+ 				reg = <8>;
+ 				fzcam_vi_in0: endpoint {
+@@ -150,6 +158,8 @@
+ 					remote-endpoint = <&fzcam_csi_out0>;
+ 				};
+ 			};
++
++			/* ISX031 Camera 2 -> CSI port A (serial_a) */
+ 			port@9 {
+ 				reg = <9>;
+ 				fzcam_vi_in1: endpoint {
+@@ -159,6 +169,8 @@
+ 					remote-endpoint = <&fzcam_csi_out1>;
+ 				};
+ 			};
++
++			/* ISX031 Camera 3 -> CSI port G (serial_g), stream 5 */
+ 			port@10 {
+ 				reg = <10>;
+ 				fzcam_vi_in2: endpoint {
+@@ -168,6 +180,8 @@
+ 					remote-endpoint = <&fzcam_csi_out2>;
+ 				};
+ 			};
++
++			/* ISX031 Camera 4 -> CSI port G (serial_g), stream 5 */
+ 			port@11 {
+ 				reg = <11>;
+ 				fzcam_vi_in3: endpoint {
+@@ -283,7 +297,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -331,7 +345,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -378,7 +392,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -426,7 +440,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -509,7 +523,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -557,7 +571,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -604,7 +618,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -652,7 +666,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "1280"; /* 2200 */
++						line_length = "2200";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+-- 
+2.52.0
+

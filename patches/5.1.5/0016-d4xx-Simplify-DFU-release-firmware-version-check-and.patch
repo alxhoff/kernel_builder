@@ -1,0 +1,62 @@
+From 7fdd95a6e01819af87ccf05815a568c65ae0c84c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 28 Apr 2025 13:04:14 +0200
+Subject: [PATCH 16/32] d4xx: Simplify DFU release firmware version check and
+ improve error reporting
+
+Remove the retry loop around the DFU release firmware version check
+that could mask underlying I2C errors, replacing it with a single
+attempt and clear error reporting including the actual firmware version
+read.
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 25 ++++++++++++++-----------
+ 1 file changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 4ccec3ef8..091afa9e9 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -5136,7 +5136,7 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
+ 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(
+ 			state->client->adapter);
+ #endif
+-	int ret = 0, retry = 10;
++	int ret = 0;
+ 	mutex_lock(&state->lock);
+ 	state->dfu_dev.device_open_count--;
+ 	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY)
+@@ -5166,18 +5166,21 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
+ 	i2c_set_adapter_bus_clk_rate(parent, state->dfu_dev.bus_clk_rate);
+ #endif
+ 	/* Verify communication */
+-	do {
+-		ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
+-		if (ret)
+-			msleep_range(10);
+-	} while (retry-- && ret != 0 );
+-	if (ret) {
+-		dev_warn(&state->client->dev,
+-			"%s(): no communication with d4xx\n", __func__);
+-		mutex_unlock(&state->lock);
+-		return ret;
++	ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
++	if (ret){
++		dev_err(&state->client->dev,
++			"%s(): reading firmware from 0x%04x failed",
++			__func__, DS5_FW_VERSION);
++		goto unlock;
+ 	}
+ 	ret = ds5_read(state, DS5_FW_BUILD, &state->fw_build);
++	if(!ret)
++		dev_err(&state->client->dev, "%s(): was able to get DS5_FW_BUILD",
++				__func__);
++	else
++		dev_err(&state->client->dev, "%s(): was NOT able to get DS5_FW_BUILD",
++				__func__);
++unlock:
+ 	mutex_unlock(&state->lock);
+ 	return ret;
+ };
+-- 
+2.52.0
+

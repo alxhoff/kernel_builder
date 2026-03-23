@@ -1,0 +1,35 @@
+From 68f11ef05ced4339b5c05c11860d14d4469bb4a5 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:47:27 +0100
+Subject: [PATCH 31/32] channel: Add safety checks in tegra_channel_ec_close
+
+- Add NULL check for vi pointer before iterating channel list
+- Add virt_addr_valid() guard inside list iteration to detect
+  corrupted list entries after RCE firmware crashes
+- Fix typo in comment: 'channles' -> 'channels'
+---
+ .../drivers/media/platform/tegra/camera/vi/channel.c       | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/channel.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/channel.c
+index 8498ff034..0f15e1ee4 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -623,8 +623,13 @@ void tegra_channel_ec_close(struct tegra_mc_vi *vi)
+ {
+ 	struct tegra_channel *chan;
+ 
+-	/* clear all channles sync point fifo context */
++	if (!vi)
++		return;
++
++	/* clear all channels sync point fifo context */
+ 	list_for_each_entry(chan, &vi->vi_chans, list) {
++		if (WARN_ON(!virt_addr_valid(chan)))
++			break;
+ 		memset(&chan->syncpoint_fifo[0],
+ 			0, sizeof(chan->syncpoint_fifo));
+ 	}
+-- 
+2.52.0
+

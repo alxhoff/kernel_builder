@@ -1,0 +1,47 @@
+From 6641981072b6a9de46ca16b3a387ecddd73c5575 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 09:47:27 +0100
+Subject: [PATCH 30/32] capture-vi: Fix error paths in vi_capture_setup and
+ vi_capture_release
+
+- Reset channel_id to CAPTURE_CHANNEL_INVALID_ID on setup failure
+  to prevent stale channel references
+- Fix double mutex_unlock in vi_capture_release error path
+- Add unpins_list NULL guard in vi_capture_shutdown to prevent
+  NULL dereference during cleanup after partial initialization
+---
+ .../media/platform/tegra/camera/fusa-capture/capture-vi.c     | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+index 293806edd..81fc92b34 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/fusa-capture/capture-vi.c
+@@ -543,7 +543,7 @@ void vi_capture_shutdown(
+ 		vi_capture_release(chan,
+ 			CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
+ 
+-		if (capture->is_mem_pinned) {
++		if (capture->is_mem_pinned && capture->unpins_list) {
+ 			for (i = 0; i < capture->queue_depth; i++)
+ 				vi_capture_request_unpin(chan, i);
+ 		}
+@@ -871,6 +871,7 @@ chan_cb_fail:
+ 				__func__,
+ 				resp_msg->channel_release_resp.result);
+ resp_fail:
++	capture->channel_id = CAPTURE_CHANNEL_INVALID_ID;
+ submit_fail:
+ 	vfree(capture->unpins_list);
+ 	capture->unpins_list = NULL;
+@@ -1021,7 +1022,6 @@ int vi_capture_release(
+ 	err = vi_capture_ivc_send_control(chan, &control_desc,
+ 			sizeof(control_desc), CAPTURE_CHANNEL_RELEASE_RESP);
+ 	if (err < 0) {
+-		mutex_unlock(&channel_alloc_lock);
+ 		dev_err(chan->dev,
+ 				"%s: release channel IVC failed\n", __func__);
+ 		WARN_ON("RTCPU is in a bad state. Reboot to recover");
+-- 
+2.52.0
+

@@ -1,0 +1,348 @@
+From 3d6330683f9b5030bb66640fde2e5f890f1c268f Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 14:52:23 +0100
+Subject: [PATCH 15/32] d4xx: Refactor HWMC interface with improved error
+ handling and named constants
+
+Comprehensive cleanup of the Hardware Monitor Command (HWMC) interface:
+- Add verbose error reporting to ds5_get_hwmc with specific error codes
+- Migrate GVD (Get Version Data) to use the common ds5_X_hwmc functions
+- Fix GVD buffer length from 239 to 276 bytes to match firmware spec
+- Add validation for invalid V4L2 control IDs
+- Improve ds5_X_with_check error verbosity with function and register
+  context
+- Replace hardcoded hex HWMC register addresses with named constants
+- Add bounds checking for HWMC_RW buffer sizes
+---
+ kernel/nvidia/drivers/media/i2c/d4xx.c | 183 +++++++++++++++++--------
+ 1 file changed, 123 insertions(+), 60 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index 2def19a25..4ccec3ef8 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -191,18 +191,48 @@ enum ds5_mux_pad {
+ #define DFU_I2C_FAST_MODE			400000
+ #define DFU_I2C_BUS_CLK_RATE		DFU_I2C_FAST_MODE
+ #endif
+-#define ds5_read_with_check(state, addr, val) {\
+-	if (ds5_read(state, addr, val))	\
+-		return -EINVAL; }
+-#define ds5_raw_read_with_check(state, addr, buf, size)	{\
+-	if (ds5_raw_read(state, addr, buf, size))	\
+-		return -EINVAL; }
+-#define ds5_write_with_check(state, addr, val) {\
+-	if (ds5_write(state, addr, val))	\
+-		return -EINVAL; }
+-#define ds5_raw_write_with_check(state, addr, buf, size) {\
+-	if (ds5_raw_write(state, addr, buf, size)) \
+-		return -EINVAL; }
++#define ds5_read_with_check(state, addr, val) \
++	do { \
++		ret = ds5_read(state, addr, val); \
++		if (ret) { \
++			dev_err(&state->client->dev, \
++				"ds5_read_with_check:%s(): (ret: %d, reg: 0x%x)\n", \
++				__func__, ret, addr); \
++			return ret; \
++		} \
++	} while(0);
++#define ds5_raw_read_with_check(state, addr, buf, size)	\
++	do { \
++		ret = ds5_raw_read(state, addr, buf, size); \
++		if (ret) { \
++			dev_err(&state->client->dev, \
++				"ds5_raw_read_with_check:%s(): (ret: %d, reg: 0x%x, len=%lu)\n", \
++				__func__, ret, addr, (unsigned long)(size)); \
++			return ret; \
++		} \
++	} while(0);
++#define ds5_write_with_check(state, addr, val) \
++	do { \
++		ret = ds5_write(state, addr, val); \
++		if (ret) { \
++			dev_err(&state->client->dev, \
++				"ds5_write_with_check:%s(): (ret: %d, reg: 0x%x, val=%d)\n", \
++				__func__, ret, addr, val); \
++			return ret; \
++		} \
++	} while(0);
++#define ds5_raw_write_with_check(state, addr, buf, size) \
++	do { \
++		ret = ds5_raw_write(state, addr, buf, size); \
++		if (ret) { \
++			dev_err(&state->client->dev, \
++				"ds5_raw_write_with_check:%s(): (ret: %d, reg: 0x%x, len=%lu)\n", \
++				__func__, ret, addr, (unsigned long)(size)); \
++			print_hex_dump(KERN_DEBUG, "PREFIX: ", DUMP_PREFIX_OFFSET, 16, 1, \
++				   buf, size, true); \
++			return ret; \
++		} \
++	} while(0);
+ #ifdef CONFIG_VIDEO_INTEL_IPU6
+ #define max9296_write_8_with_check(state, addr, buf) {\
+ 	if (max9296_write_8(state, addr, buf)) \
+@@ -1826,8 +1856,10 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 	int ret = 0;
+ 	u16 tmp_len = 0;
+ 
+-	if (!data)
++	if (!data){
++		dev_err(&state->client->dev, "%s(): data is NULL\n", __func__);
+ 		return -ENOBUFS;
++	}
+ 
+ 	memset(data, 0, cmdDataLen);
+ 	ret = ds5_get_hwmc_status(state);
+@@ -1846,11 +1878,18 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
+ 
+ 	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
+ 			&tmp_len, sizeof(tmp_len));
+-	if (ret)
++	if (ret){
++		dev_err(&state->client->dev, "%s(): failed to read HWMC_RESP_LEN\n",
++			__func__);
+ 		return -EBADMSG;
++	}
+ 
+-	if (tmp_len > cmdDataLen)
++	if (tmp_len > cmdDataLen){
++		dev_err(&state->client->dev, "%s(): response too long for cmdData, "
++			"expected %d bytes, got %d\n",
++			__func__, cmdDataLen, tmp_len);
+ 		return -ENOBUFS;
++	}
+ 
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): HWMC read len: %d, lrs_len: %d\n",
+@@ -1866,6 +1905,7 @@ static int ds5_send_hwmc(struct ds5 *state,
+ 			u16 cmdLen,
+ 			struct hwm_cmd *cmd)
+ {
++	int ret = -1;
+ 	dev_dbg(&state->client->dev,
+ 			"%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
+ 			"cmdLen: %d, param1: %d, param2: %d, param3: %d, param4: %d\n",
+@@ -2206,9 +2246,17 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ 	case DS5_CAMERA_CID_HWMC_RW:
+ 		if (ctrl->p_new.p_u8) {
++			u16 cmd_len = 0;
+ 			u16 size = *((u8 *)ctrl->p_new.p_u8 + 1) << 8;
+ 			size |= *((u8 *)ctrl->p_new.p_u8 + 0);
+-			ret = ds5_send_hwmc(state, size + 4,
++			cmd_len = size + 4;
++			if (cmd_len > (ctrl->elems * ctrl->elem_size)){
++				dev_err(&state->client->dev, "%s(): invalid HWMC_RW size %u > buffer size %u\n",
++					__func__, size + 4, ctrl->elems * ctrl->elem_size);
++				ret = -EINVAL;
++				break;
++			}
++			ret = ds5_send_hwmc(state, cmd_len,
+ 					(struct hwm_cmd *)ctrl->p_new.p_u8);
+ 		}
+ 		break;
+@@ -2237,10 +2285,18 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 	}
+ 		break;
+ #endif
++	default:
++		dev_err(&state->client->dev, "Invalid control id (full: 0x%x, reduced: 0x%x) passed to %s",
++			ctrl->id, ctrl->id - DS5_CAMERA_CID_BASE,  __func__);
++		break;
+ 	}
+ 
+ 	mutex_unlock(&state->lock);
+ 
++	if (ret)
++		dev_err(&state->client->dev, "%s() failed ctrl ID: 0x%x\n",
++			__func__, ctrl->id);
++
+ 	return ret;
+ }
+ 
+@@ -2262,12 +2318,12 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 
+ 	memcpy(cmd, &get_calib_data, sizeof(get_calib_data));
+ 	cmd->param1 = id;
+-	ds5_raw_write_with_check(state, 0x4900, cmd, sizeof(struct hwm_cmd));
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA, cmd, sizeof(struct hwm_cmd));
+ 	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+ 	do {
+ 		if (retries != 3)
+ 			msleep_range(10);
+-		ret = ds5_read(state, 0x4904, &status);
++		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
+ 	} while (ret && retries-- && status != 0);
+ 
+ 	if (ret || status != 0) {
+@@ -2279,11 +2335,11 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 	}
+ 
+ 	// get table length from fw
+-	ret = regmap_raw_read(state->regmap, 0x4908,
++	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
+ 			&table_length, sizeof(table_length));
+ 
+ 	// read table
+-	ds5_raw_read_with_check(state, 0x4900, cmd->Data, table_length);
++	ds5_raw_read_with_check(state, DS5_HWMC_DATA, cmd->Data, table_length);
+ 
+ 	// first 4 bytes are opcode HWM, not part of calibration table
+ 	memcpy(table, cmd->Data + 4, length);
+@@ -2291,37 +2347,6 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
+ 	return 0;
+ }
+ 
+-static int ds5_gvd(struct ds5 *state, unsigned char *data)
+-{
+-	struct hwm_cmd cmd;
+-	int ret = -1;
+-	u16 length = 0;
+-	u16 status = 2;
+-	u8 retries = 3;
+-
+-	memcpy(&cmd, &gvd, sizeof(gvd));
+-	ds5_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 3)
+-			msleep_range(10);
+-
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (ret && retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev,
+-				"%s(): Failed to read GVD, HWM cmd status: %x\n",
+-				__func__, status);
+-		return status;
+-	}
+-
+-	ret = regmap_raw_read(state->regmap, 0x4908, &length, sizeof(length));
+-	ds5_raw_read_with_check(state, 0x4900, data, length);
+-
+-	return ret;
+-}
+-
+ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
+@@ -2440,18 +2465,18 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		//       2. send command
+ 		//       3. execute command
+ 		//       4. wait for ccompletion
+-		ret = regmap_raw_write(state->regmap, 0x4900,
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_DATA,
+ 				log_prepare, sizeof(log_prepare));
+ 		if (ret < 0)
+ 			break;
+ 
+-		ret = regmap_raw_write(state->regmap, 0x490C,
+-				&execute_cmd, sizeof(execute_cmd));
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_EXEC, &execute_cmd, 
++				sizeof(execute_cmd));
+ 		if (ret < 0)
+ 			 break;
+ 
+ 		for (i = 0; i < DS5_MAX_LOG_POLL; i++) {
+-			ret = regmap_raw_read(state->regmap, 0x4904,
++			ret = regmap_raw_read(state->regmap, DS5_HWMC_STATUS,
+ 					&data, sizeof(data));
+ 			dev_dbg(&state->client->dev, "%s(): log ready 0x%x\n",
+ 				 __func__, data);
+@@ -2465,7 +2490,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ //		if (i == DS5_MAX_LOG_POLL)
+ //			return -ETIMEDOUT;
+ 
+-		ret = regmap_raw_read(state->regmap, 0x4908, &data, sizeof(data));
++		ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN, &data, sizeof(data));
+ 		dev_dbg(&state->client->dev, "%s(): log size 0x%x\n", __func__, data);
+ 		if (ret < 0)
+ 			break;
+@@ -2477,7 +2502,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = -ENOBUFS;
+ 			break;
+ 		}
+-		ret = regmap_raw_read(state->regmap, 0x4900, ctrl->p_new.p_u8, data);
++		ret = regmap_raw_read(state->regmap, DS5_HWMC_DATA, ctrl->p_new.p_u8, data);
+ 		break;
+ 	case DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
+ 		ret = ds5_get_calibration_data(state, DEPTH_CALIBRATION_ID,
+@@ -2494,7 +2519,38 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		*ctrl->p_new.p_u32 |= state->fw_build;
+ 		break;
+ 	case DS5_CAMERA_CID_GVD:
+-		ret = ds5_gvd(state, ctrl->p_new.p_u8);
++		if (ctrl->p_new.p_u8) {
++			u16 cmd_len = sizeof(struct hwm_cmd);
++			u16 buf_len = ctrl->elems * ctrl->elem_size;
++			u16 total_len = cmd_len + buf_len;
++			u16 actual_len = 0;
++
++			struct hwm_cmd *gvd_cmd = devm_kzalloc(&state->client->dev, total_len,
++					GFP_KERNEL);
++			if (!gvd_cmd){
++				ret = -ENOMEM;
++				break;
++			}
++
++			memcpy(gvd_cmd, &gvd, sizeof(struct hwm_cmd));
++
++			ret = ds5_send_hwmc(state, cmd_len, gvd_cmd);
++			if (ret){
++				dev_err(&state->client->dev, "%s(): failed to send hwmc\n",
++						__func__);
++				goto out;
++			}
++
++			ret = ds5_get_hwmc(state, gvd_cmd->Data, buf_len, &actual_len);
++			if (!ret && actual_len <= buf_len)
++				memcpy(ctrl->p_new.p_u8, gvd_cmd->Data, actual_len);
++			else
++				dev_err(&state->client->dev, "%s(): failed to get hwmc\n",
++						__func__);
++
++out:
++			devm_kfree(&state->client->dev, gvd_cmd);
++		}
+ 		break;
+ 	case DS5_CAMERA_CID_AE_ROI_GET:
+ 		if (ctrl->p_new.p_u16) {
+@@ -2585,8 +2641,15 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 	}
+ 		break;
+ #endif
++	default:
++		dev_err(&state->client->dev, "Invalid control id (%d) passed to %s",
++			ctrl->id, __func__);
++		break;
+ 	}
+ 	mutex_unlock(&state->lock);
++	if (ret)
++		dev_err(&state->client->dev, "%s() failed ctrl ID: 0x%x\n",
++			__func__, ctrl->id);
+ 	return ret;
+ }
+ 
+@@ -2646,7 +2709,7 @@ static const struct v4l2_ctrl_config ds5_ctrl_gvd = {
+ 	.id = DS5_CAMERA_CID_GVD,
+ 	.name = "GVD",
+ 	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {239},
++	.dims = {276},
+ 	.elem_size = sizeof(u8),
+ 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+ 	.step = 1,
+@@ -4734,7 +4797,7 @@ static int ds5_dfu_switch_to_dfu(struct ds5 *state)
+ 	int i = DS5_START_MAX_COUNT;
+ 	u16 status;
+ 
+-	ds5_raw_write_with_check(state, 0x4900,
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA,
+ 			&cmd_switch_to_dfu, sizeof(cmd_switch_to_dfu));
+ 	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+ 	/*Wait for DFU fw to boot*/
+-- 
+2.52.0
+
