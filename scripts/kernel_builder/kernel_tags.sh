@@ -232,6 +232,43 @@ archive_deb_package() {
   echo "kernel_archive/$tag_name/$deb_filename"
 }
 
+# ── config archiving ─────────────────────────────────────────────────────────
+
+archive_kernel_config() {
+  local tag_name="$1"
+  local kernel_name="$2"
+
+  if [ -z "$kernel_name" ]; then
+    echo "  Skipping config archive: no kernel name provided"
+    return
+  fi
+
+  local config_path=""
+  local search_paths=(
+    "$KERNELS_DIR/$kernel_name/kernel/kernel/.config"
+    "$KERNELS_DIR/$kernel_name/kernel/.config"
+    "$KERNELS_DIR/$kernel_name/.config"
+  )
+
+  for p in "${search_paths[@]}"; do
+    if [ -f "$p" ]; then
+      config_path="$p"
+      break
+    fi
+  done
+
+  if [ -z "$config_path" ]; then
+    echo "  Skipping config archive: no .config found under kernels/$kernel_name/"
+    return
+  fi
+
+  local archive_tag_dir="$ARCHIVE_DIR/$tag_name"
+  mkdir -p "$archive_tag_dir"
+  cp "$config_path" "$archive_tag_dir/kernel.config"
+  echo "  Archived kernel config -> kernel_archive/$tag_name/kernel.config"
+  echo "kernel_archive/$tag_name/kernel.config"
+}
+
 show_help() {
   cat <<'HELP'
 Kernel Build Tagging Tool
@@ -241,14 +278,19 @@ Usage: kernel_tags.sh <command> [options]
 
 Commands:
 
-  tag       Create a new kernel build tag (tags source repos + archives .deb)
+  tag       Create a new kernel build tag (tags source repos + archives .deb + config)
   list      List tagged kernel builds (with optional filters)
   show      Show full details of a specific tag
   promote   Change the deployment status of a tagged build
+  notes     Add notes to an existing tag
+  diff      Compare two tagged builds
+  verify    Check that a remote device is running a specific tagged kernel
+  deploy    Deploy a tagged kernel to a remote machine (supports fleet deploy)
   delete    Remove a tag from the manifest
   log       Show a chronological build log
   export    Export tag data (JSON or human-readable)
   get-deb   Print the archived .deb path for a tag (useful for redeployment)
+  kernels   List all available kernel sources with their status and tags
 
 --- tag ---
 
@@ -273,6 +315,7 @@ Commands:
     1. Record the build metadata in kernel_tags.json
     2. Create a git tag in all source repos under kernels/<kernel>/ (unless --no-source-tag)
     3. Copy the .deb to kernel_archive/<tag>/ for redeployment (unless --no-archive)
+    4. Archive the kernel .config for reproducibility
 
   Example:
     kernel_tags.sh tag v5.1.5-rs-2400 \
@@ -316,6 +359,44 @@ Commands:
 
   Export tag data. Default format: json, output: stdout.
 
+--- notes ---
+
+  kernel_tags.sh notes <TAG_NAME> --add <text>
+
+  Add timestamped notes to an existing tag.
+
+--- diff ---
+
+  kernel_tags.sh diff <TAG_1> <TAG_2>
+
+  Compare two tagged builds: metadata differences and source git log.
+
+--- verify ---
+
+  kernel_tags.sh verify <TAG_NAME> --ip <address> [--user <user>]
+
+  SSH into a device and check that uname -r matches the tag's kernel version.
+
+--- deploy ---
+
+  kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]
+
+  Deploy a tagged kernel to remote machine(s). Supports fleet deploy via
+  multiple --ip flags or --hosts-file.
+
+  Options:
+    --ip <address>             Target IP (can be repeated for fleet deploy)
+    --hosts-file <file>        File with one IP per line
+    --user <user>              SSH user (default: root)
+    --copy-only                Only copy the .deb (no install or reboot)
+    --no-reboot                Skip rebooting after install
+    --dry-run                  Show what would be done without executing
+
+  Examples:
+    kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230
+    kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.10 --ip 192.168.1.11
+    kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt --user cartken
+
 --- get-deb ---
 
   kernel_tags.sh get-deb <TAG_NAME>
@@ -331,9 +412,41 @@ HELP
 # ── tag ──────────────────────────────────────────────────────────────────────
 
 cmd_tag() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh tag <TAG_NAME> [options]
+
+Create a new kernel build tag. Tags the source repo(s) and archives the .deb.
+
+Required:
+  <TAG_NAME>                 Unique identifier for this build (e.g. v5.1.5-realsense-2400)
+
+Options:
+  --kernel <name>            Kernel source directory name (e.g. cartken_5_1_5_realsense)
+  --localversion <str>       LOCALVERSION string used in the build
+  --description <text>       What this build adds/changes/fixes
+  --config <file>            Kernel config used (e.g. defconfig, tegra_defconfig)
+  --dtb-name <name>          Device tree blob filename
+  --status <status>          Initial status (default: development)
+                             Valid: development, testing, staging, production
+  --deb-package <path>       Path to the .deb package (auto-detected from localversion)
+  --no-source-tag            Skip tagging the kernel source git repositories
+  --no-archive               Skip archiving the .deb package to kernel_archive/
+
+Example:
+  kernel_tags.sh tag v5.1.5-rs-2400 \
+    --kernel cartken_5_1_5_realsense \
+    --localversion cartken5.1.5realsense2400 \
+    --description "Added RealSense D435 support for Orin" \
+    --status testing
+EOF
+    exit 0
+  fi
+
   if [ -z "$1" ] || [[ "$1" == --* ]]; then
     echo "Error: Tag name is required."
     echo "Usage: kernel_tags.sh tag <TAG_NAME> [options]"
+    echo "Run 'kernel_tags.sh tag --help' for full usage."
     exit 1
   fi
 
@@ -431,10 +544,24 @@ cmd_tag() {
     echo ""
   fi
 
+  # ── Step 3: Archive kernel config ──
+  local archived_config=""
+  if [ "$skip_archive" = false ] && [ -n "$kernel_name" ]; then
+    local config_output
+    config_output=$(archive_kernel_config "$tag_name" "$kernel_name" 2>&1)
+    local config_last_line
+    config_last_line=$(echo "$config_output" | tail -1)
+    echo "$config_output" | head -n -1
+    if [[ "$config_last_line" == kernel_archive/* ]]; then
+      archived_config="$config_last_line"
+    fi
+    echo ""
+  fi
+
   # Use the archived path if we have one, otherwise keep the original deb_package
   local final_deb="${archived_deb:-$deb_package}"
 
-  # ── Step 3: Record in manifest ──
+  # ── Step 4: Record in manifest ──
   local new_entry
   new_entry=$(jq -n \
     --arg tag "$tag_name" \
@@ -448,6 +575,7 @@ cmd_tag() {
     --arg date "$build_date" \
     --arg commit "$repo_commit" \
     --arg builder "$builder" \
+    --arg config_archived "$archived_config" \
     --argjson source_repos "$source_repos_json" \
     '{
       tag: $tag,
@@ -461,7 +589,10 @@ cmd_tag() {
       description: $desc,
       status: $status,
       deb_package: $deb,
+      config_archived: $config_archived,
       source_repos_tagged: $source_repos,
+      notes: [],
+      deployments: [],
       status_history: [
         {
           status: $status,
@@ -486,6 +617,26 @@ cmd_tag() {
 # ── list ─────────────────────────────────────────────────────────────────────
 
 cmd_list() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh list [options]
+
+List tagged kernel builds with optional filters.
+
+Options:
+  --status <status>          Filter by deployment status
+                             Valid: development, testing, staging, production
+  --kernel <name>            Filter by kernel name
+  --all                      Show all fields (verbose)
+
+Examples:
+  kernel_tags.sh list
+  kernel_tags.sh list --status production
+  kernel_tags.sh list --kernel cartken_5_1_5_realsense --all
+EOF
+    exit 0
+  fi
+
   local filter_status="" filter_kernel="" verbose=false
 
   while [[ "$#" -gt 0 ]]; do
@@ -542,6 +693,19 @@ cmd_list() {
 # ── show ─────────────────────────────────────────────────────────────────────
 
 cmd_show() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh show <TAG_NAME>
+
+Show full details of a specific tagged kernel build, including metadata,
+source repo info, and status history.
+
+Example:
+  kernel_tags.sh show v5.1.5-rs-2400
+EOF
+    exit 0
+  fi
+
   if [ -z "$1" ]; then
     echo "Error: Tag name is required."
     echo "Usage: kernel_tags.sh show <TAG_NAME>"
@@ -565,7 +729,8 @@ cmd_show() {
     "\nRepo Commit:   " + .repo_commit +
     "\nConfig:        " + .config +
     "\nDTB Name:      " + .dtb_name +
-    "\nDeb Package:   " + .deb_package +
+    "\nDeb Package:   " + (.deb_package // "none") +
+    "\nConfig Archive:" + (if .config_archived and .config_archived != "" then " " + .config_archived else " none" end) +
     "\nSource Repos:  " + (if .source_repos_tagged then (.source_repos_tagged | join(", ")) else "none" end) +
     "\nDescription:   " + .description' "$TAGS_FILE"
 
@@ -574,11 +739,53 @@ cmd_show() {
   jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) |
     .status_history[] |
     "  " + .date + "  " + .status + "  (" + .by + ")"' "$TAGS_FILE"
+
+  # Notes
+  local note_count
+  note_count=$(jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) | (.notes // []) | length' "$TAGS_FILE")
+  if [ "$note_count" -gt 0 ]; then
+    echo ""
+    echo "Notes:"
+    jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) |
+      (.notes // [])[] |
+      "  [" + .date + "] (" + .by + ")\n    " + .text' "$TAGS_FILE"
+  fi
+
+  # Deployments
+  local deploy_count
+  deploy_count=$(jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) | (.deployments // []) | length' "$TAGS_FILE")
+  if [ "$deploy_count" -gt 0 ]; then
+    echo ""
+    echo "Deployment History:"
+    jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) |
+      (.deployments // [])[] |
+      "  " + .date + "  " + .target + "  (" + .by + ")" +
+      (if .mode then "  [" + .mode + "]" else "" end)' "$TAGS_FILE"
+  fi
 }
 
 # ── promote ──────────────────────────────────────────────────────────────────
 
 cmd_promote() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh promote <TAG_NAME> --status <new_status>
+
+Change the deployment status of a tagged build.
+
+Status lifecycle: development -> testing -> staging -> production
+
+Options:
+  --status <status>          New status to assign
+                             Valid: development, testing, staging, production
+
+Example:
+  kernel_tags.sh promote v5.1.5-rs-2400 --status staging
+  kernel_tags.sh promote v5.1.5-rs-2400 --status production
+EOF
+    exit 0
+  fi
+
   if [ -z "$1" ]; then
     echo "Error: Tag name is required."
     echo "Usage: kernel_tags.sh promote <TAG_NAME> --status <new_status>"
@@ -635,6 +842,22 @@ cmd_promote() {
 # ── delete ───────────────────────────────────────────────────────────────────
 
 cmd_delete() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh delete <TAG_NAME>
+
+Remove a tag from the manifest. Also removes:
+  - Git tags from source repositories
+  - Archived .deb from kernel_archive/
+
+Prompts for confirmation if the tag is in production status.
+
+Example:
+  kernel_tags.sh delete v5.1.5-rs-2400
+EOF
+    exit 0
+  fi
+
   if [ -z "$1" ]; then
     echo "Error: Tag name is required."
     echo "Usage: kernel_tags.sh delete <TAG_NAME>"
@@ -689,6 +912,22 @@ cmd_delete() {
 # ── log ──────────────────────────────────────────────────────────────────────
 
 cmd_log() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh log [--limit N]
+
+Show a chronological build log, most recent first.
+
+Options:
+  --limit <N>                Number of entries to show (default: 20)
+
+Example:
+  kernel_tags.sh log
+  kernel_tags.sh log --limit 5
+EOF
+    exit 0
+  fi
+
   local limit=20
 
   while [[ "$#" -gt 0 ]]; do
@@ -720,6 +959,25 @@ cmd_log() {
 # ── export ───────────────────────────────────────────────────────────────────
 
 cmd_export() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh export [options]
+
+Export tag data in JSON or human-readable text format.
+
+Options:
+  --format <json|text>       Output format (default: json)
+  --status <status>          Filter by deployment status
+  --output <file>            Write to file instead of stdout
+
+Examples:
+  kernel_tags.sh export
+  kernel_tags.sh export --format text --status production
+  kernel_tags.sh export --output releases.json
+EOF
+    exit 0
+  fi
+
   local format="json" filter_status="" output=""
 
   while [[ "$#" -gt 0 ]]; do
@@ -763,9 +1021,446 @@ cmd_export() {
   fi
 }
 
+# ── kernels ──────────────────────────────────────────────────────────────────
+
+cmd_kernels() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh kernels
+
+List all available kernel sources under kernels/ with their status.
+
+Shows for each kernel:
+  - Git repo info (branch, commit, remote)
+  - Source git tags
+  - Matching built .deb packages in kernel_debs/
+  - Tagged builds from the manifest
+  - Archived .deb count in kernel_archive/
+
+Example:
+  kernel_tags.sh kernels
+EOF
+    exit 0
+  fi
+
+  if [ ! -d "$KERNELS_DIR" ]; then
+    echo "No kernels/ directory found."
+    return
+  fi
+
+  local found=false
+  for kernel_dir in "$KERNELS_DIR"/*/; do
+    [ -d "$kernel_dir" ] || continue
+
+    local name
+    name=$(basename "$kernel_dir")
+
+    # Skip .gitkeep and non-directory entries
+    [ "$name" = ".gitkeep" ] && continue
+    # Skip files that aren't directories (e.g. extracted_active.dts)
+    [ ! -d "$kernel_dir" ] && continue
+
+    found=true
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Kernel: $name"
+
+    # Git info
+    if [ -d "$kernel_dir/.git" ]; then
+      local branch commit remote
+      branch=$(git -C "$kernel_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+      commit=$(git -C "$kernel_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+      remote=$(git -C "$kernel_dir" remote get-url origin 2>/dev/null || \
+               git -C "$kernel_dir" remote get-url "$(git -C "$kernel_dir" remote | head -1)" 2>/dev/null || \
+               echo "none")
+      echo "  Source: git repo (branch: $branch, commit: $commit)"
+      echo "  Remote: $remote"
+
+      local source_tags
+      source_tags=$(git -C "$kernel_dir" tag -l 2>/dev/null | head -10)
+      if [ -n "$source_tags" ]; then
+        local tag_count
+        tag_count=$(git -C "$kernel_dir" tag -l 2>/dev/null | wc -l)
+        echo "  Git tags: $(echo "$source_tags" | tr '\n' ', ' | sed 's/,$//')$([ "$tag_count" -gt 10 ] && echo " ... (+$((tag_count - 10)) more)")"
+      fi
+    elif [ -d "$kernel_dir/kernel/kernel/.git" ]; then
+      local branch commit
+      branch=$(git -C "$kernel_dir/kernel/kernel" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+      commit=$(git -C "$kernel_dir/kernel/kernel" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+      echo "  Source: git repo at kernel/kernel/ (branch: $branch, commit: $commit)"
+    else
+      echo "  Source: not a git repository"
+    fi
+
+    # Built debs — match by localversion from tags, or by heuristic from kernel name
+    if [ -d "$KERNEL_DEBS_DIR" ]; then
+      # Collect known localversions for this kernel from the manifest
+      local known_lvs
+      known_lvs=$(jq -r --arg kernel "$name" \
+        '[.[] | select(.kernel_name == $kernel) | .localversion] | unique | .[]' "$TAGS_FILE" 2>/dev/null)
+
+      local matched_debs=()
+
+      # Match by known localversions from tags
+      if [ -n "$known_lvs" ]; then
+        while IFS= read -r lv; do
+          [ -z "$lv" ] && continue
+          for f in "$KERNEL_DEBS_DIR"/linux-custom-*"-${lv}.deb"; do
+            [ -f "$f" ] && matched_debs+=("$(basename "$f")")
+          done
+        done <<< "$known_lvs"
+      fi
+
+      # Heuristic: transform kernel dir name to a likely localversion prefix
+      # e.g. cartken_5_1_5 -> cartken5.1.5, cartken_6_2 -> cartken6.2
+      local heuristic_prefix
+      heuristic_prefix=$(echo "$name" | sed 's/_\([0-9]\)/\.\1/g; s/\.\([0-9]\)/\1/1')
+      for f in "$KERNEL_DEBS_DIR"/linux-custom-*".deb"; do
+        [ -f "$f" ] || continue
+        local bn
+        bn=$(basename "$f")
+        if [[ "$bn" == *"-${heuristic_prefix}"* ]]; then
+          # Avoid duplicates
+          local dup=false
+          for existing in "${matched_debs[@]}"; do
+            [ "$existing" = "$bn" ] && { dup=true; break; }
+          done
+          [ "$dup" = false ] && matched_debs+=("$bn")
+        fi
+      done
+
+      if [ ${#matched_debs[@]} -gt 0 ]; then
+        echo "  Built debs: (${#matched_debs[@]} in kernel_debs/)"
+        for d in "${matched_debs[@]}"; do
+          echo "    $d"
+        done
+      fi
+    fi
+
+    # Tags from manifest
+    local tag_count
+    tag_count=$(jq --arg kernel "$name" '[.[] | select(.kernel_name == $kernel)] | length' "$TAGS_FILE" 2>/dev/null)
+    if [ "$tag_count" -gt 0 ]; then
+      echo "  Tagged builds:"
+      jq -r --arg kernel "$name" '[.[] | select(.kernel_name == $kernel)] | sort_by(.build_date) | reverse[] |
+        "    " + .tag + "  [" + .status + "]  " + .build_date[:10] +
+        (if .description != "" then "  - " + .description else "" end)' "$TAGS_FILE"
+    else
+      echo "  Tagged builds: none"
+    fi
+
+    # Archived debs
+    local archive_count=0
+    for tag_dir in "$ARCHIVE_DIR"/*/; do
+      [ -d "$tag_dir" ] || continue
+      local tag_name
+      tag_name=$(basename "$tag_dir")
+      local is_this_kernel
+      is_this_kernel=$(jq -r --arg tag "$tag_name" --arg kernel "$name" \
+        '.[] | select(.tag == $tag and .kernel_name == $kernel) | .tag' "$TAGS_FILE" 2>/dev/null)
+      if [ -n "$is_this_kernel" ]; then
+        archive_count=$((archive_count + 1))
+      fi
+    done
+    if [ "$archive_count" -gt 0 ]; then
+      echo "  Archived debs: $archive_count (in kernel_archive/)"
+    fi
+
+    echo ""
+  done
+
+  if [ "$found" = false ]; then
+    echo "No kernel source directories found under kernels/"
+  fi
+}
+
+# ── notes ────────────────────────────────────────────────────────────────────
+
+cmd_notes() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh notes <TAG_NAME> --add <text>
+
+Add timestamped notes to an existing tag. Useful for recording observations
+after deployment, known issues, or test results.
+
+Options:
+  --add <text>               Note text to add
+
+Examples:
+  kernel_tags.sh notes v5.1.5-rs-2400 --add "Stable after 2 weeks on fleet"
+  kernel_tags.sh notes v5.1.5-rs-2400 --add "Known issue: USB3 hotplug fails under load"
+EOF
+    exit 0
+  fi
+
+  if [ -z "$1" ] || [[ "$1" == --* ]]; then
+    echo "Error: Tag name is required."
+    echo "Usage: kernel_tags.sh notes <TAG_NAME> --add <text>"
+    exit 1
+  fi
+
+  local tag_name="$1"
+  shift
+
+  if ! tag_exists "$tag_name"; then
+    echo "Error: Tag '$tag_name' not found."
+    exit 1
+  fi
+
+  local note_text=""
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --add) note_text="$2"; shift 2 ;;
+      *) echo "Error: Unknown option '$1' for 'notes' command"; exit 1 ;;
+    esac
+  done
+
+  if [ -z "$note_text" ]; then
+    echo "Error: --add <text> is required."
+    exit 1
+  fi
+
+  local now builder
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  builder=$(get_builder)
+
+  jq --arg tag "$tag_name" \
+     --arg text "$note_text" \
+     --arg date "$now" \
+     --arg by "$builder" \
+    '(.[] | select(.tag == $tag)) |=
+      (.notes = ((.notes // []) + [{text: $text, date: $date, by: $by}]))' \
+    "$TAGS_FILE" > "$TAGS_FILE.tmp" && mv "$TAGS_FILE.tmp" "$TAGS_FILE"
+
+  echo "Note added to '$tag_name':"
+  echo "  [$now] $note_text"
+}
+
+# ── diff ─────────────────────────────────────────────────────────────────────
+
+cmd_diff() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh diff <TAG_1> <TAG_2>
+
+Compare two tagged builds. Shows:
+  - Metadata differences (kernel, localversion, status, config, etc.)
+  - Git commit log between the two tags in source repos
+
+Examples:
+  kernel_tags.sh diff v5.1.5-base v5.1.5-rs-2400
+EOF
+    exit 0
+  fi
+
+  if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Error: Two tag names are required."
+    echo "Usage: kernel_tags.sh diff <TAG_1> <TAG_2>"
+    exit 1
+  fi
+
+  local tag1="$1" tag2="$2"
+
+  if ! tag_exists "$tag1"; then
+    echo "Error: Tag '$tag1' not found."
+    exit 1
+  fi
+  if ! tag_exists "$tag2"; then
+    echo "Error: Tag '$tag2' not found."
+    exit 1
+  fi
+
+  echo "Comparing: $tag1 -> $tag2"
+  echo "════════════════════════════════════════════════════"
+  echo ""
+
+  # Metadata comparison
+  local fields=("kernel_name" "localversion" "status" "config" "dtb_name" "builder" "build_date")
+  local field_labels=("Kernel" "Localversion" "Status" "Config" "DTB" "Builder" "Build Date")
+
+  echo "Metadata:"
+  local i=0
+  local has_diff=false
+  for field in "${fields[@]}"; do
+    local val1 val2
+    val1=$(jq -r --arg tag "$tag1" --arg f "$field" '.[] | select(.tag == $tag) | .[$f] // ""' "$TAGS_FILE")
+    val2=$(jq -r --arg tag "$tag2" --arg f "$field" '.[] | select(.tag == $tag) | .[$f] // ""' "$TAGS_FILE")
+
+    if [ "$val1" != "$val2" ]; then
+      printf "  %-14s %s -> %s\n" "${field_labels[$i]}:" "$val1" "$val2"
+      has_diff=true
+    fi
+    i=$((i + 1))
+  done
+
+  if [ "$has_diff" = false ]; then
+    echo "  (no metadata differences)"
+  fi
+
+  # Description comparison
+  local desc1 desc2
+  desc1=$(jq -r --arg tag "$tag1" '.[] | select(.tag == $tag) | .description // ""' "$TAGS_FILE")
+  desc2=$(jq -r --arg tag "$tag2" '.[] | select(.tag == $tag) | .description // ""' "$TAGS_FILE")
+  echo ""
+  echo "Descriptions:"
+  echo "  $tag1: ${desc1:-"(none)"}"
+  echo "  $tag2: ${desc2:-"(none)"}"
+
+  # Git log between tags in source repos
+  local kernel1 kernel2
+  kernel1=$(jq -r --arg tag "$tag1" '.[] | select(.tag == $tag) | .kernel_name // ""' "$TAGS_FILE")
+  kernel2=$(jq -r --arg tag "$tag2" '.[] | select(.tag == $tag) | .kernel_name // ""' "$TAGS_FILE")
+
+  # Try to find git log if both tags exist in the same repo
+  if [ -n "$kernel1" ]; then
+    local repos
+    repos=($(find_git_repos "$kernel1"))
+
+    for repo in "${repos[@]}"; do
+      local repo_rel="${repo#$REPO_ROOT/}"
+      local has_tag1 has_tag2
+      has_tag1=$(git -C "$repo" rev-parse "refs/tags/$tag1" 2>/dev/null) || true
+      has_tag2=$(git -C "$repo" rev-parse "refs/tags/$tag2" 2>/dev/null) || true
+
+      if [ -n "$has_tag1" ] && [ -n "$has_tag2" ]; then
+        echo ""
+        echo "Source changes ($repo_rel): $tag1..$tag2"
+        echo "────────────────────────────────────────────────────"
+        local log_output
+        log_output=$(git -C "$repo" log --oneline --no-decorate "$tag1..$tag2" 2>/dev/null | head -30)
+        if [ -n "$log_output" ]; then
+          echo "$log_output"
+          local total
+          total=$(git -C "$repo" rev-list --count "$tag1..$tag2" 2>/dev/null || echo "?")
+          if [ "$total" -gt 30 ] 2>/dev/null; then
+            echo "  ... ($total commits total, showing first 30)"
+          fi
+        else
+          # Try reverse direction
+          log_output=$(git -C "$repo" log --oneline --no-decorate "$tag2..$tag1" 2>/dev/null | head -30)
+          if [ -n "$log_output" ]; then
+            echo "(reverse: $tag2..$tag1)"
+            echo "$log_output"
+          else
+            echo "  (no commits between tags, or tags point to the same commit)"
+          fi
+        fi
+
+        local stat_output
+        stat_output=$(git -C "$repo" diff --stat "$tag1" "$tag2" 2>/dev/null | tail -1)
+        if [ -n "$stat_output" ]; then
+          echo ""
+          echo "  $stat_output"
+        fi
+      fi
+    done
+  fi
+
+  # If different kernels, also check the second kernel's repos
+  if [ -n "$kernel2" ] && [ "$kernel1" != "$kernel2" ]; then
+    echo ""
+    echo "Note: Tags are from different kernel sources ($kernel1 vs $kernel2)."
+    echo "Git log comparison only works within the same source tree."
+  fi
+}
+
+# ── verify ───────────────────────────────────────────────────────────────────
+
+cmd_verify() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh verify <TAG_NAME> --ip <address> [--user <user>]
+
+SSH into a remote device and verify that the running kernel matches the
+tagged build by checking uname -r against the expected localversion.
+
+Required:
+  <TAG_NAME>                 The tag to verify against
+  --ip <address>             IP address of the target machine
+
+Options:
+  --user <user>              SSH user (default: root)
+
+Examples:
+  kernel_tags.sh verify v5.1.5-rs-2400 --ip 192.168.1.230
+  kernel_tags.sh verify v5.1.5-rs-2400 --ip 192.168.1.230 --user cartken
+EOF
+    exit 0
+  fi
+
+  if [ -z "$1" ] || [[ "$1" == --* ]]; then
+    echo "Error: Tag name is required."
+    echo "Usage: kernel_tags.sh verify <TAG_NAME> --ip <address> [--user <user>]"
+    exit 1
+  fi
+
+  local tag_name="$1"
+  shift
+
+  if ! tag_exists "$tag_name"; then
+    echo "Error: Tag '$tag_name' not found."
+    exit 1
+  fi
+
+  local device_ip="" user="root"
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --ip)   device_ip="$2"; shift 2 ;;
+      --user) user="$2"; shift 2 ;;
+      *) echo "Error: Unknown option '$1' for 'verify' command"; exit 1 ;;
+    esac
+  done
+
+  if [ -z "$device_ip" ]; then
+    echo "Error: --ip is required."
+    exit 1
+  fi
+
+  local expected_lv
+  expected_lv=$(jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) | .localversion' "$TAGS_FILE")
+
+  local remote="$user@$device_ip"
+
+  echo "Verifying '$tag_name' on $remote..."
+  echo "  Expected localversion: $expected_lv"
+
+  local remote_uname
+  remote_uname=$(ssh -o ConnectTimeout=10 "$remote" "uname -r" 2>/dev/null) || {
+    echo "  Error: Cannot SSH into $remote."
+    exit 1
+  }
+
+  echo "  Remote uname -r:       $remote_uname"
+  echo ""
+
+  if [[ "$remote_uname" == *"$expected_lv" ]]; then
+    echo "  MATCH - Device is running the expected kernel."
+    return 0
+  else
+    echo "  MISMATCH - Device is NOT running the expected kernel."
+    echo "  Expected suffix: $expected_lv"
+    echo "  Actual:          $remote_uname"
+    return 1
+  fi
+}
+
 # ── get-deb ──────────────────────────────────────────────────────────────────
 
 cmd_get_deb() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh get-deb <TAG_NAME>
+
+Print the absolute path to the archived .deb for the given tag.
+Useful for scripted redeployment or manual inspection.
+
+Examples:
+  kernel_tags.sh get-deb v5.1.5-rs-2400
+  scp $(kernel_tags.sh get-deb v5.1.5-rs-2400) user@device:/tmp/
+EOF
+    exit 0
+  fi
+
   if [ -z "$1" ]; then
     echo "Error: Tag name is required." >&2
     echo "Usage: kernel_tags.sh get-deb <TAG_NAME>" >&2
@@ -800,6 +1495,255 @@ cmd_get_deb() {
   echo "$deb_path"
 }
 
+# ── deploy ───────────────────────────────────────────────────────────────────
+
+cmd_deploy() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]
+
+Deploy a tagged kernel to one or more remote machines. Copies the archived .deb
+via scp, installs it with dpkg -i, cleans up, and optionally reboots.
+
+Supports fleet deploy via multiple --ip flags or a --hosts-file.
+
+Required:
+  <TAG_NAME>                 The tag to deploy
+  --ip <address>             IP address of a target (can be repeated)
+
+Options:
+  --hosts-file <file>        File with one IP per line (# comments allowed)
+  --user <user>              SSH user (default: root)
+  --copy-only                Only copy the .deb to the target (no install or reboot)
+  --no-reboot                Skip rebooting after install
+  --dry-run                  Show what would be done without executing
+
+Single target:
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230 --user cartken --no-reboot
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230 --copy-only
+
+Fleet deploy:
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.10 --ip 192.168.1.11
+  kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt --user cartken
+EOF
+    exit 0
+  fi
+
+  if [ -z "$1" ] || [[ "$1" == --* ]]; then
+    echo "Error: Tag name is required."
+    echo "Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]"
+    echo "Run 'kernel_tags.sh deploy --help' for full usage."
+    exit 1
+  fi
+
+  local tag_name="$1"
+  shift
+
+  if ! tag_exists "$tag_name"; then
+    echo "Error: Tag '$tag_name' not found."
+    exit 1
+  fi
+
+  local device_ips=() user="root" do_reboot=true copy_only=false dry_run=false hosts_file=""
+
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --ip)         device_ips+=("$2"); shift 2 ;;
+      --hosts-file) hosts_file="$2"; shift 2 ;;
+      --user)       user="$2"; shift 2 ;;
+      --copy-only)  copy_only=true; shift ;;
+      --no-reboot)  do_reboot=false; shift ;;
+      --dry-run)    dry_run=true; shift ;;
+      *) echo "Error: Unknown option '$1' for 'deploy' command"; exit 1 ;;
+    esac
+  done
+
+  # Load IPs from hosts file if provided
+  if [ -n "$hosts_file" ]; then
+    if [ ! -f "$hosts_file" ]; then
+      echo "Error: Hosts file '$hosts_file' not found."
+      exit 1
+    fi
+    while IFS= read -r line; do
+      line=$(echo "$line" | sed 's/#.*//' | xargs)
+      [ -n "$line" ] && device_ips+=("$line")
+    done < "$hosts_file"
+  fi
+
+  if [ ${#device_ips[@]} -eq 0 ]; then
+    echo "Error: At least one --ip or --hosts-file is required."
+    echo "Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]"
+    exit 1
+  fi
+
+  # Resolve the deb path
+  local deb_path
+  deb_path=$(cmd_get_deb "$tag_name") || exit 1
+  local deb_filename
+  deb_filename=$(basename "$deb_path")
+  local deb_size
+  deb_size=$(du -h "$deb_path" | cut -f1)
+
+  local mode="full"
+  if [ "$copy_only" = true ]; then
+    mode="copy"
+  fi
+
+  local fleet_mode=false
+  if [ ${#device_ips[@]} -gt 1 ]; then
+    fleet_mode=true
+  fi
+
+  # Show deployment plan
+  local tag_info
+  tag_info=$(jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) |
+    "  Tag:          " + .tag +
+    "\n  Kernel:       " + .kernel_name +
+    "\n  Localversion: " + .localversion +
+    "\n  Status:       " + .status' "$TAGS_FILE")
+
+  echo "Deploy Plan"
+  echo "==========="
+  echo "$tag_info"
+  echo "  Deb:          $deb_filename ($deb_size)"
+  if [ "$fleet_mode" = true ]; then
+    echo "  Targets:      ${#device_ips[@]} machines (user: $user)"
+    for ip in "${device_ips[@]}"; do
+      echo "                  - $ip"
+    done
+  else
+    echo "  Target:       $user@${device_ips[0]}"
+  fi
+  if [ "$mode" = "copy" ]; then
+    echo "  Mode:         copy only"
+  else
+    echo "  Install:      yes"
+    echo "  Reboot:       $([ "$do_reboot" = true ] && echo "yes" || echo "no")"
+  fi
+  echo ""
+
+  # Deploy to each target
+  local success_count=0 fail_count=0
+  for device_ip in "${device_ips[@]}"; do
+    local remote="$user@$device_ip"
+    local remote_tmp="/tmp/$deb_filename"
+
+    if [ "$fleet_mode" = true ]; then
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo "  Deploying to: $remote"
+      echo ""
+    fi
+
+    if [ "$dry_run" = true ]; then
+      echo "[dry-run] ping -c 1 -W 3 $device_ip"
+      echo "[dry-run] scp -C $deb_path $remote:$remote_tmp"
+      if [ "$mode" = "full" ]; then
+        echo "[dry-run] ssh $remote 'sudo dpkg -i $remote_tmp'"
+        echo "[dry-run] ssh $remote 'rm -f $remote_tmp'"
+        if [ "$do_reboot" = true ]; then
+          echo "[dry-run] ssh $remote 'sudo reboot'"
+        fi
+      fi
+      echo ""
+      success_count=$((success_count + 1))
+      continue
+    fi
+
+    # Check connectivity
+    echo "  Checking connectivity to $device_ip..."
+    if ping -c 1 -W 3 "$device_ip" &>/dev/null; then
+      echo "  Ping OK."
+    else
+      echo "  Ping failed (ICMP may be blocked, continuing anyway)."
+    fi
+
+    echo "  Checking SSH access to $remote..."
+    if ! ssh -o ConnectTimeout=10 "$remote" "echo ok" 2>/dev/null; then
+      echo "  Error: Cannot SSH into $remote. Skipping."
+      fail_count=$((fail_count + 1))
+      echo ""
+      continue
+    fi
+    echo "  SSH connection OK."
+    echo ""
+
+    # Copy .deb to target
+    echo "  Copying .deb to $remote ($deb_size)..."
+    if ! scp -C "$deb_path" "$remote:$remote_tmp"; then
+      echo "  Error: Failed to copy .deb to $remote. Skipping."
+      fail_count=$((fail_count + 1))
+      echo ""
+      continue
+    fi
+    echo "  Copy complete."
+    echo ""
+
+    if [ "$mode" = "copy" ]; then
+      echo "  Copied to $remote:$remote_tmp"
+      echo "  To install: sudo dpkg -i $remote_tmp"
+      success_count=$((success_count + 1))
+
+      # Record deployment
+      _record_deployment "$tag_name" "$remote" "copy"
+      echo ""
+      continue
+    fi
+
+    # Install .deb on target
+    echo "  Installing kernel on $remote..."
+    if ! ssh "$remote" "sudo dpkg -i $remote_tmp"; then
+      echo "  Error: dpkg -i failed on $remote"
+      echo "  The .deb is still at $remote:$remote_tmp"
+      fail_count=$((fail_count + 1))
+      echo ""
+      continue
+    fi
+    echo "  Install complete."
+    echo ""
+
+    # Clean up
+    ssh "$remote" "rm -f $remote_tmp" 2>/dev/null || true
+
+    # Reboot
+    if [ "$do_reboot" = true ]; then
+      echo "  Rebooting $remote..."
+      ssh "$remote" "sudo reboot" 2>/dev/null || true
+      echo "  Reboot command sent."
+    fi
+
+    success_count=$((success_count + 1))
+
+    # Record deployment
+    _record_deployment "$tag_name" "$remote" "$([ "$do_reboot" = true ] && echo "full" || echo "install")"
+    echo ""
+  done
+
+  # Summary
+  if [ "$fleet_mode" = true ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Fleet Deploy Summary: $success_count succeeded, $fail_count failed (${#device_ips[@]} total)"
+  else
+    echo "Deployment of '$tag_name' to $user@${device_ips[0]} completed."
+  fi
+}
+
+_record_deployment() {
+  local tag_name="$1" target="$2" mode="$3"
+  local now builder
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  builder=$(get_builder)
+
+  jq --arg tag "$tag_name" \
+     --arg target "$target" \
+     --arg date "$now" \
+     --arg by "$builder" \
+     --arg mode "$mode" \
+    '(.[] | select(.tag == $tag)) |=
+      (.deployments = ((.deployments // []) + [{target: $target, date: $date, by: $by, mode: $mode}]))' \
+    "$TAGS_FILE" > "$TAGS_FILE.tmp" && mv "$TAGS_FILE.tmp" "$TAGS_FILE"
+}
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 ensure_jq
@@ -817,10 +1761,15 @@ case "$COMMAND" in
   list)    cmd_list "$@" ;;
   show)    cmd_show "$@" ;;
   promote) cmd_promote "$@" ;;
+  notes)   cmd_notes "$@" ;;
+  diff)    cmd_diff "$@" ;;
+  verify)  cmd_verify "$@" ;;
   delete)  cmd_delete "$@" ;;
   log)     cmd_log "$@" ;;
   export)  cmd_export "$@" ;;
   get-deb) cmd_get_deb "$@" ;;
+  deploy)  cmd_deploy "$@" ;;
+  kernels) cmd_kernels "$@" ;;
   --help|-h|help) show_help ;;
   *) echo "Error: Unknown command '$COMMAND'. Run with --help for usage."; exit 1 ;;
 esac
