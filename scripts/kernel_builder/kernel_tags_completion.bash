@@ -56,7 +56,7 @@ _kernel_tags() {
           return
           ;;
       esac
-      COMPREPLY=($(compgen -W "--kernel --localversion --description --config --dtb-name --status --deb-package --no-source-tag --no-archive --help" -- "$cur"))
+      COMPREPLY=($(compgen -W "--kernel --localversion --description --config --dtb-name --status --deb-package --no-source-tag --no-archive --force --help" -- "$cur"))
       ;;
     list)
       case "$prev" in
@@ -105,7 +105,12 @@ _kernel_tags() {
       if [ "$cword" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$(_kernel_tags_get_tags) --help" -- "$cur"))
       else
-        COMPREPLY=($(compgen -W "--ip --user --help" -- "$cur"))
+        case "$prev" in
+          --ip|--user|--password)
+            return
+            ;;
+        esac
+        COMPREPLY=($(compgen -W "--ip --user --password --help" -- "$cur"))
       fi
       ;;
     deploy)
@@ -117,11 +122,11 @@ _kernel_tags() {
             _filedir
             return
             ;;
-          --ip|--user)
+          --ip|--user|--password|--robots|--robot-ip-prefix|--remote-dir)
             return
             ;;
         esac
-        COMPREPLY=($(compgen -W "--ip --hosts-file --user --copy-only --no-reboot --dry-run --help" -- "$cur"))
+        COMPREPLY=($(compgen -W "--ip --robots --robot-ip-prefix --hosts-file --user --password --remote-dir --install --no-reboot --sequential --dry-run --help" -- "$cur"))
       fi
       ;;
     log)

@@ -310,6 +310,7 @@ Commands:
     --deb-package <path>       Path to the generated .deb package (auto-detected from localversion)
     --no-source-tag            Skip tagging the kernel source git repositories
     --no-archive               Skip archiving the .deb package to kernel_archive/
+    --force                    Overwrite existing tag (preserves notes & deploy history)
 
   When tagging, this tool will:
     1. Record the build metadata in kernel_tags.json
@@ -379,23 +380,30 @@ Commands:
 
 --- deploy ---
 
-  kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]
+  kernel_tags.sh deploy <TAG_NAME> [target options] [options]
 
-  Deploy a tagged kernel to remote machine(s). Supports fleet deploy via
-  multiple --ip flags or --hosts-file.
+  Copy a tagged kernel to remote machine(s). Default is copy-only; use
+  --install for dpkg -i + optional reboot. Multiple targets run in parallel.
+
+  Target selection (at least one required):
+    --ip <address>             Direct IP (repeatable)
+    --robots <list>            Comma-separated robot numbers (e.g. 1,2,5-8)
+    --robot-ip-prefix <prefix> IP prefix for robots (e.g. "10.42.0.")
+    --hosts-file <file>        File with one IP per line
 
   Options:
-    --ip <address>             Target IP (can be repeated for fleet deploy)
-    --hosts-file <file>        File with one IP per line
-    --user <user>              SSH user (default: root)
-    --copy-only                Only copy the .deb (no install or reboot)
-    --no-reboot                Skip rebooting after install
+    --user <user>              SSH user (default: cartken)
+    --password <pass>          SSH password (uses sshpass, no interactive prompts)
+    --remote-dir <path>        Remote destination directory (default: ~/kernel_debs)
+    --install                  Also run dpkg -i after copying
+    --no-reboot                Skip reboot (only with --install)
+    --sequential               Disable parallel copy for fleet deploys
     --dry-run                  Show what would be done without executing
 
   Examples:
-    kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230
-    kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.10 --ip 192.168.1.11
-    kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt --user cartken
+    kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5
+    kernel_tags.sh deploy v5.1.5-rs-2400 --robots 1,2,5-8 --robot-ip-prefix "10.42.0."
+    kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt --password "pw"
 
 --- get-deb ---
 
@@ -432,6 +440,7 @@ Options:
   --deb-package <path>       Path to the .deb package (auto-detected from localversion)
   --no-source-tag            Skip tagging the kernel source git repositories
   --no-archive               Skip archiving the .deb package to kernel_archive/
+  --force                    Overwrite an existing tag (preserves notes & deployment history)
 
 Example:
   kernel_tags.sh tag v5.1.5-rs-2400 \
@@ -453,14 +462,9 @@ EOF
   local tag_name="$1"
   shift
 
-  if tag_exists "$tag_name"; then
-    echo "Error: Tag '$tag_name' already exists. Use 'delete' first to re-tag."
-    exit 1
-  fi
-
   local kernel_name="" localversion="" description="" config="" dtb_name=""
   local status="development" deb_package=""
-  local skip_source_tag=false skip_archive=false
+  local skip_source_tag=false skip_archive=false force=false
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -473,9 +477,60 @@ EOF
       --deb-package)    deb_package="$2"; shift 2 ;;
       --no-source-tag)  skip_source_tag=true; shift ;;
       --no-archive)     skip_archive=true; shift ;;
+      --force)          force=true; shift ;;
       *) echo "Error: Unknown option '$1' for 'tag' command"; exit 1 ;;
     esac
   done
+
+  # Handle existing tag
+  local preserved_notes="[]" preserved_deployments="[]"
+  if tag_exists "$tag_name"; then
+    if [ "$force" = false ]; then
+      echo "Error: Tag '$tag_name' already exists."
+      echo "  Use --force to overwrite (notes and deployment history are preserved)."
+      echo "  Use 'delete' to remove it entirely."
+      exit 1
+    fi
+
+    echo "Tag '$tag_name' exists, overwriting (--force)..."
+
+    # Preserve notes and deployment history from the old entry
+    preserved_notes=$(jq --arg tag "$tag_name" \
+      '[.[] | select(.tag == $tag)][0] | (.notes // [])' "$TAGS_FILE")
+    preserved_deployments=$(jq --arg tag "$tag_name" \
+      '[.[] | select(.tag == $tag)][0] | (.deployments // [])' "$TAGS_FILE")
+
+    local old_note_count old_deploy_count
+    old_note_count=$(echo "$preserved_notes" | jq 'length')
+    old_deploy_count=$(echo "$preserved_deployments" | jq 'length')
+    echo "  Preserving $old_note_count note(s) and $old_deploy_count deployment record(s)"
+
+    # Clean up old source tags
+    local old_kernel
+    old_kernel=$(jq -r --arg tag "$tag_name" '.[] | select(.tag == $tag) | .kernel_name' "$TAGS_FILE")
+    if [ -n "$old_kernel" ]; then
+      local repos
+      repos=($(find_git_repos "$old_kernel"))
+      for repo in "${repos[@]}"; do
+        if git -C "$repo" rev-parse "refs/tags/$tag_name" &>/dev/null; then
+          git -C "$repo" tag -d "$tag_name" 2>/dev/null && \
+            echo "  Removed old source tag from: ${repo#$REPO_ROOT/}"
+        fi
+      done
+    fi
+
+    # Clean up old archive
+    if [ -d "$ARCHIVE_DIR/$tag_name" ]; then
+      rm -rf "$ARCHIVE_DIR/$tag_name"
+      echo "  Removed old archive: kernel_archive/$tag_name/"
+    fi
+
+    # Remove old entry from manifest
+    jq --arg tag "$tag_name" 'del(.[] | select(.tag == $tag))' "$TAGS_FILE" > "$TAGS_FILE.tmp" \
+      && mv "$TAGS_FILE.tmp" "$TAGS_FILE"
+
+    echo ""
+  fi
 
   validate_status "$status"
 
@@ -577,6 +632,8 @@ EOF
     --arg builder "$builder" \
     --arg config_archived "$archived_config" \
     --argjson source_repos "$source_repos_json" \
+    --argjson prev_notes "$preserved_notes" \
+    --argjson prev_deploys "$preserved_deployments" \
     '{
       tag: $tag,
       kernel_name: $kernel,
@@ -591,8 +648,8 @@ EOF
       deb_package: $deb,
       config_archived: $config_archived,
       source_repos_tagged: $source_repos,
-      notes: [],
-      deployments: [],
+      notes: $prev_notes,
+      deployments: $prev_deploys,
       status_history: [
         {
           status: $status,
@@ -1379,11 +1436,11 @@ Required:
   --ip <address>             IP address of the target machine
 
 Options:
-  --user <user>              SSH user (default: root)
+  --user <user>              SSH user (default: cartken)
 
 Examples:
   kernel_tags.sh verify v5.1.5-rs-2400 --ip 192.168.1.230
-  kernel_tags.sh verify v5.1.5-rs-2400 --ip 192.168.1.230 --user cartken
+  kernel_tags.sh verify v5.1.5-rs-2400 --ip 192.168.1.230 --user root
 EOF
     exit 0
   fi
@@ -1402,17 +1459,23 @@ EOF
     exit 1
   fi
 
-  local device_ip="" user="root"
+  local device_ip="" user="cartken" password=""
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
-      --ip)   device_ip="$2"; shift 2 ;;
-      --user) user="$2"; shift 2 ;;
+      --ip)       device_ip="$2"; shift 2 ;;
+      --user)     user="$2"; shift 2 ;;
+      --password) password="$2"; shift 2 ;;
       *) echo "Error: Unknown option '$1' for 'verify' command"; exit 1 ;;
     esac
   done
 
   if [ -z "$device_ip" ]; then
     echo "Error: --ip is required."
+    exit 1
+  fi
+
+  if [ -n "$password" ] && ! command -v sshpass &>/dev/null; then
+    echo "Error: --password requires 'sshpass' but it is not installed."
     exit 1
   fi
 
@@ -1425,10 +1488,17 @@ EOF
   echo "  Expected localversion: $expected_lv"
 
   local remote_uname
-  remote_uname=$(ssh -o ConnectTimeout=10 "$remote" "uname -r" 2>/dev/null) || {
-    echo "  Error: Cannot SSH into $remote."
-    exit 1
-  }
+  if [ -n "$password" ]; then
+    remote_uname=$(sshpass -p "$password" ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$remote" "uname -r" 2>/dev/null) || {
+      echo "  Error: Cannot SSH into $remote."
+      exit 1
+    }
+  else
+    remote_uname=$(ssh -o ConnectTimeout=10 "$remote" "uname -r" 2>/dev/null) || {
+      echo "  Error: Cannot SSH into $remote."
+      exit 1
+    }
+  fi
 
   echo "  Remote uname -r:       $remote_uname"
   echo ""
@@ -1495,44 +1565,177 @@ EOF
   echo "$deb_path"
 }
 
+# ── deploy helpers ────────────────────────────────────────────────────────────
+
+_expand_robot_numbers() {
+  local input="$1"
+  local numbers=()
+  IFS=',' read -ra parts <<< "$input"
+  for part in "${parts[@]}"; do
+    part=$(echo "$part" | xargs)
+    if [[ "$part" == *-* ]]; then
+      local range_start="${part%-*}"
+      local range_end="${part#*-}"
+      for ((i=range_start; i<=range_end; i++)); do
+        numbers+=("$i")
+      done
+    else
+      numbers+=("$part")
+    fi
+  done
+  echo "${numbers[@]}"
+}
+
+_ssh_cmd() {
+  local password="$1"; shift
+  if [ -n "$password" ]; then
+    sshpass -p "$password" ssh -o StrictHostKeyChecking=accept-new "$@"
+  else
+    ssh "$@"
+  fi
+}
+
+_scp_cmd() {
+  local password="$1"; shift
+  if [ -n "$password" ]; then
+    sshpass -p "$password" scp -o StrictHostKeyChecking=accept-new "$@"
+  else
+    scp "$@"
+  fi
+}
+
+_deploy_to_target() {
+  local tag_name="$1" deb_path="$2" user="$3" device_ip="$4"
+  local remote_dir="$5" password="$6" do_install="$7" do_reboot="$8"
+
+  local remote="$user@$device_ip"
+  local deb_filename
+  deb_filename=$(basename "$deb_path")
+  local deb_size
+  deb_size=$(du -h "$deb_path" | cut -f1)
+  local remote_dest="$remote_dir/$deb_filename"
+  local ssh_ctrl="/tmp/kernel-deploy-$$-$device_ip"
+  local ssh_opts="-o ControlMaster=auto -o ControlPath=$ssh_ctrl -o ControlPersist=60 -o ConnectTimeout=10"
+
+  echo "  Target: $remote"
+  echo "  Dest:   $remote:$remote_dest"
+  echo ""
+
+  # Establish SSH connection + create remote directory (single auth prompt)
+  echo "  Connecting and preparing $remote_dir..."
+  if ! _ssh_cmd "$password" $ssh_opts "$remote" "mkdir -p $remote_dir" 2>/dev/null; then
+    echo "  Error: Cannot connect to $remote."
+    ssh -o ControlPath="$ssh_ctrl" -O exit "$remote" 2>/dev/null || true
+    return 1
+  fi
+  echo "  Connected."
+
+  # Copy .deb (reuses ControlMaster — no re-authentication)
+  echo "  Copying $deb_filename ($deb_size)..."
+  if ! _scp_cmd "$password" -o "ControlPath=$ssh_ctrl" -C "$deb_path" "$remote:$remote_dest"; then
+    echo "  Error: Failed to copy .deb to $remote."
+    ssh -o ControlPath="$ssh_ctrl" -O exit "$remote" 2>/dev/null || true
+    return 1
+  fi
+  echo "  Copy complete."
+  echo ""
+
+  if [ "$do_install" = true ]; then
+    echo "  Installing: sudo dpkg -i $remote_dest"
+    if ! _ssh_cmd "$password" $ssh_opts "$remote" "sudo dpkg -i $remote_dest"; then
+      echo "  Error: dpkg -i failed on $remote"
+      ssh -o ControlPath="$ssh_ctrl" -O exit "$remote" 2>/dev/null || true
+      return 1
+    fi
+    echo "  Install complete."
+
+    if [ "$do_reboot" = true ]; then
+      echo "  Rebooting $remote..."
+      _ssh_cmd "$password" $ssh_opts "$remote" "sudo reboot" 2>/dev/null || true
+      echo "  Reboot command sent."
+    fi
+  else
+    echo "  Copied to $remote:$remote_dest"
+    echo "  To install manually:"
+    echo "    sudo dpkg -i $remote_dest"
+  fi
+
+  # Tear down ControlMaster
+  ssh -o ControlPath="$ssh_ctrl" -O exit "$remote" 2>/dev/null || true
+  return 0
+}
+
+_record_deployment() {
+  local tag_name="$1" target="$2" mode="$3"
+  local now builder
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  builder=$(get_builder)
+
+  jq --arg tag "$tag_name" \
+     --arg target "$target" \
+     --arg date "$now" \
+     --arg by "$builder" \
+     --arg mode "$mode" \
+    '(.[] | select(.tag == $tag)) |=
+      (.deployments = ((.deployments // []) + [{target: $target, date: $date, by: $by, mode: $mode}]))' \
+    "$TAGS_FILE" > "$TAGS_FILE.tmp" && mv "$TAGS_FILE.tmp" "$TAGS_FILE"
+}
+
 # ── deploy ───────────────────────────────────────────────────────────────────
 
 cmd_deploy() {
   if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
     cat <<'EOF'
-Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]
+Usage: kernel_tags.sh deploy <TAG_NAME> [target options] [options]
 
-Deploy a tagged kernel to one or more remote machines. Copies the archived .deb
-via scp, installs it with dpkg -i, cleans up, and optionally reboots.
+Copy a tagged kernel's .deb to one or more remote machines. By default only
+copies the file; use --install to also run dpkg -i and optionally reboot.
 
-Supports fleet deploy via multiple --ip flags or a --hosts-file.
+Uses SSH ControlMaster to avoid multiple password prompts per target. Provide
+--password to avoid being prompted at all (requires sshpass).
 
-Required:
-  <TAG_NAME>                 The tag to deploy
-  --ip <address>             IP address of a target (can be repeated)
+Target selection (at least one required):
+  --ip <address>             Target IP (can be repeated)
+  --robots <list>            Comma-separated robot numbers, supports ranges
+                             e.g. --robots 1,2,5-8
+  --robot-ip-prefix <prefix> IP prefix for robots (e.g. "10.42.0.")
+                             Robot IP = prefix + number (e.g. 10.42.0.5)
+  --hosts-file <file>        File with one IP per line (# comments allowed)
 
 Options:
-  --hosts-file <file>        File with one IP per line (# comments allowed)
-  --user <user>              SSH user (default: root)
-  --copy-only                Only copy the .deb to the target (no install or reboot)
-  --no-reboot                Skip rebooting after install
+  --user <user>              SSH user (default: cartken)
+  --password <pass>          SSH password (uses sshpass, avoids interactive prompts)
+  --remote-dir <path>        Where to put the .deb on the remote (default: ~/kernel_debs)
+  --install                  Also install with dpkg -i after copying
+  --no-reboot                Skip reboot after install (only relevant with --install)
+  --sequential               Copy to targets one at a time (default: parallel for 2+ targets)
   --dry-run                  Show what would be done without executing
 
-Single target:
-  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230
-  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230 --user cartken --no-reboot
-  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.230 --copy-only
+Examples:
+  # Copy to a single robot
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5
 
-Fleet deploy:
-  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 192.168.1.10 --ip 192.168.1.11
-  kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt --user cartken
+  # Copy to robots 1, 2, and 5 through 8 using password
+  kernel_tags.sh deploy v5.1.5-rs-2400 \
+    --robots 1,2,5-8 --robot-ip-prefix "10.42.0." \
+    --password "secret"
+
+  # Copy to a list of hosts from a file
+  kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt
+
+  # Full install + reboot
+  kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5 --install
+
+  # Dry run to preview
+  kernel_tags.sh deploy v5.1.5-rs-2400 --robots 1,2,3 \
+    --robot-ip-prefix "10.42.0." --dry-run
 EOF
     exit 0
   fi
 
   if [ -z "$1" ] || [[ "$1" == --* ]]; then
     echo "Error: Tag name is required."
-    echo "Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]"
+    echo "Usage: kernel_tags.sh deploy <TAG_NAME> [target options] [options]"
     echo "Run 'kernel_tags.sh deploy --help' for full usage."
     exit 1
   fi
@@ -1545,21 +1748,43 @@ EOF
     exit 1
   fi
 
-  local device_ips=() user="root" do_reboot=true copy_only=false dry_run=false hosts_file=""
+  local device_ips=() user="cartken" password="" do_install=false do_reboot=true
+  local dry_run=false hosts_file="" remote_dir="~/kernel_debs" sequential=false
+  local robot_numbers_raw="" robot_ip_prefix=""
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
-      --ip)         device_ips+=("$2"); shift 2 ;;
-      --hosts-file) hosts_file="$2"; shift 2 ;;
-      --user)       user="$2"; shift 2 ;;
-      --copy-only)  copy_only=true; shift ;;
-      --no-reboot)  do_reboot=false; shift ;;
-      --dry-run)    dry_run=true; shift ;;
+      --ip)              device_ips+=("$2"); shift 2 ;;
+      --robots)          robot_numbers_raw="$2"; shift 2 ;;
+      --robot-ip-prefix) robot_ip_prefix="$2"; shift 2 ;;
+      --hosts-file)      hosts_file="$2"; shift 2 ;;
+      --user)            user="$2"; shift 2 ;;
+      --password)        password="$2"; shift 2 ;;
+      --remote-dir)      remote_dir="$2"; shift 2 ;;
+      --install)         do_install=true; shift ;;
+      --no-reboot)       do_reboot=false; shift ;;
+      --sequential)      sequential=true; shift ;;
+      --dry-run)         dry_run=true; shift ;;
+      --copy-only)       shift ;;  # no-op, copy is already the default
       *) echo "Error: Unknown option '$1' for 'deploy' command"; exit 1 ;;
     esac
   done
 
-  # Load IPs from hosts file if provided
+  # Resolve robot numbers to IPs
+  if [ -n "$robot_numbers_raw" ]; then
+    if [ -z "$robot_ip_prefix" ]; then
+      echo "Error: --robot-ip-prefix is required when using --robots."
+      echo "  Example: --robots 1,2,5-8 --robot-ip-prefix \"10.42.0.\""
+      exit 1
+    fi
+    local numbers
+    numbers=($(_expand_robot_numbers "$robot_numbers_raw"))
+    for num in "${numbers[@]}"; do
+      device_ips+=("${robot_ip_prefix}${num}")
+    done
+  fi
+
+  # Load IPs from hosts file
   if [ -n "$hosts_file" ]; then
     if [ ! -f "$hosts_file" ]; then
       echo "Error: Hosts file '$hosts_file' not found."
@@ -1572,8 +1797,15 @@ EOF
   fi
 
   if [ ${#device_ips[@]} -eq 0 ]; then
-    echo "Error: At least one --ip or --hosts-file is required."
-    echo "Usage: kernel_tags.sh deploy <TAG_NAME> --ip <address> [options]"
+    echo "Error: No targets specified. Use --ip, --robots, or --hosts-file."
+    echo "Run 'kernel_tags.sh deploy --help' for full usage."
+    exit 1
+  fi
+
+  # Check sshpass availability when --password is used
+  if [ -n "$password" ] && ! command -v sshpass &>/dev/null; then
+    echo "Error: --password requires 'sshpass' but it is not installed."
+    echo "Install it with: sudo pacman -S sshpass (Arch/Manjaro) or sudo apt install sshpass (Debian/Ubuntu)"
     exit 1
   fi
 
@@ -1585,9 +1817,9 @@ EOF
   local deb_size
   deb_size=$(du -h "$deb_path" | cut -f1)
 
-  local mode="full"
-  if [ "$copy_only" = true ]; then
-    mode="copy"
+  local mode="copy"
+  if [ "$do_install" = true ]; then
+    mode="install"
   fi
 
   local fleet_mode=false
@@ -1607,141 +1839,123 @@ EOF
   echo "==========="
   echo "$tag_info"
   echo "  Deb:          $deb_filename ($deb_size)"
+  echo "  Remote dir:   $remote_dir"
   if [ "$fleet_mode" = true ]; then
     echo "  Targets:      ${#device_ips[@]} machines (user: $user)"
     for ip in "${device_ips[@]}"; do
       echo "                  - $ip"
     done
+    if [ "$sequential" = false ]; then
+      echo "  Parallel:     yes"
+    else
+      echo "  Parallel:     no (sequential)"
+    fi
   else
     echo "  Target:       $user@${device_ips[0]}"
   fi
-  if [ "$mode" = "copy" ]; then
-    echo "  Mode:         copy only"
-  else
-    echo "  Install:      yes"
-    echo "  Reboot:       $([ "$do_reboot" = true ] && echo "yes" || echo "no")"
-  fi
+  echo "  Mode:         $mode$([ "$mode" = "install" ] && [ "$do_reboot" = true ] && echo " + reboot")"
+  [ -n "$password" ] && echo "  Auth:         password (sshpass)"
   echo ""
 
-  # Deploy to each target
-  local success_count=0 fail_count=0
-  for device_ip in "${device_ips[@]}"; do
-    local remote="$user@$device_ip"
-    local remote_tmp="/tmp/$deb_filename"
-
-    if [ "$fleet_mode" = true ]; then
-      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      echo "  Deploying to: $remote"
-      echo ""
-    fi
-
-    if [ "$dry_run" = true ]; then
-      echo "[dry-run] ping -c 1 -W 3 $device_ip"
-      echo "[dry-run] scp -C $deb_path $remote:$remote_tmp"
-      if [ "$mode" = "full" ]; then
-        echo "[dry-run] ssh $remote 'sudo dpkg -i $remote_tmp'"
-        echo "[dry-run] ssh $remote 'rm -f $remote_tmp'"
+  if [ "$dry_run" = true ]; then
+    for device_ip in "${device_ips[@]}"; do
+      local remote="$user@$device_ip"
+      echo "[dry-run] ssh $remote 'mkdir -p $remote_dir'"
+      echo "[dry-run] scp -C $deb_path $remote:$remote_dir/$deb_filename"
+      if [ "$do_install" = true ]; then
+        echo "[dry-run] ssh $remote 'sudo dpkg -i $remote_dir/$deb_filename'"
         if [ "$do_reboot" = true ]; then
           echo "[dry-run] ssh $remote 'sudo reboot'"
         fi
       fi
       echo ""
-      success_count=$((success_count + 1))
-      continue
-    fi
-
-    # Check connectivity
-    echo "  Checking connectivity to $device_ip..."
-    if ping -c 1 -W 3 "$device_ip" &>/dev/null; then
-      echo "  Ping OK."
-    else
-      echo "  Ping failed (ICMP may be blocked, continuing anyway)."
-    fi
-
-    echo "  Checking SSH access to $remote..."
-    if ! ssh -o ConnectTimeout=10 "$remote" "echo ok" 2>/dev/null; then
-      echo "  Error: Cannot SSH into $remote. Skipping."
-      fail_count=$((fail_count + 1))
-      echo ""
-      continue
-    fi
-    echo "  SSH connection OK."
-    echo ""
-
-    # Copy .deb to target
-    echo "  Copying .deb to $remote ($deb_size)..."
-    if ! scp -C "$deb_path" "$remote:$remote_tmp"; then
-      echo "  Error: Failed to copy .deb to $remote. Skipping."
-      fail_count=$((fail_count + 1))
-      echo ""
-      continue
-    fi
-    echo "  Copy complete."
-    echo ""
-
-    if [ "$mode" = "copy" ]; then
-      echo "  Copied to $remote:$remote_tmp"
-      echo "  To install: sudo dpkg -i $remote_tmp"
-      success_count=$((success_count + 1))
-
-      # Record deployment
-      _record_deployment "$tag_name" "$remote" "copy"
-      echo ""
-      continue
-    fi
-
-    # Install .deb on target
-    echo "  Installing kernel on $remote..."
-    if ! ssh "$remote" "sudo dpkg -i $remote_tmp"; then
-      echo "  Error: dpkg -i failed on $remote"
-      echo "  The .deb is still at $remote:$remote_tmp"
-      fail_count=$((fail_count + 1))
-      echo ""
-      continue
-    fi
-    echo "  Install complete."
-    echo ""
-
-    # Clean up
-    ssh "$remote" "rm -f $remote_tmp" 2>/dev/null || true
-
-    # Reboot
-    if [ "$do_reboot" = true ]; then
-      echo "  Rebooting $remote..."
-      ssh "$remote" "sudo reboot" 2>/dev/null || true
-      echo "  Reboot command sent."
-    fi
-
-    success_count=$((success_count + 1))
-
-    # Record deployment
-    _record_deployment "$tag_name" "$remote" "$([ "$do_reboot" = true ] && echo "full" || echo "install")"
-    echo ""
-  done
-
-  # Summary
-  if [ "$fleet_mode" = true ]; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Fleet Deploy Summary: $success_count succeeded, $fail_count failed (${#device_ips[@]} total)"
-  else
-    echo "Deployment of '$tag_name' to $user@${device_ips[0]} completed."
+    done
+    return
   fi
-}
 
-_record_deployment() {
-  local tag_name="$1" target="$2" mode="$3"
-  local now builder
-  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  builder=$(get_builder)
+  # ── Single target: deploy inline with live output ──
+  if [ "$fleet_mode" = false ]; then
+    if _deploy_to_target "$tag_name" "$deb_path" "$user" "${device_ips[0]}" \
+         "$remote_dir" "$password" "$do_install" "$do_reboot"; then
+      _record_deployment "$tag_name" "$user@${device_ips[0]}" "$mode"
+      echo ""
+      echo "Done."
+    else
+      echo ""
+      echo "Deploy to $user@${device_ips[0]} failed."
+      exit 1
+    fi
+    return
+  fi
 
-  jq --arg tag "$tag_name" \
-     --arg target "$target" \
-     --arg date "$now" \
-     --arg by "$builder" \
-     --arg mode "$mode" \
-    '(.[] | select(.tag == $tag)) |=
-      (.deployments = ((.deployments // []) + [{target: $target, date: $date, by: $by, mode: $mode}]))' \
-    "$TAGS_FILE" > "$TAGS_FILE.tmp" && mv "$TAGS_FILE.tmp" "$TAGS_FILE"
+  # ── Fleet deploy ──
+  local success_count=0 fail_count=0
+  local tmpdir
+  tmpdir=$(mktemp -d "/tmp/kernel-fleet-$$-XXXXXX")
+
+  if [ "$sequential" = true ]; then
+    # Sequential fleet deploy
+    for device_ip in "${device_ips[@]}"; do
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      if _deploy_to_target "$tag_name" "$deb_path" "$user" "$device_ip" \
+           "$remote_dir" "$password" "$do_install" "$do_reboot"; then
+        _record_deployment "$tag_name" "$user@$device_ip" "$mode"
+        success_count=$((success_count + 1))
+      else
+        fail_count=$((fail_count + 1))
+      fi
+      echo ""
+    done
+  else
+    # Parallel fleet deploy
+    local pids=()
+    echo "Starting parallel copy to ${#device_ips[@]} targets..."
+    echo ""
+
+    for device_ip in "${device_ips[@]}"; do
+      local logfile="$tmpdir/$device_ip.log"
+      (
+        _deploy_to_target "$tag_name" "$deb_path" "$user" "$device_ip" \
+          "$remote_dir" "$password" "$do_install" "$do_reboot" > "$logfile" 2>&1
+        echo $? > "$tmpdir/$device_ip.exit"
+      ) &
+      pids+=($!)
+    done
+
+    # Wait for all background jobs
+    for pid in "${pids[@]}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+
+    # Collect results
+    for device_ip in "${device_ips[@]}"; do
+      local logfile="$tmpdir/$device_ip.log"
+      local exitfile="$tmpdir/$device_ip.exit"
+      local exit_code
+      exit_code=$(cat "$exitfile" 2>/dev/null || echo "1")
+
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      if [ "$exit_code" -eq 0 ]; then
+        echo "  ✓ $user@$device_ip"
+        _record_deployment "$tag_name" "$user@$device_ip" "$mode"
+        success_count=$((success_count + 1))
+      else
+        echo "  ✗ $user@$device_ip (FAILED)"
+        fail_count=$((fail_count + 1))
+      fi
+
+      # Show log output indented
+      if [ -f "$logfile" ]; then
+        sed 's/^/    /' "$logfile"
+      fi
+      echo ""
+    done
+  fi
+
+  rm -rf "$tmpdir"
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Fleet Summary: $success_count succeeded, $fail_count failed (${#device_ips[@]} total)"
 }
 
 # ── main ─────────────────────────────────────────────────────────────────────

@@ -60,27 +60,61 @@ Each script is crafted to target specific parts of the workflow, from configurat
 
 `kernel_tags.sh` is a CLI tool for tracking, versioning, and deploying tagged kernel builds. It maintains a JSON manifest (`kernel_tags.json`) at the repository root and provides commands for the full lifecycle of a kernel build -- from tagging through deployment and verification.
 
-### Quick Start
+### Quick Start — One-Shot Build & Tag
+
+The easiest way to build and tag a kernel is `build_and_tag.sh`, which
+interactively guides you through the entire process in a single command:
 
 ```bash
-# 1. Build a kernel
-./scripts/kernel_builder/compile_and_package.sh cartken_5_1_5_realsense \
-  --localversion cartken5.1.5realsense2400
+./scripts/kernel_builder/build_and_tag.sh
+```
 
-# 2. Tag the build
+It will:
+1. Let you pick a kernel source
+2. Auto-generate a localversion (e.g. `cartken5.1.5realsense.130426`)
+3. Auto-generate a date-based tag (e.g. `130426`)
+4. Ask for a description
+5. Confirm, then build + package + tag automatically
+
+You can also pre-fill values to skip prompts:
+
+```bash
+# Pre-select kernel, prompt for the rest
+./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense
+
+# Fully non-interactive
+./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense \
+  --description "Added temp sensor I2C driver" --yes
+```
+
+After building, deploy and verify:
+
+```bash
+# Deploy to a device
+./scripts/kernel_builder/kernel_tags.sh deploy 130426 --ip 10.42.0.5
+
+# Deploy to a fleet
+./scripts/kernel_builder/kernel_tags.sh deploy 130426 \
+  --robots 1,2,5-8 --robot-ip-prefix "10.42.0."
+
+# Verify the device is running the correct kernel
+./scripts/kernel_builder/kernel_tags.sh verify 130426 --ip 10.42.0.5
+```
+
+### Manual Build + Tag (Advanced)
+
+You can still build and tag separately if you need more control:
+
+```bash
+# 1. Build
+./scripts/kernel_builder/compile_and_package.sh cartken_5_1_5_realsense \
+  --localversion cartken5.1.5realsense2400 --config defconfig
+
+# 2. Tag
 ./scripts/kernel_builder/kernel_tags.sh tag v5.1.5-rs-2400 \
   --kernel cartken_5_1_5_realsense \
   --localversion cartken5.1.5realsense2400 \
-  --description "RealSense D435 support for Orin" \
-  --status testing
-
-# 3. Deploy to a device
-./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --user cartken
-
-# 4. Verify the device is running the correct kernel
-./scripts/kernel_builder/kernel_tags.sh verify v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --user cartken
+  --description "RealSense D435 support for Orin"
 ```
 
 ### What Happens When You Tag
@@ -178,39 +212,56 @@ This displays:
 
 ### Deploying
 
+The deploy command copies the `.deb` to `~/kernel_debs/` on the target by default (copy-only). Use `--install` to also run `dpkg -i`. SSH ControlMaster is used to avoid multiple password prompts, and `--password` with `sshpass` eliminates prompts entirely.
+
 #### Single device
 
 ```bash
-# Full deploy: copy, install, reboot
-./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --user cartken
+# Copy to a device (default: copy only to ~/kernel_debs/)
+./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5
 
-# Copy only (no install or reboot)
+# Copy + install + reboot
 ./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --user cartken --copy-only
+  --ip 10.42.0.5 --install
 
-# Install but skip reboot
+# Copy to a custom directory
 ./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --no-reboot
+  --ip 10.42.0.5 --remote-dir /opt/kernels
 
 # Preview without executing
 ./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --dry-run
+  --ip 10.42.0.5 --dry-run
 ```
 
-#### Fleet deploy
+#### Fleet deploy by robot number
 
-Deploy to multiple machines in a single command:
+Use `--robots` with comma-separated numbers (ranges supported) and `--robot-ip-prefix` to construct IPs. Multiple targets are copied **in parallel** by default.
+
+```bash
+# Deploy to robots 1, 2, and 5 through 8
+./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
+  --robots 1,2,5-8 --robot-ip-prefix "10.42.0."
+
+# Same but with a password (no interactive prompts)
+./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
+  --robots 1,2,5-8 --robot-ip-prefix "10.42.0." \
+  --password "secret"
+```
+
+#### Fleet deploy by IP or hosts file
 
 ```bash
 # Multiple --ip flags
 ./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --ip 192.168.1.10 --ip 192.168.1.11 --ip 192.168.1.12 \
-  --user cartken
+  --ip 10.42.0.10 --ip 10.42.0.11 --ip 10.42.0.12
 
-# Or from a hosts file (one IP per line, # comments allowed)
+# From a hosts file (one IP per line, # comments allowed)
 ./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
-  --hosts-file fleet.txt --user cartken
+  --hosts-file fleet.txt
+
+# Force sequential instead of parallel
+./scripts/kernel_builder/kernel_tags.sh deploy v5.1.5-rs-2400 \
+  --hosts-file fleet.txt --sequential
 ```
 
 Fleet deploys continue to the next machine if one fails, and print a summary at the end. All successful deployments are recorded in the manifest.
@@ -220,11 +271,10 @@ Fleet deploys continue to the next machine if one fails, and print a summary at 
 After deploying, confirm the device is running the correct kernel:
 
 ```bash
-./scripts/kernel_builder/kernel_tags.sh verify v5.1.5-rs-2400 \
-  --ip 192.168.1.230 --user cartken
+./scripts/kernel_builder/kernel_tags.sh verify v5.1.5-rs-2400 --ip 10.42.0.5
 ```
 
-This SSHes into the device, runs `uname -r`, and checks that the output matches the tag's expected localversion.
+This SSHes into the device, runs `uname -r`, and checks that the output matches the tag's expected localversion. Also supports `--password` for non-interactive use.
 
 ### Tab Completion
 
@@ -248,9 +298,10 @@ kernel_builder/
 ├── kernels/                      # Kernel source directories
 │   └── cartken_5_1_5_realsense/  # Tagged with git tags matching build tags
 └── scripts/kernel_builder/
-    ├── kernel_tags.sh            # Main CLI tool
+    ├── build_and_tag.sh          # One-shot interactive build + tag (recommended)
+    ├── kernel_tags.sh            # Tag management CLI tool
     ├── kernel_tags_completion.bash  # Bash tab completion
-    └── compile_and_package.sh    # Build script (can auto-tag via --tag)
+    └── compile_and_package.sh    # Low-level build script
 ```
 
 ### Manifest Schema
