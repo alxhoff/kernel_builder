@@ -10,6 +10,10 @@ cartken_flash
 *.iso
 ubuntu_iso_work
 *.txt
+!chroot_setup_commands_jp5.txt
+!chroot_setup_commands_jp6.txt
+!chroot_configured_commands.txt
+!essential_chroot_setup_commands.txt
 *.ko
 5.1.*
 6*
