@@ -345,9 +345,17 @@ for FILE in $FILE_URLS; do
 		continue
 	fi
 
-	echo "Downloading $(basename "$FILE")..."
-	wget --show-progress -P "$TEGRA_DIR/" "$FILE"
+	FILE_NAME="$(basename "$FILE")"
+	echo "Downloading $FILE_NAME..."
+	# Use -O to force overwrite; otherwise wget creates .1/.2 suffixed copies
+	# and re-runs would keep using stale scripts from a previous invocation.
+	wget --show-progress -O "$TEGRA_DIR/$FILE_NAME" "$FILE"
 done
+
+# Clean up any stale suffixed copies left over from previous runs that used
+# the old -P behaviour (e.g. chroot_setup_commands.txt.1).
+find "$TEGRA_DIR" -maxdepth 1 -regextype posix-extended \
+	-regex '.*\.(sh|txt|md)\.[0-9]+' -print -delete || true
 
 prompt_user
 
@@ -380,9 +388,25 @@ sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
 
 prompt_user
 
+# Select the chroot command file matching the target JetPack major version.
+# JP 5.x uses legacy package names (nvidia-docker2, nvidia-cuda) whereas JP 6.x
+# uses nvidia-container-toolkit and nvidia-jetpack-runtime.
+case "$JETPACK_VERSION" in
+	5.1.2|5.1.3|5.1.4|5.1.5)
+		CHROOT_COMMANDS_FILE="chroot_setup_commands_jp5.txt"
+		;;
+	6.0DP|6.1|6.2)
+		CHROOT_COMMANDS_FILE="chroot_setup_commands_jp6.txt"
+		;;
+	*)
+		echo "Error: No chroot command file mapping for JetPack $JETPACK_VERSION"
+		exit 1
+		;;
+esac
+
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-	echo "Setting up chroot environment for SoC: $SOC..."
-	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" chroot_setup_commands.txt
+	echo "Setting up chroot environment for SoC: $SOC using $CHROOT_COMMANDS_FILE..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" "$CHROOT_COMMANDS_FILE"
 else
 	echo "Skipping rootfs setup in chroot as requested."
 fi
