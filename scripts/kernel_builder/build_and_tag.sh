@@ -59,10 +59,10 @@ prompt() {
   local input
   if [ -n "$default" ]; then
     read -rp "$prompt_text [$default]: " input
-    eval "$varname=\"${input:-$default}\""
+    printf -v "$varname" '%s' "${input:-$default}"
   else
     read -rp "$prompt_text: " input
-    eval "$varname=\"$input\""
+    printf -v "$varname" '%s' "$input"
   fi
 }
 
@@ -81,6 +81,7 @@ When run without options, interactively prompts for all required information.
 Options can pre-fill values to skip specific prompts.
 
 Options:
+  --soc <type>               SOC type: orin or xavier (publishes to production_kernels)
   --localversion <str>       Override the auto-generated localversion
   --tag <name>               Override the auto-generated tag name
   --description <text>       Build description (skips interactive prompt)
@@ -94,30 +95,30 @@ Options:
   --build-modules            Also build kernel modules separately
   --overlays <list>          Comma-separated DTBO overlay files
   --no-tag                   Skip tagging (just build and package)
-  --yes                      Skip confirmation prompt
+  --no-publish               Skip publishing to production_kernels
   --help                     Show this help
 
 Interactive flow (values can be pre-filled with options above):
   1. Select kernel source directory
-  2. Auto-generate localversion (kernel base + DDMMYY date)
-  3. Enter a description of what this build changes
-  4. Confirm config, tag name, and all settings
-  5. Build → Package → Tag (all automatic)
+  2. Select SOC type (orin/xavier)
+  3. Auto-generate localversion (kernel base + DDMMYY date)
+  4. Enter a description of what this build changes
+  5. Build → Package → Tag → Publish (all automatic)
 
 Examples:
   # Fully interactive
   build_and_tag.sh
 
-  # Pre-select kernel, everything else interactive
-  build_and_tag.sh cartken_5_1_5_realsense
+  # Pre-select kernel and SOC
+  build_and_tag.sh cartken_5_1_5_realsense --soc orin
 
   # Pre-fill description, skip that prompt
-  build_and_tag.sh cartken_5_1_5_realsense \
+  build_and_tag.sh cartken_5_1_5_realsense --soc orin \
     --description "Added temp sensor I2C driver"
 
   # Fully non-interactive
-  build_and_tag.sh cartken_5_1_5_realsense \
-    --description "Added temp sensor I2C driver" --yes
+  build_and_tag.sh cartken_5_1_5_realsense --soc orin \
+    --description "Added temp sensor I2C driver"
 EOF
   exit 0
 }
@@ -125,6 +126,7 @@ EOF
 # ── argument parsing ─────────────────────────────────────────────────────────
 
 KERNEL_NAME=""
+SOC=""
 LOCALVERSION=""
 TAG_NAME=""
 DESCRIPTION=""
@@ -138,7 +140,7 @@ BUILD_DTB=false
 BUILD_MODULES=false
 OVERLAYS=""
 NO_TAG=false
-AUTO_YES=false
+NO_PUBLISH=false
 
 # First positional arg is kernel name (if not a flag)
 if [ -n "$1" ] && [[ "$1" != --* ]]; then
@@ -149,6 +151,7 @@ fi
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --help|-h)              show_help ;;
+    --soc)                  SOC="$2"; shift 2 ;;
     --localversion)         LOCALVERSION="$2"; shift 2 ;;
     --tag)                  TAG_NAME="$2"; shift 2 ;;
     --description)          DESCRIPTION="$2"; shift 2 ;;
@@ -162,7 +165,7 @@ while [[ "$#" -gt 0 ]]; do
     --build-modules)        BUILD_MODULES=true; shift ;;
     --overlays)             OVERLAYS="$2"; shift 2 ;;
     --no-tag)               NO_TAG=true; shift ;;
-    --yes|-y)               AUTO_YES=true; shift ;;
+    --no-publish)           NO_PUBLISH=true; shift ;;
     *) echo "Error: Unknown option '$1'. Run with --help for usage."; exit 1 ;;
   esac
 done
@@ -205,7 +208,24 @@ fi
 
 echo "  Kernel: $KERNEL_NAME"
 
-# Step 2: Generate localversion
+# Step 2: SOC type
+if [ -z "$SOC" ] && [ "$NO_TAG" = false ] && [ "$NO_PUBLISH" = false ]; then
+  echo ""
+  echo "  SOC type (determines production_kernels/<soc>/ path):"
+  echo "    1) orin"
+  echo "    2) xavier"
+  echo ""
+  read -rp "  Select SOC [1-2] (or press Enter to skip): " soc_selection
+  case "$soc_selection" in
+    1) SOC="orin" ;;
+    2) SOC="xavier" ;;
+    "") echo "  Skipping production publish (no SOC selected)." ;;
+    *) echo "  Invalid selection, skipping production publish." ;;
+  esac
+  [ -n "$SOC" ] && echo "  SOC: $SOC"
+fi
+
+# Step 3: Generate localversion (renumbered from interactive flow)
 LV_BASE=$(kernel_name_to_localversion_base "$KERNEL_NAME")
 DATE_TAG=$(date_suffix)
 
@@ -256,6 +276,11 @@ echo ""
 echo "┌──────────────────────────────────────────────────"
 echo "│ Build Summary"
 echo "├──────────────────────────────────────────────────"
+JETPACK_VERSION=""
+if [ -n "$KERNEL_NAME" ]; then
+  JETPACK_VERSION=$(echo "$KERNEL_NAME" | sed 's/^[^0-9]*//' | sed 's/_[a-zA-Z].*//' | tr '_' '.')
+fi
+
 echo "│ Kernel:        $KERNEL_NAME"
 echo "│ Localversion:  $LOCALVERSION"
 echo "│ Config:        $CONFIG"
@@ -266,20 +291,14 @@ if [ "$NO_TAG" = false ]; then
     echo "│ Description:   $DESCRIPTION"
   fi
 fi
+[ -n "$SOC" ] && echo "│ SOC:           $SOC (Jetpack $JETPACK_VERSION)"
+[ -n "$SOC" ] && echo "│ Publish to:    production_kernels/$SOC/$JETPACK_VERSION/"
 [ -n "$DTB_NAME" ]     && echo "│ DTB:           $DTB_NAME"
 [ -n "$THREADS" ]      && echo "│ Threads:       $THREADS"
 [ "$BUILD_DTB" = true ] && echo "│ Build DTBs:    yes"
 [ "$BUILD_MODULES" = true ] && echo "│ Build Modules: yes"
 echo "└──────────────────────────────────────────────────"
 echo ""
-
-if [ "$AUTO_YES" = false ]; then
-  read -rp "Proceed with build? [Y/n]: " confirm
-  if [[ "$confirm" =~ ^[Nn]$ ]]; then
-    echo "Aborted."
-    exit 0
-  fi
-fi
 
 # ── build ────────────────────────────────────────────────────────────────────
 
@@ -321,6 +340,8 @@ if [ "$NO_TAG" = false ]; then
   TAG_CMD="$TAG_CMD --config \"$CONFIG\" --status \"$TAG_STATUS\""
   [ -n "$DESCRIPTION" ] && TAG_CMD="$TAG_CMD --description \"$DESCRIPTION\""
   [ -n "$DTB_NAME" ]    && TAG_CMD="$TAG_CMD --dtb-name \"$DTB_NAME\""
+  [ -n "$SOC" ] && [ "$NO_PUBLISH" = false ] && TAG_CMD="$TAG_CMD --soc \"$SOC\""
+  [ "$NO_PUBLISH" = true ] && TAG_CMD="$TAG_CMD --no-publish"
 
   # Use --force in case tag already exists (e.g. rebuilding same day)
   if [ -f "$TAGS_FILE" ] && command -v jq &>/dev/null; then
@@ -346,6 +367,7 @@ if [ "$NO_TAG" = false ]; then
   echo "  Kernel:       $KERNEL_NAME"
   echo "  Localversion: $LOCALVERSION"
   echo "  Tag:          $TAG_NAME"
+  [ -n "$SOC" ] && echo "  Published:    production_kernels/$SOC/$JETPACK_VERSION/"
   echo ""
   echo "  To deploy:"
   echo "    $TAGS_SCRIPT deploy $TAG_NAME --ip <address>"

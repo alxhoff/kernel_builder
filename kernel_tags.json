@@ -1,100 +1,30 @@
 [
   {
-    "tag": "230326",
-    "kernel_name": "cartken_5_1_5_realsense",
-    "localversion": "cartken5.1.5",
-    "build_date": "2026-03-23T15:45:49Z",
+    "tag": "170426",
+    "kernel_name": "cartken_5_1_5",
+    "localversion": "cartken5.1.5.170426",
+    "build_date": "2026-04-17T16:32:27Z",
     "builder": "Alexander Hoffman <alxhoff@gmail.com>",
-    "repo_commit": "c6eb1c3",
-    "config": "",
+    "repo_commit": "8e42114",
+    "config": "defconfig",
     "dtb_name": "",
-    "description": "Reverted and fixed issues causing IR streams and docker restarts to fail",
+    "description": "Realsense and VI fixes for 112 firmware working as well as slcan v2 drivers",
     "status": "development",
-    "deb_package": "kernel_archive/230326/linux-custom-5.10.216-cartken5.1.5.deb",
+    "soc": "orin",
+    "jetpack_version": "5.1.5",
+    "deb_package": "kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5.170426.deb",
+    "config_archived": "kernel_archive/170426/kernel.config",
+    "patches_archived": "kernel_archive/170426/patches.tar.gz",
+    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.170426.deb",
     "source_repos_tagged": [
-      "kernels/cartken_5_1_5_realsense"
-    ],
-    "status_history": [
-      {
-        "status": "development",
-        "date": "2026-03-23T15:45:49Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>"
-      }
-    ],
-    "deployments": [
-      {
-        "target": "cartken@10.64.6.152",
-        "date": "2026-03-25T11:31:27Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@10.64.6.144",
-        "date": "2026-03-25T11:45:37Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@192.168.1.208",
-        "date": "2026-03-26T12:02:03Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@10.160.6.145",
-        "date": "2026-03-26T12:50:36Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@10.160.6.48",
-        "date": "2026-04-10T12:19:49Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      }
-    ]
-  },
-  {
-    "tag": "270326",
-    "kernel_name": "cartken_5_1_5_realsense",
-    "localversion": "cartken5.1.5.270326",
-    "build_date": "2026-03-27T12:15:28Z",
-    "builder": "Alexander Hoffman <alxhoff@gmail.com>",
-    "repo_commit": "d1782b3",
-    "config": "",
-    "dtb_name": "",
-    "description": "Added SLCan driver on top of stable kernel for 111 firmware",
-    "status": "development",
-    "deb_package": "kernel_archive/270326/linux-custom-5.10.216-cartken5.1.5.270326.deb",
-    "config_archived": "kernel_archive/270326/kernel.config",
-    "source_repos_tagged": [
-      "kernels/cartken_5_1_5_realsense"
+      "kernels/cartken_5_1_5"
     ],
     "notes": [],
-    "deployments": [
-      {
-        "target": "cartken@10.96.6.185",
-        "date": "2026-04-13T07:49:46Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@10.96.6.185",
-        "date": "2026-04-13T08:01:07Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      },
-      {
-        "target": "cartken@10.64.6.185",
-        "date": "2026-04-13T08:15:18Z",
-        "by": "Alexander Hoffman <alxhoff@gmail.com>",
-        "mode": "copy"
-      }
-    ],
+    "deployments": [],
     "status_history": [
       {
         "status": "development",
-        "date": "2026-03-27T12:15:28Z",
+        "date": "2026-04-17T16:32:27Z",
         "by": "Alexander Hoffman <alxhoff@gmail.com>"
       }
     ]

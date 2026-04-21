@@ -71,20 +71,25 @@ interactively guides you through the entire process in a single command:
 
 It will:
 1. Let you pick a kernel source
-2. Auto-generate a localversion (e.g. `cartken5.1.5realsense.130426`)
-3. Auto-generate a date-based tag (e.g. `130426`)
-4. Ask for a description
-5. Confirm, then build + package + tag automatically
+2. Ask for the SOC type (orin/xavier)
+3. Auto-generate a localversion (e.g. `cartken5.1.5realsense.130426`)
+4. Auto-generate a date-based tag (e.g. `130426`)
+5. Ask for a description
+6. Confirm, then **build → package → tag → publish** automatically
+
+When a SOC type is selected, the built `.deb` is automatically published to the
+`production_kernels` submodule under `<soc>/<jetpack_version>/`, committed, and
+pushed to the remote repository.
 
 You can also pre-fill values to skip prompts:
 
 ```bash
-# Pre-select kernel, prompt for the rest
-./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense
+# Pre-select kernel and SOC, prompt for the rest
+./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense --soc orin
 
 # Fully non-interactive
-./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense \
-  --description "Added temp sensor I2C driver" --yes
+./scripts/kernel_builder/build_and_tag.sh cartken_5_1_5_realsense --soc orin \
+  --description "Added temp sensor I2C driver"
 ```
 
 After building, deploy and verify:
@@ -119,12 +124,13 @@ You can still build and tag separately if you need more control:
 
 ### What Happens When You Tag
 
-When `kernel_tags.sh tag` is run, it performs four actions:
+When `kernel_tags.sh tag` is run, it performs up to five actions:
 
-1. **Records metadata** in `kernel_tags.json` (tag name, kernel, localversion, builder, git commit, timestamps, etc.)
+1. **Records metadata** in `kernel_tags.json` (tag name, kernel, localversion, SOC, jetpack version, builder, git commit, timestamps, etc.)
 2. **Tags source repositories** -- creates annotated git tags in all repos found under `kernels/<kernel>/` so the exact source for any build can be recovered
 3. **Archives the `.deb`** -- copies the compiled Debian package to `kernel_archive/<tag>/` for easy redeployment
 4. **Archives the kernel `.config`** -- saves the build configuration to `kernel_archive/<tag>/kernel.config` for reproducibility
+5. **Publishes to `production_kernels`** (if `--soc` is given) -- copies the `.deb` to `production_kernels/<soc>/<jetpack>/`, updates `build_log.yaml`, and auto-commits + pushes to the remote
 
 ### Command Reference
 
@@ -292,9 +298,16 @@ To make it permanent, add the above line to your `~/.bashrc` or `~/.zshrc`. Comp
 kernel_builder/
 ├── kernel_tags.json              # Version-controlled manifest of all tagged builds
 ├── kernel_archive/               # Archived .deb packages and configs (git-ignored)
-│   └── v5.1.5-rs-2400/
-│       ├── linux-custom-5.10.216-cartken5.1.5realsense2400.deb
+│   └── 170426/
+│       ├── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
 │       └── kernel.config
+├── production_kernels/           # Git submodule: production kernel .deb repository
+│   ├── build_log.yaml            # YAML log of all published builds
+│   ├── orin/
+│   │   └── 5.1.5/
+│   │       └── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
+│   └── xavier/
+│       └── ...
 ├── kernels/                      # Kernel source directories
 │   └── cartken_5_1_5_realsense/  # Tagged with git tags matching build tags
 └── scripts/kernel_builder/
@@ -304,30 +317,51 @@ kernel_builder/
     └── compile_and_package.sh    # Low-level build script
 ```
 
+### Production Kernels Repository
+
+The `production_kernels/` directory is a git submodule pointing to
+`git@gitlab.com:cartken/kernel-os/production_kernels.git`. It serves as the
+single source of truth for built kernel packages organized by SOC and Jetpack
+version.
+
+When a build is tagged with `--soc`, the tool automatically:
+1. Copies the `.deb` to `production_kernels/<soc>/<jetpack_version>/`
+2. Appends the build metadata to `production_kernels/build_log.yaml`
+3. Commits and pushes the changes
+
+To initialize the submodule after cloning the repo:
+
+```bash
+git submodule update --init production_kernels
+```
+
 ### Manifest Schema
 
 Each entry in `kernel_tags.json` contains:
 
 ```json
 {
-  "tag": "v5.1.5-rs-2400",
+  "tag": "170426",
   "kernel_name": "cartken_5_1_5_realsense",
-  "localversion": "cartken5.1.5realsense2400",
-  "build_date": "2026-03-23T14:30:00Z",
+  "localversion": "cartken5.1.5realsense.170426",
+  "build_date": "2026-04-17T14:30:00Z",
   "builder": "Alex <alex@example.com>",
   "repo_commit": "abc1234",
-  "config": "tegra_defconfig",
-  "dtb_name": "tegra234-p3737-0000+p3701-0000.dtb",
-  "description": "RealSense D435 support for Orin",
+  "config": "defconfig",
+  "dtb_name": "",
+  "description": "Added temp sensor I2C driver",
   "status": "testing",
-  "deb_package": "kernel_archive/v5.1.5-rs-2400/linux-custom-....deb",
-  "config_archived": "kernel_archive/v5.1.5-rs-2400/kernel.config",
+  "soc": "orin",
+  "jetpack_version": "5.1.5",
+  "deb_package": "kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
+  "config_archived": "kernel_archive/170426/kernel.config",
+  "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
   "source_repos_tagged": ["kernels/cartken_5_1_5_realsense"],
   "notes": [
     { "text": "Stable after soak test", "date": "...", "by": "..." }
   ],
   "deployments": [
-    { "target": "cartken@192.168.1.230", "date": "...", "by": "...", "mode": "full" }
+    { "target": "cartken@192.168.1.230", "date": "...", "by": "...", "mode": "copy" }
   ],
   "status_history": [
     { "status": "development", "date": "...", "by": "..." },

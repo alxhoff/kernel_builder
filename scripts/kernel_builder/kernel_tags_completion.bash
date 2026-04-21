@@ -52,11 +52,15 @@ _kernel_tags() {
           COMPREPLY=($(compgen -W "$(_kernel_tags_get_statuses)" -- "$cur"))
           return
           ;;
+        --soc)
+          COMPREPLY=($(compgen -W "orin xavier" -- "$cur"))
+          return
+          ;;
         --config|--dtb-name|--description|--localversion|--deb-package)
           return
           ;;
       esac
-      COMPREPLY=($(compgen -W "--kernel --localversion --description --config --dtb-name --status --deb-package --no-source-tag --no-archive --force --help" -- "$cur"))
+      COMPREPLY=($(compgen -W "--kernel --localversion --description --config --dtb-name --status --soc --deb-package --no-source-tag --no-archive --no-publish --force --help" -- "$cur"))
       ;;
     list)
       case "$prev" in

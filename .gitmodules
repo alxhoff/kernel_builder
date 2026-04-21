@@ -1,0 +1,3 @@
+[submodule "production_kernels"]
+	path = production_kernels
+	url = git@gitlab.com:cartken/kernel-os/production_kernels.git

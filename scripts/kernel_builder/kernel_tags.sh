@@ -15,9 +15,12 @@ TAGS_FILE="$REPO_ROOT/kernel_tags.json"
 KERNELS_DIR="$REPO_ROOT/kernels"
 KERNEL_DEBS_DIR="$REPO_ROOT/kernel_debs"
 ARCHIVE_DIR="$REPO_ROOT/kernel_archive"
+PRODUCTION_DIR="$REPO_ROOT/production_kernels"
+PRODUCTION_LOG="$PRODUCTION_DIR/build_log.yaml"
 
 # Status lifecycle: development -> testing -> staging -> production
 VALID_STATUSES=("development" "testing" "staging" "production")
+VALID_SOCS=("orin" "xavier")
 
 ensure_jq() {
   if ! command -v jq &> /dev/null; then
@@ -42,6 +45,23 @@ validate_status() {
   done
   echo "Error: Invalid status '$status'. Valid statuses: ${VALID_STATUSES[*]}"
   exit 1
+}
+
+validate_soc() {
+  local soc="$1"
+  for valid in "${VALID_SOCS[@]}"; do
+    if [ "$soc" == "$valid" ]; then
+      return 0
+    fi
+  done
+  echo "Error: Invalid SOC '$soc'. Valid SOCs: ${VALID_SOCS[*]}"
+  exit 1
+}
+
+extract_jetpack_version() {
+  # cartken_5_1_5_realsense -> 5.1.5
+  # cartken_6_2             -> 6.2
+  echo "$1" | sed 's/^[^0-9]*//' | sed 's/_[a-zA-Z].*//' | tr '_' '.'
 }
 
 tag_exists() {
@@ -269,6 +289,192 @@ archive_kernel_config() {
   echo "kernel_archive/$tag_name/kernel.config"
 }
 
+# ── patch archiving ──────────────────────────────────────────────────────────
+
+archive_kernel_patches() {
+  local tag_name="$1" kernel_name="$2"
+
+  if [ -z "$kernel_name" ]; then
+    return
+  fi
+
+  local repos
+  repos=($(find_git_repos "$kernel_name"))
+
+  if [ ${#repos[@]} -eq 0 ]; then
+    echo "  Skipping patch archive: no git repos found under kernels/$kernel_name/"
+    return
+  fi
+
+  local patches_dir="$ARCHIVE_DIR/$tag_name/patches"
+  mkdir -p "$patches_dir"
+
+  local total_patches=0
+  for repo in "${repos[@]}"; do
+    local repo_rel="${repo#$REPO_ROOT/}"
+    local repo_name
+    repo_name=$(echo "$repo_rel" | tr '/' '_')
+    local repo_patches_dir="$patches_dir/$repo_name"
+    mkdir -p "$repo_patches_dir"
+
+    # Try to find upstream base for minimal patch set
+    local base_ref=""
+    for candidate in origin/main origin/master origin/HEAD; do
+      if git -C "$repo" rev-parse --verify "$candidate" &>/dev/null; then
+        base_ref="$candidate"
+        break
+      fi
+    done
+
+    local patch_range="" range_desc=""
+    if [ -n "$base_ref" ]; then
+      # Get the oldest commit in the divergent range (typically the initial import)
+      local oldest_divergent
+      oldest_divergent=$(git -C "$repo" rev-list "$base_ref..HEAD" 2>/dev/null | tail -1)
+
+      if [ -n "$oldest_divergent" ]; then
+        # Check if it's a root commit (no parent) — these are initial vendor imports
+        local parent_count
+        parent_count=$(git -C "$repo" rev-list --count --parents -1 "$oldest_divergent" 2>/dev/null | awk '{print NF - 1}')
+
+        if [ "${parent_count:-1}" -eq 0 ]; then
+          # Root commit (initial import) — skip it, generate patches for everything after
+          patch_range="$oldest_divergent..HEAD"
+          local base_subject
+          base_subject=$(git -C "$repo" log -1 --format='%s' "$oldest_divergent" 2>/dev/null | head -c 80)
+          range_desc="after base ${oldest_divergent:0:10} (${base_subject})"
+
+          echo "# Base commit (initial import, not included as patch)" > "$repo_patches_dir/BASE_COMMIT"
+          echo "commit: $oldest_divergent" >> "$repo_patches_dir/BASE_COMMIT"
+          echo "subject: $base_subject" >> "$repo_patches_dir/BASE_COMMIT"
+          echo "date: $(git -C "$repo" log -1 --format='%ai' "$oldest_divergent" 2>/dev/null)" >> "$repo_patches_dir/BASE_COMMIT"
+        else
+          patch_range="$base_ref..HEAD"
+          range_desc="since $base_ref"
+        fi
+      fi
+    fi
+
+    if [ -z "$patch_range" ]; then
+      # No upstream remote — export all commits
+      patch_range="--root HEAD"
+      range_desc="all commits"
+    fi
+
+    local patch_count
+    if [[ "$patch_range" == "--root HEAD" ]]; then
+      patch_count=$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo "0")
+    else
+      patch_count=$(git -C "$repo" rev-list --count $patch_range 2>/dev/null || echo "0")
+    fi
+
+    if [ "$patch_count" -gt 0 ]; then
+      git -C "$repo" format-patch -o "$repo_patches_dir" $patch_range > /dev/null 2>&1
+    fi
+
+    echo "  $repo_rel: $patch_count patch(es) ($range_desc)"
+    total_patches=$((total_patches + patch_count))
+  done
+
+  # Create a tarball for easy transport
+  if [ "$total_patches" -gt 0 ]; then
+    tar czf "$ARCHIVE_DIR/$tag_name/patches.tar.gz" -C "$ARCHIVE_DIR/$tag_name" patches
+    echo "  Archived $total_patches patch(es) -> kernel_archive/$tag_name/patches.tar.gz"
+  fi
+
+  echo "kernel_archive/$tag_name/patches.tar.gz"
+}
+
+# ── production kernels publishing ─────────────────────────────────────────────
+
+publish_to_production() {
+  local tag_name="$1" soc="$2" kernel_name="$3" localversion="$4"
+  local description="$5" deb_source="$6" patches_tarball="${7:-}"
+
+  if [ ! -e "$PRODUCTION_DIR/.git" ]; then
+    echo "  Skipping production publish: production_kernels submodule not initialized."
+    echo "  Run: git submodule update --init production_kernels"
+    return 1
+  fi
+
+  if [ -z "$deb_source" ] || [ ! -f "$deb_source" ]; then
+    echo "  Skipping production publish: no .deb file found."
+    return 1
+  fi
+
+  local jetpack_version
+  jetpack_version=$(extract_jetpack_version "$kernel_name")
+  if [ -z "$jetpack_version" ]; then
+    echo "  Skipping production publish: cannot extract jetpack version from '$kernel_name'."
+    return 1
+  fi
+
+  local dest_dir="$PRODUCTION_DIR/$soc/$jetpack_version"
+  local deb_filename
+  deb_filename=$(basename "$deb_source")
+
+  echo "  Publishing to production_kernels/$soc/$jetpack_version/..."
+  mkdir -p "$dest_dir"
+  cp "$deb_source" "$dest_dir/$deb_filename"
+  echo "  Copied: $deb_filename"
+
+  # Copy patches tarball if available
+  if [ -n "$patches_tarball" ] && [ -f "$patches_tarball" ]; then
+    local patches_dest="$dest_dir/${tag_name}-patches.tar.gz"
+    cp "$patches_tarball" "$patches_dest"
+    echo "  Copied: ${tag_name}-patches.tar.gz"
+  fi
+
+  # Update build log
+  local build_date builder
+  build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  builder=$(get_builder)
+
+  if [ ! -f "$PRODUCTION_LOG" ]; then
+    echo "# Kernel Build Log" > "$PRODUCTION_LOG"
+    echo "# Auto-maintained by kernel_tags.sh" >> "$PRODUCTION_LOG"
+    echo "" >> "$PRODUCTION_LOG"
+  fi
+
+  cat >> "$PRODUCTION_LOG" <<EOF
+- tag: "$tag_name"
+  soc: $soc
+  jetpack: "$jetpack_version"
+  kernel: $kernel_name
+  localversion: $localversion
+  deb: $soc/$jetpack_version/$deb_filename
+  date: "$build_date"
+  builder: "$builder"
+  description: "$description"
+
+EOF
+  echo "  Updated build_log.yaml"
+
+  # Git commit in production_kernels
+  echo "  Committing to production_kernels..."
+  if git -C "$PRODUCTION_DIR" add "$soc/$jetpack_version/" "build_log.yaml" 2>/dev/null; then
+    local commit_msg="Add $tag_name: $localversion ($soc/$jetpack_version)"
+    if git -C "$PRODUCTION_DIR" commit -m "$commit_msg" 2>/dev/null; then
+      echo "  Committed: $commit_msg"
+
+      # Push
+      echo "  Pushing to remote..."
+      if git -C "$PRODUCTION_DIR" push 2>/dev/null; then
+        echo "  Pushed successfully."
+      else
+        echo "  Warning: Push failed. You can push manually:"
+        echo "    cd production_kernels && git push"
+      fi
+    else
+      echo "  Warning: Git commit failed (maybe nothing to commit)."
+    fi
+  else
+    echo "  Warning: Git add failed."
+  fi
+
+  echo "production_kernels/$soc/$jetpack_version/$deb_filename"
+}
+
 show_help() {
   cat <<'HELP'
 Kernel Build Tagging Tool
@@ -307,9 +513,11 @@ Commands:
     --dtb-name <name>          Device tree blob filename
     --status <status>          Initial status (default: development)
                                Valid: development, testing, staging, production
+    --soc <type>               SOC type (orin, xavier). Enables production_kernels publishing
     --deb-package <path>       Path to the generated .deb package (auto-detected from localversion)
     --no-source-tag            Skip tagging the kernel source git repositories
     --no-archive               Skip archiving the .deb package to kernel_archive/
+    --no-publish               Skip publishing to production_kernels
     --force                    Overwrite existing tag (preserves notes & deploy history)
 
   When tagging, this tool will:
@@ -317,6 +525,7 @@ Commands:
     2. Create a git tag in all source repos under kernels/<kernel>/ (unless --no-source-tag)
     3. Copy the .deb to kernel_archive/<tag>/ for redeployment (unless --no-archive)
     4. Archive the kernel .config for reproducibility
+    5. Publish .deb to production_kernels/<soc>/<jetpack>/ and auto-commit (if --soc)
 
   Example:
     kernel_tags.sh tag v5.1.5-rs-2400 \
@@ -437,17 +646,19 @@ Options:
   --dtb-name <name>          Device tree blob filename
   --status <status>          Initial status (default: development)
                              Valid: development, testing, staging, production
+  --soc <type>               SOC type (orin, xavier). Enables publishing to production_kernels
   --deb-package <path>       Path to the .deb package (auto-detected from localversion)
   --no-source-tag            Skip tagging the kernel source git repositories
   --no-archive               Skip archiving the .deb package to kernel_archive/
+  --no-publish               Skip publishing to production_kernels (even if --soc is set)
   --force                    Overwrite an existing tag (preserves notes & deployment history)
 
 Example:
-  kernel_tags.sh tag v5.1.5-rs-2400 \
+  kernel_tags.sh tag 170426 \
     --kernel cartken_5_1_5_realsense \
-    --localversion cartken5.1.5realsense2400 \
-    --description "Added RealSense D435 support for Orin" \
-    --status testing
+    --localversion cartken5.1.5realsense.170426 \
+    --soc orin \
+    --description "Added temp sensor I2C driver"
 EOF
     exit 0
   fi
@@ -463,8 +674,8 @@ EOF
   shift
 
   local kernel_name="" localversion="" description="" config="" dtb_name=""
-  local status="development" deb_package=""
-  local skip_source_tag=false skip_archive=false force=false
+  local status="development" deb_package="" soc=""
+  local skip_source_tag=false skip_archive=false skip_publish=false force=false
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -474,13 +685,19 @@ EOF
       --config)         config="$2"; shift 2 ;;
       --dtb-name)       dtb_name="$2"; shift 2 ;;
       --status)         status="$2"; shift 2 ;;
+      --soc)            soc="$2"; shift 2 ;;
       --deb-package)    deb_package="$2"; shift 2 ;;
       --no-source-tag)  skip_source_tag=true; shift ;;
       --no-archive)     skip_archive=true; shift ;;
+      --no-publish)     skip_publish=true; shift ;;
       --force)          force=true; shift ;;
       *) echo "Error: Unknown option '$1' for 'tag' command"; exit 1 ;;
     esac
   done
+
+  if [ -n "$soc" ]; then
+    validate_soc "$soc"
+  fi
 
   # Handle existing tag
   local preserved_notes="[]" preserved_deployments="[]"
@@ -539,10 +756,17 @@ EOF
   repo_commit=$(get_repo_commit)
   builder=$(get_builder)
 
+  local jetpack_version=""
+  if [ -n "$kernel_name" ]; then
+    jetpack_version=$(extract_jetpack_version "$kernel_name")
+  fi
+
   echo "Tagging kernel build: $tag_name"
   echo "  Kernel:       $kernel_name"
   echo "  Localversion: $localversion"
   echo "  Status:       $status"
+  [ -n "$soc" ] && echo "  SOC:          $soc"
+  [ -n "$jetpack_version" ] && echo "  Jetpack:      $jetpack_version"
   echo "  Date:         $build_date"
   echo "  Commit:       $repo_commit"
   if [ -n "$description" ]; then
@@ -613,10 +837,53 @@ EOF
     echo ""
   fi
 
+  # ── Step 4: Archive kernel patches ──
+  local archived_patches=""
+  if [ "$skip_archive" = false ] && [ -n "$kernel_name" ]; then
+    echo "Archiving kernel patches..."
+    local patches_output
+    patches_output=$(archive_kernel_patches "$tag_name" "$kernel_name" 2>&1)
+    local patches_last_line
+    patches_last_line=$(echo "$patches_output" | tail -1)
+    echo "$patches_output" | head -n -1
+    if [[ "$patches_last_line" == kernel_archive/* ]]; then
+      archived_patches="$patches_last_line"
+    fi
+    echo ""
+  fi
+
   # Use the archived path if we have one, otherwise keep the original deb_package
   local final_deb="${archived_deb:-$deb_package}"
 
-  # ── Step 4: Record in manifest ──
+  # ── Step 5: Publish to production_kernels ──
+  local published_path=""
+  if [ -n "$soc" ] && [ "$skip_publish" = false ]; then
+    echo "Publishing to production_kernels..."
+    local deb_to_publish="${archived_deb:+$REPO_ROOT/$archived_deb}"
+    if [ -z "$deb_to_publish" ] || [ ! -f "$deb_to_publish" ]; then
+      deb_to_publish=$(find_deb_package "$localversion" "$deb_package") || true
+    fi
+
+    local publish_output
+    local patches_path=""
+    if [ -n "$archived_patches" ] && [ -f "$REPO_ROOT/$archived_patches" ]; then
+      patches_path="$REPO_ROOT/$archived_patches"
+    fi
+
+    publish_output=$(publish_to_production "$tag_name" "$soc" "$kernel_name" "$localversion" \
+      "$description" "$deb_to_publish" "$patches_path" 2>&1) || true
+
+    local publish_last_line
+    publish_last_line=$(echo "$publish_output" | tail -1)
+    echo "$publish_output" | head -n -1
+
+    if [[ "$publish_last_line" == production_kernels/* ]]; then
+      published_path="$publish_last_line"
+    fi
+    echo ""
+  fi
+
+  # ── Step 6: Record in manifest ──
   local new_entry
   new_entry=$(jq -n \
     --arg tag "$tag_name" \
@@ -631,6 +898,10 @@ EOF
     --arg commit "$repo_commit" \
     --arg builder "$builder" \
     --arg config_archived "$archived_config" \
+    --arg patches_archived "$archived_patches" \
+    --arg soc "$soc" \
+    --arg jetpack "$jetpack_version" \
+    --arg production_deb "$published_path" \
     --argjson source_repos "$source_repos_json" \
     --argjson prev_notes "$preserved_notes" \
     --argjson prev_deploys "$preserved_deployments" \
@@ -645,8 +916,12 @@ EOF
       dtb_name: $dtb,
       description: $desc,
       status: $status,
+      soc: $soc,
+      jetpack_version: $jetpack,
       deb_package: $deb,
       config_archived: $config_archived,
+      patches_archived: $patches_archived,
+      production_deb: $production_deb,
       source_repos_tagged: $source_repos,
       notes: $prev_notes,
       deployments: $prev_deploys,
@@ -665,6 +940,9 @@ EOF
   echo "Tag '$tag_name' created successfully."
   if [ -n "$archived_deb" ]; then
     echo "  Archived deb: $archived_deb"
+  fi
+  if [ -n "$published_path" ]; then
+    echo "  Production:   $published_path"
   fi
   if [ "$source_repos_json" != "[]" ]; then
     echo "  Source repos tagged: $source_repos_json"
@@ -786,8 +1064,12 @@ EOF
     "\nRepo Commit:   " + .repo_commit +
     "\nConfig:        " + .config +
     "\nDTB Name:      " + .dtb_name +
+    "\nSOC:           " + (if .soc and .soc != "" then .soc else "n/a" end) +
+    "\nJetpack:       " + (if .jetpack_version and .jetpack_version != "" then .jetpack_version else "n/a" end) +
     "\nDeb Package:   " + (.deb_package // "none") +
+    "\nProduction:    " + (if .production_deb and .production_deb != "" then .production_deb else "none" end) +
     "\nConfig Archive:" + (if .config_archived and .config_archived != "" then " " + .config_archived else " none" end) +
+    "\nPatches:       " + (if .patches_archived and .patches_archived != "" then .patches_archived else "none" end) +
     "\nSource Repos:  " + (if .source_repos_tagged then (.source_repos_tagged | join(", ")) else "none" end) +
     "\nDescription:   " + .description' "$TAGS_FILE"
 
