@@ -20,7 +20,14 @@
       "kernels/cartken_5_1_5"
     ],
     "notes": [],
-    "deployments": [],
+    "deployments": [
+      {
+        "target": "cartken@10.160.8.146",
+        "date": "2026-04-21T10:55:57Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
+      }
+    ],
     "status_history": [
       {
         "status": "development",
