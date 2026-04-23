@@ -3,7 +3,7 @@
 # Script to set filters for functions or modules
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-DEVICE_IP_FILE="$SCRIPT_DIR/device_ip"
+DEVICE_IP_FILE="$SCRIPT_DIR/config/device_ip"
 
 if [ -f "$DEVICE_IP_FILE" ]; then
   DEVICE_IP=$(cat "$DEVICE_IP_FILE")

@@ -5,7 +5,7 @@
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 TARGETS_DIR="$(realpath "$(dirname "$0")")"
 
-DEVICE_IP_FILE="$SCRIPT_DIR/device_ip"
+DEVICE_IP_FILE="$SCRIPT_DIR/../config/device_ip"
 
 if [ -f "$DEVICE_IP_FILE" ]; then
   DEVICE_IP=$(cat "$DEVICE_IP_FILE")
@@ -58,7 +58,7 @@ echo "Starting tracing for $DURATION seconds..."
 "$SCRIPT_DIR/control_tracing.sh" --start-duration "$DURATION"
 
 echo "Retrieving logs..."
-"$SCRIPT_DIR/retrieve_logs.sh" --output "$OUTPUT_FILE"
+"$SCRIPT_DIR/retrieve_trace_logs.sh" --output "$OUTPUT_FILE"
 
 echo "Disabling tracepoint: stack_tracer:stack_tracer_dump..."
 "$SCRIPT_DIR/tracepoints.sh" --disable stack_tracer:stack_tracer_dump
