@@ -26,12 +26,104 @@
         "date": "2026-04-21T10:55:57Z",
         "by": "Alexander Hoffman <alxhoff@gmail.com>",
         "mode": "copy"
+      },
+      {
+        "target": "cartken@10.64.6.185",
+        "date": "2026-04-23T15:57:15Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
       }
     ],
     "status_history": [
       {
         "status": "development",
         "date": "2026-04-17T16:32:27Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>"
+      }
+    ]
+  },
+  {
+    "tag": "230426",
+    "kernel_name": "cartken_5_1_5",
+    "localversion": "cartken5.1.5.230426",
+    "build_date": "2026-04-23T18:12:44Z",
+    "builder": "Alexander Hoffman <alxhoff@gmail.com>",
+    "repo_commit": "e5edf04",
+    "config": "defconfig",
+    "dtb_name": "",
+    "description": "Rebuild with curated defconfig",
+    "status": "development",
+    "soc": "orin",
+    "jetpack_version": "5.1.5",
+    "deb_package": "kernel_archive/230426/linux-custom-5.10.216-cartken5.1.5.230426.deb",
+    "config_archived": "kernel_archive/230426/kernel.config",
+    "patches_archived": "kernel_archive/230426/patches.tar.gz",
+    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.230426.deb",
+    "source_repos_tagged": [
+      "kernels/cartken_5_1_5"
+    ],
+    "notes": [],
+    "deployments": [
+      {
+        "target": "cartken@10.96.6.186",
+        "date": "2026-04-23T18:22:35Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
+      },
+      {
+        "target": "cartken@10.64.6.185",
+        "date": "2026-04-23T18:26:37Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
+      }
+    ],
+    "status_history": [
+      {
+        "status": "development",
+        "date": "2026-04-23T18:12:44Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>"
+      }
+    ]
+  },
+  {
+    "tag": "240426",
+    "kernel_name": "cartken_5_1_5",
+    "localversion": "cartken5.1.5.240426",
+    "build_date": "2026-04-24T11:39:50Z",
+    "builder": "Alexander Hoffman <alxhoff@gmail.com>",
+    "repo_commit": "3cbc8dc",
+    "config": "defconfig",
+    "dtb_name": "",
+    "description": "Added rtl8192eu sources and config",
+    "status": "development",
+    "soc": "orin",
+    "jetpack_version": "5.1.5",
+    "deb_package": "kernel_archive/240426/linux-custom-5.10.216-cartken5.1.5.240426.deb",
+    "config_archived": "kernel_archive/240426/kernel.config",
+    "patches_archived": "kernel_archive/240426/patches.tar.gz",
+    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.240426.deb",
+    "source_repos_tagged": [
+      "kernels/cartken_5_1_5"
+    ],
+    "notes": [],
+    "deployments": [
+      {
+        "target": "cartken@10.96.6.186",
+        "date": "2026-04-24T11:55:57Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
+      },
+      {
+        "target": "cartken@10.96.6.185",
+        "date": "2026-04-24T11:58:40Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>",
+        "mode": "copy"
+      }
+    ],
+    "status_history": [
+      {
+        "status": "development",
+        "date": "2026-04-24T11:39:50Z",
         "by": "Alexander Hoffman <alxhoff@gmail.com>"
       }
     ]
