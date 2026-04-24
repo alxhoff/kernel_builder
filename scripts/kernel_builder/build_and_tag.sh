@@ -14,6 +14,7 @@ set -e
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 REPO_ROOT="$(realpath "$SCRIPT_DIR/..")"
 KERNELS_DIR="$REPO_ROOT/kernels"
+CONFIGS_DIR="$REPO_ROOT/configs"
 COMPILE_SCRIPT="$SCRIPT_DIR/kernel_builder/compile_and_package.sh"
 TAGS_SCRIPT="$SCRIPT_DIR/kernel_builder/kernel_tags.sh"
 TAGS_FILE="$REPO_ROOT/kernel_tags.json"
@@ -52,6 +53,36 @@ get_kernel_names() {
     names+=("$name")
   done
   echo "${names[@]}"
+}
+
+# Copy the curated defconfig from configs/<jetpack>/<name> into the kernel
+# source tree so that `make <name>` picks it up instead of the vendor default.
+sync_curated_config() {
+  local kernel_name="$1" jetpack="$2" config_name="$3"
+  local src="$CONFIGS_DIR/$jetpack/$config_name"
+  local kernel_dir="$KERNELS_DIR/$kernel_name/kernel/kernel"
+  local dest_dir="$kernel_dir/arch/arm64/configs"
+  local dest="$dest_dir/$config_name"
+
+  if [ ! -f "$src" ]; then
+    echo "  Warning: No curated config at configs/$jetpack/$config_name"
+    echo "  Using whatever '$config_name' exists in the kernel source tree."
+    return 0
+  fi
+
+  if [ ! -d "$dest_dir" ]; then
+    echo "  Warning: Kernel config dir not found: $dest_dir"
+    echo "  Skipping config sync."
+    return 0
+  fi
+
+  if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+    echo "  Config already in sync: configs/$jetpack/$config_name"
+    return 0
+  fi
+
+  cp "$src" "$dest"
+  echo "  Synced configs/$jetpack/$config_name -> kernel source tree"
 }
 
 prompt() {
@@ -293,6 +324,11 @@ if [ "$NO_TAG" = false ]; then
 fi
 [ -n "$SOC" ] && echo "│ SOC:           $SOC (Jetpack $JETPACK_VERSION)"
 [ -n "$SOC" ] && echo "│ Publish to:    production_kernels/$SOC/$JETPACK_VERSION/"
+if [ -f "$CONFIGS_DIR/$JETPACK_VERSION/$CONFIG" ]; then
+  echo "│ Curated config:configs/$JETPACK_VERSION/$CONFIG (will be synced)"
+else
+  echo "│ Curated config:none -- will use in-tree $CONFIG (!)"
+fi
 [ -n "$DTB_NAME" ]     && echo "│ DTB:           $DTB_NAME"
 [ -n "$THREADS" ]      && echo "│ Threads:       $THREADS"
 [ "$BUILD_DTB" = true ] && echo "│ Build DTBs:    yes"
@@ -306,6 +342,10 @@ echo ""
 echo "═══════════════════════════════════════════════════"
 echo "  Step 1/$([ "$NO_TAG" = false ] && echo "2" || echo "1"): Building and packaging kernel..."
 echo "═══════════════════════════════════════════════════"
+echo ""
+
+echo "Syncing curated kernel config..."
+sync_curated_config "$KERNEL_NAME" "$JETPACK_VERSION" "$CONFIG"
 echo ""
 
 BUILD_CMD="\"$COMPILE_SCRIPT\" \"$KERNEL_NAME\" --localversion \"$LOCALVERSION\" --config \"$CONFIG\""
