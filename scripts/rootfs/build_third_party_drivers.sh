@@ -55,7 +55,13 @@ if [[ -z "$KERNEL_SRC_ROOT" || -z "$CROSS_COMPILE" || -z "$ROOTFS_ROOT_DIR" || -
 fi
 
 cd $ROOTFS_ROOT_DIR
-THIRD_PARTY_DRIVERS="rtl8192eu rtl88x2bu"
+# NOTE: rtl8192eu used to be built here as an out-of-tree module. It has been
+# integrated directly into the kernel tree (drivers/staging/rtl8192eu/, enabled
+# via CONFIG_RTL8192EU=m) by scripts/kernel_builder/integrate_rtl8192eu.sh, so
+# it is now produced as part of the normal kernel build and no longer needs to
+# be rebuilt here. If you are working with a kernel tree that does not yet have
+# the in-tree integration, add "rtl8192eu" back to the list below.
+THIRD_PARTY_DRIVERS="rtl88x2bu"
 
 echo "Building third party drivers"
 
