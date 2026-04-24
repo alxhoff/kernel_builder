@@ -95,76 +95,10 @@ def compile_target_modules_host(kernel_name, arch, toolchain_name=None, toolchai
     for module_dir_relative, modules in module_locations.items():
         module_command = f"{base_command} M={module_dir_relative} modules"
         if dry_run:
-            print(f"[Dry-run] Would run command: {module_command} for modules: {', '.join(modules['modules'])}")
+            print(f"[Dry-run] Would run command: {module_command} for modules: {', '.join(modules)}")
         else:
-            print(f"Running command: {module_command} for modules: {', '.join(modules['modules'])}")
+            print(f"Running command: {module_command} for modules: {', '.join(modules)}")
             subprocess.Popen(module_command, shell=True).wait()
-
-def compile_target_modules_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, localversion="", dry_run=False):
-    """
-    Compile targeted kernel modules using Docker for encapsulation.
-    """
-    kernels_dir = os.path.join("kernels")
-    toolchains_dir = os.path.join("toolchains")
-
-    # Create Docker volume arguments to mount kernel and toolchain directories
-    kernels_dir_abs = os.path.abspath(kernels_dir)
-    toolchains_dir_abs = os.path.abspath(toolchains_dir)
-    volume_args = ["-v", f"{kernels_dir_abs}:/builder/kernels", "-v", f"{toolchains_dir_abs}:/builder/toolchains"]
-
-    # Get current user ID and group ID to run Docker commands as the current user
-    user_id = os.getuid()
-    group_id = os.getgid()
-
-    # Get total number of CPUs on the machine
-    total_cpus = os.cpu_count()
-
-    # Correct working directory for the kernel source
-    kernel_source_dir = f"/builder/kernels/{kernel_name}/kernel/kernel"
-
-    # Construct the Docker command
-    docker_command = [
-        "docker", "run", "--rm", "-it", "-u", f"{user_id}:{group_id}",
-        "--cpus=" + str(total_cpus)
-    ] + volume_args + [
-        "-w", kernel_source_dir,
-        "kernel_builder", "/bin/bash", "-c"
-    ]
-
-    # Base command for invoking make
-    base_command = f"make ARCH={arch} -j{total_cpus if total_cpus else '$(nproc)'}"
-
-    if toolchain_name and toolchain_version:
-        base_command += f" CROSS_COMPILE=/builder/toolchains/{toolchain_name}/{toolchain_version}/bin/{toolchain_name}-"
-
-    if localversion:
-        base_command += f" LOCALVERSION=-{localversion}"
-
-    # Locate module directories
-    module_locations = locate_target_modules(kernel_name)
-
-    if not module_locations:
-        print("No modules to compile.")
-        return
-
-    # Add the configuration step before building modules
-    config_commands = f"{base_command} modules_prepare"
-
-    # Create commands to build each directory (if not empty)
-    combined_command = f"{config_commands} && "  # Ensure modules_prepare runs first
-    for module_dir_relative, modules in module_locations.items():
-        combined_command += f"{base_command} M={module_dir_relative} modules && "
-
-    # Remove trailing "&&" if present
-    combined_command = combined_command.rstrip("&& ")
-
-    # Run the combined command in Docker
-    if dry_run:
-        print(f"[Dry-run] Would run Docker command: {' '.join(docker_command + [combined_command])}")
-    else:
-        full_command = docker_command + [combined_command]
-        print(f"Running Docker command: {' '.join(full_command)}")
-        subprocess.Popen(full_command).wait()
 
 def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
     # Compiles the kernel directly on the host system.

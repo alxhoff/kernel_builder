@@ -3,7 +3,6 @@
 import argparse
 import os
 import subprocess
-from pathlib import Path
 
 def create_deb_package(kernel_name, localversion=None, dtb_name="tegra234-p3701-0000-p3737-0000.dtb"):
     import shutil
@@ -324,31 +323,6 @@ def deploy_jetson(kernel_name, device_ip, user, dry_run=False, localversion=None
         print(f"Updating {extlinux_conf_path} on remote device to use new FDT: {new_fdt_entry}")
         if not dry_run:
             subprocess.run(update_fdt_command, shell=True, check=True)
-
-def locate_compiled_modules(kernel_name, target_modules):
-    """
-    Locate the compiled kernel module (.ko) files for the given list of target modules.
-    """
-    kernels_dir = os.path.join("kernels", kernel_name)
-    compiled_modules = []
-
-    for module in target_modules:
-        # Search from the root of the kernel directory
-        find_command = f"find {kernels_dir} -type f -name {module}.ko"
-        try:
-            find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
-            if find_output:
-                found_paths = find_output.splitlines()
-                compiled_modules.extend(found_paths)
-            else:
-                print(f"Warning: Module {module}.ko not found.")
-        except subprocess.CalledProcessError:
-            print(f"Warning: Could not locate compiled module for {module}. Make sure the module was built successfully.")
-
-    # Remove duplicates in case there are multiple paths (e.g., redundant overlays)
-    compiled_modules = list(set(compiled_modules))
-
-    return compiled_modules
 
 def deploy_targeted_modules(kernel_name, device_ip, user, dry_run=False):
     target_modules_file = os.path.join("target_modules.txt")

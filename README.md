@@ -1,201 +1,201 @@
-# Kernel Builder and Deployer for x86 Host Machine, NVIDIA Jetson Boards, and Raspberry Pi
+# Kernel Builder, Deployer, and Debugger
 
-This document explains how to use the kernel builder and deployer scripts for cross-compiling and deploying Linux kernels for x86 host machines, NVIDIA Jetson boards, and Raspberry Pi.
+Cross-compile, deploy, and debug Linux kernels for x86 host machines, NVIDIA
+Jetson boards, and Raspberry Pi.
 
-## Setup Instructions
+The repository is organised around three top-level Python entry points and a
+hierarchy of wrapper shell scripts under `scripts/`.
 
-For setup instructions, including installing dependencies and cloning the repository, please refer to the [SETUP.md](./.docs/SETUP.md) file.
+- `kernel_builder.py` — build kernels, modules, and `.deb` packages (host or
+  Docker).
+- `kernel_deployer.py` — deploy compiled kernels, modules, and Debian packages
+  to x86, Jetson, or Raspberry Pi targets.
+- `kernel_debugger.py` — drive remote tracing, ftrace / trace-cmd, persistent
+  logging, and module inspection on Jetson devices.
 
-## Usage Instructions
+## Setup
 
-### Important Update: Kernel Cleaning with `mrproper`
+See [.docs/SETUP.md](./.docs/SETUP.md) for installing dependencies, cloning the
+repository, and preparing toolchains.
 
-The compile command now supports a `--clean` flag to control whether the `mrproper` command is run before building the kernel. This command removes any previous build artifacts that may interfere with the current build, providing a fresh start for the compilation process. By default, `mrproper` will be run, but it can be disabled by not using the `--clean` flag.
+## Directory layout
 
-The project includes three main Python scripts:
+```
+kernel_builder.py      # build orchestrator (entry point)
+kernel_deployer.py     # deploy orchestrator (entry point)
+kernel_debugger.py     # debug/trace orchestrator (entry point)
+kernels/               # cloned kernel source trees (one per --kernel-name)
+toolchains/            # cloned cross-compile toolchains
+scripts/
+  build/               # compile + package wrappers around kernel_builder.py
+  deploy/              # deploy wrappers around kernel_deployer.py
+  flash/               # Jetson flashing, rootfs prep, live-USB helpers
+  ota/                 # OTA payload creation and robot fleet updates
+  tags/                # kernel_tags.sh + tag management
+  tracing/             # ftrace / function-graph / RTCPU tracing helpers
+  camera/              # v4l2, RealSense, and camera streaming tools
+  can/                 # TCAN / SLCAN-FD tools + CAN log analysis
+  device/              # on-target logs, serial, load, storage, system info
+  cleanup/             # clean build artifacts
+  tags/                # tag-based kernel snapshot / promote / deploy
+  usb_disk/            # ISO creation and USB flashing helpers
+  utils/               # chroot, dtb, docker, and misc utilities
+  config/              # device_ip / device_username defaults (gitignored)
+```
 
-- **`kernel_builder.py`**: Builds the kernel for x86, NVIDIA Jetson boards, or Raspberry Pi.
-- **`kernel_deployer.py`**: Deploys the compiled kernel to x86 host machines, NVIDIA Jetson boards, or Raspberry Pi.
-- **Toolchain management**: Clone and manage toolchains for building the kernel.
+Every shell script reads the target device's IP and username from
+`scripts/config/device_ip` and `scripts/config/device_username` when those
+files are present. Templates with the `.template` suffix ship in the repo.
 
-### 1. Building the Docker Image
+## 1. Build the Docker image
 
-The `kernel_builder.py` script provides several commands, starting with the `build` command to create the Docker image with the necessary cross-compilation environment.
-
-**Command**:
 ```bash
 python3 kernel_builder.py build [--rebuild]
 ```
 
-If the `--rebuild` argument is provided, the Docker image will be rebuilt without using the cache.
+Use `--rebuild` to rebuild without the cache.
 
-### 2. Cloning the Kernel Source
+## 2. Clone sources
 
-Instead of cloning the kernel source inside the Dockerfile, it can now be done via the script to allow multiple kernel sources to be handled easily. The script will also check if the kernel source directory already exists to prevent redundant cloning.
+### Kernel source
 
-**Command**:
 ```bash
-python3 kernel_builder.py clone-kernel --kernel-source-url <kernel-source-url> --kernel-name <kernel-name> [--git-tag <git-tag>]
+python3 kernel_builder.py clone-kernel \
+  --kernel-source-url <git-url> \
+  --kernel-name <name> \
+  [--git-tag <tag>]
 ```
 
-**Example**:
+### Toolchain
+
 ```bash
-python3 kernel_builder.py clone-kernel --kernel-source-url https://github.com/torvalds/linux.git --kernel-name jetson --git-tag v5.10
+python3 kernel_builder.py clone-toolchain \
+  --toolchain-url <git-url> \
+  --toolchain-name <name> \
+  [--git-tag <tag>]
 ```
 
-This command will clone the specified kernel source into the provided directory if it does not already exist. The script will also verify that the correct git tag is checked out.
+### Overlays / device tree
 
-### 3. Cloning a Toolchain
-
-To cross-compile the kernel for different platforms, you may need a specific toolchain. The `clone-toolchain` command allows you to clone a toolchain and store it in a toolchains folder with a specified name.
-
-**Command**:
 ```bash
-python3 kernel_builder.py clone-toolchain --toolchain-url <toolchain-url> --toolchain-name <toolchain-name> [--git-tag <git-tag>]
+python3 kernel_builder.py clone-overlays     --overlays-url <url>     --kernel-name <name> [--git-tag <tag>]
+python3 kernel_builder.py clone-device-tree  --device-tree-url <url>  --kernel-name <name> [--git-tag <tag>]
 ```
 
-**Example**:
+## 3. Compile
+
 ```bash
-python3 kernel_builder.py clone-toolchain --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain --toolchain-name jetson-toolchain --git-tag v5.10
+python3 kernel_builder.py compile \
+  --kernel-name <name> \
+  --arch <arm64|x86_64> \
+  [--toolchain-name <name>] [--toolchain-version <ver>] \
+  [--rpi-model rpi3|rpi4] \
+  [--config <defconfig>] \
+  [--generate-ctags] \
+  [--build-target kernel,dtbs,modules,bindeb-pkg] \
+  [--threads N] [--clean] [--use-current-config] \
+  [--localversion <str>] [--host-build] \
+  [--dtb-name <name>] [--build-dtb] [--build-modules] \
+  [--overlays <csv-of-dtbos>] [--dry-run]
 ```
 
-This will clone the specified toolchain into the `<toolchain-directory>/<toolchain-name>` folder, which can then be used for cross-compiling.
+Key flags:
 
-### 4. Cloning Overlays
+- `--build-target` — comma-separated list (`kernel`, `dtbs`, `modules`,
+  `bindeb-pkg`).
+- `--host-build` — skip Docker and build directly on the host (useful on
+  already-configured CI / developer machines).
+- `--clean` — run `make mrproper` first.
+- `--use-current-config` — seed from the running system's `/proc/config.gz`.
+- `--dry-run` — print the full command without executing.
 
-You may also need overlays for specific kernel configurations. The `clone-overlays` command allows you to clone overlays and add them to an existing kernel directory.
+Modules are installed to `kernels/<kernel-name>/modules/` via
+`INSTALL_MOD_PATH` so deployment stays predictable.
 
-**Command**:
+### Compile a single out-of-tree module
+
 ```bash
-python3 kernel_builder.py clone-overlays --overlays-url <overlays-url> --kernel-name <kernel-name> [--git-tag <git-tag>]
+python3 kernel_builder.py compile-target-modules \
+  --kernel-name <name> \
+  --arch <arm64|x86_64> \
+  --modules <path1,path2,...> \
+  [--toolchain-name <name>] [--host-build] [--dry-run]
 ```
 
-**Example**:
+## 4. Deploy
+
+### x86 host
+
 ```bash
-python3 kernel_builder.py clone-overlays --overlays-url https://github.com/alxhoff/jetson-kernel-overlays --kernel-name jetson --git-tag main
+python3 kernel_deployer.py deploy-x86 [--localversion <str>] [--dry-run]
 ```
 
-This command will clone the overlays repository and add it to the specified kernel directory.
+### Jetson
 
-### 5. Cloning Device Tree Hardware Repository
-
-For certain platforms, you may need device tree modifications. The `clone-device-tree` command allows you to clone a device tree hardware repository and add it to the appropriate kernel directory.
-
-**Command**:
 ```bash
-python3 kernel_builder.py clone-device-tree --device-tree-url <device-tree-url> --kernel-name <kernel-name> [--git-tag <git-tag>]
+python3 kernel_deployer.py deploy-jetson \
+  --kernel-name <name> \
+  --ip <device-ip> --user <user> \
+  [--localversion <str>] [--dtb] [--kernel-only] [--dry-run]
 ```
 
-**Example**:
+`--dtb` marks the DTB compiled with the kernel as the default in
+`extlinux.conf`. `--kernel-only` skips shipping modules.
+
+### Generic device (Jetson or Raspberry Pi)
+
 ```bash
-python3 kernel_builder.py clone-device-tree --device-tree-url https://github.com/alxhoff/jetson-device-tree --kernel-name jetson --git-tag main
+python3 kernel_deployer.py deploy-device \
+  --ip <device-ip> --user <user> \
+  [--localversion <str>] [--kernel-only] [--dry-run]
 ```
 
-This command will clone the device tree repository into the `<kernels>/<kernel-name>/device_tree` folder.
+### Debian package
 
-### 6. Compiling the Kernel (Using Docker)
-
-Once the Docker image is built and the kernel source has been cloned, you can compile the kernel and modules for your target architecture. The host `kernels` directory will be mounted into the Docker container to ensure any changes made are reflected inside the container.
-
-**Command**:
 ```bash
-python3 kernel_builder.py compile --kernel-name <kernel-name> --arch <target-architecture> [--toolchain-name <toolchain-name>] [--rpi-model <rpi-model>] [--config <config-file-path>] [--generate-ctags] [--build-target <build-targets>] [--threads <number-of-threads>] [--clean] [--use-current-config]
+python3 kernel_deployer.py deploy-debian \
+  --kernel-name <name> \
+  [--localversion <str>] [--dtb-name <prefix>]
 ```
 
-**Example**:
+### Targeted out-of-tree modules only
+
 ```bash
-python3 kernel_builder.py compile --kernel-name jetson --arch arm64 --toolchain-name aarch64-buildroot-linux-gnu --config tegra_defconfig --generate-ctags --build-target kernel,dtbs,modules,bindeb-pkg --threads 4 --clean --use-current-config
+python3 kernel_deployer.py deploy-targeted-modules \
+  --kernel-name <name> --ip <device-ip> --user <user> [--dry-run]
 ```
 
-This command will run the compilation inside a Docker container, mounting the kernels, toolchain, and overlays directories as Docker volumes. Compilation now runs fully encapsulated inside Docker to ensure consistency across environments.
+## 5. Debug and trace (Jetson)
 
-- The `--generate-ctags` option generates a `tags` file using `ctags` for easier code navigation.
-- The `--threads` argument allows you to specify the number of threads for the kernel compilation. If not provided, all available cores will be used.
-- The `--clean` argument allows you to control whether `mrproper` is run before the build process. This is useful when you need a fresh environment for building or want to avoid cleaning to save time.
-- The `--build-target` argument allows you to specify one or more build targets, such as `kernel`, `dtbs`, `modules`, or `bindeb-pkg`. You can pass multiple targets as a comma-separated list.
-- The `--use-current-config` argument allows you to use the current system's kernel configuration (`/proc/config.gz`) to build the new kernel with the current settings.
-- **Module Installation Path**: The kernel modules are now installed into a dedicated `modules` folder inside the kernel-specific folder using `INSTALL_MOD_PATH`. This makes it easier to organize and deploy.
+`kernel_debugger.py` wraps common on-device debugging chores over SSH:
 
-### 7. Deploying the Kernel
-
-The `kernel_deployer.py` script provides commands for deploying to different devices.
-
-#### Deploy to x86 Host Machine
-
-This command deploys the compiled kernel and modules to an x86 host machine.
-
-**Command**:
 ```bash
-python3 kernel_deployer.py deploy-x86 
+python3 kernel_debugger.py <command> --ip <device-ip> --user <user> [...]
 ```
 
-This command copies the compiled kernel image (`vmlinuz`) and modules to the appropriate locations on the x86 host machine (`/boot` and `/lib/modules/`).
+Commands include:
 
-#### Deploy to Jetson or Raspberry Pi
+- `install-trace-cmd` — install `trace-cmd` on the target.
+- `list-modules`, `list-tracepoints` — inventory loaded modules and available
+  tracepoints.
+- `start-tracing`, `stop-tracing`, `record-trace`, `retrieve-trace`,
+  `report-trace` — drive ftrace and `trace-cmd record/report`.
+- `start-system-tracing`, `stop-system-tracing` — broad system-wide tracing
+  sessions.
+- `enable-persistent-logging` — enable pstore / persistent kernel logs.
+- `retrieve-logs`, `retrieve-boot-logs` — pull dmesg / boot logs back to the
+  host.
 
-This command deploys the compiled kernel and modules to a remote device (either an NVIDIA Jetson board or a Raspberry Pi).
+Most commands accept `--dry-run` to preview the exact remote commands.
 
-**Command**:
-```bash
-python3 kernel_deployer.py deploy-device --ip <device-ip> --user <user> [--dry-run]
-```
+## Tag-based kernel snapshots
 
-**Example**:
-```bash
-python3 kernel_deployer.py deploy-device --ip 192.168.1.10 --user ubuntu --dry-run
-```
+Tagged kernel artifacts (kernel + modules + `.deb`) can be captured, promoted,
+deployed, and compared with `scripts/tags/kernel_tags.sh`. See
+[scripts/tags/README.md](./scripts/tags/README.md) for the full workflow,
+including one-shot build-and-tag, fleet deployment, and the manifest schema.
 
-This command copies the compiled kernel and modules to the specified device over SSH and SCP. The `--user` argument should be set to `ubuntu` for NVIDIA Jetson or `pi` for Raspberry Pi. The `--dry-run` option prints out the SCP commands without executing them, allowing you to verify the deployment process.
+## Examples
 
-### Available Options
-
-- **`build`**:
-  - `--rebuild`: Rebuild the Docker image without using the cache.
-
-- **`clone-kernel`**:
-  - `--kernel-source-url`: The URL to the kernel source to be cloned. This can be a Git repository.
-  - `--kernel-name`: Name of the kernel subfolder where the source will be cloned.
-  - `--git-tag`: The Git tag to check out after cloning the kernel source. Default is `master`.
-
-- **`clone-toolchain`**:
-  - `--toolchain-url`: The URL to the toolchain to be cloned. This can be a Git repository.
-  - `--toolchain-name`: Name for the toolchain subfolder to distinguish different toolchains.
-  - `--git-tag`: The Git tag to check out after cloning the toolchain (e.g., `v5.10`).
-
-- **`clone-overlays`**:
-  - `--overlays-url`: The URL to the overlays repository to be cloned.
-  - `--kernel-name`: Name of the kernel subfolder where overlays will be added.
-  - `--git-tag`: The Git tag to check out after cloning the overlays.
-
-- **`clone-device-tree`**:
-  - `--device-tree-url`: The URL to the device tree hardware repository to be cloned.
-  - `--kernel-name`: Name of the kernel subfolder where device tree will be added.
-  - `--git-tag`: The Git tag to check out after cloning the device tree.
-
-- **`compile`**:
-  - `--kernel-name`: Name of the kernel subfolder to use for compilation.
-  - `--arch`: Target architecture (e.g., `arm64` for Jetson). Default is `arm64`.
-  - `--toolchain-name`: Name of the toolchain to use for cross-compiling.
-  - `--rpi-model`: Specify the Raspberry Pi model to compile the kernel for (e.g., `rpi3` or `rpi4`).
-  - `--config`: Name of the kernel configuration file to be used for compilation (e.g., `defconfig`, `tegra_defconfig`).
-  - `--generate-ctags`: Generate `ctags`/`tags` file for the kernel source for easier code navigation.
-  - `--build-target`: Comma-separated list of build targets (e.g., `kernel`, `dtbs`, `modules`, `bindeb-pkg`).
-  - `--threads`: Number of threads to use for compilation (default: use all available cores).
-  - `--clean`: Run `mrproper` to clean the kernel build directory before building.
-  - `--use-current-config`: Use the current system kernel configuration for building the kernel.
-
-- **`deploy-device`**:
-  - `--ip`: IP address of the target device.
-  - `--user`: Username for accessing the target device (default for Jetson: `ubuntu`, default for Raspberry Pi: `pi`).
-
-- **`inspect`**:
-  - Inspect the Docker image for debugging purposes.
-
-- **`cleanup`**:
-  - Removes the Docker image and prunes unused containers.
-
-## Example Workflows
-
-Please refer to the [Kernel Builder Example Workflows](./.docs/EXAMPLES.md) for detailed examples of workflows for x86, NVIDIA Jetson boards, and Raspberry Pi.
-
-
+Step-by-step workflows for x86, Jetson, and Raspberry Pi are in
+[.docs/EXAMPLES.md](./.docs/EXAMPLES.md).

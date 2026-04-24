@@ -15,3 +15,5 @@ kernel_archive/*
 !kernel_archive/.gitkeep
 
 __pycache__
+.cache/
+scripts/rootfs/

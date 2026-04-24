@@ -3,7 +3,7 @@
 # Simplified master workflow script
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
-DEVICE_IP_FILE="$SCRIPT_DIR/../device_ip"
+DEVICE_IP_FILE="$SCRIPT_DIR/../config/device_ip"
 
 if [ -f "$DEVICE_IP_FILE" ]; then
   DEVICE_IP=$(cat "$DEVICE_IP_FILE")
@@ -49,7 +49,7 @@ echo "Starting tracing for $DURATION seconds..."
 "$SCRIPT_DIR/control_tracing.sh" --start-duration "$DURATION"
 
 echo "Retrieving logs..."
-"$SCRIPT_DIR/retrieve_logs.sh" --output "trace_report_${TRACEPOINT}.txt"
+"$SCRIPT_DIR/retrieve_trace_logs.sh" --output "trace_report_${TRACEPOINT}.txt"
 
 echo "Tracing workflow completed. Logs saved to trace_report_${TRACEPOINT}.txt"
 
