@@ -16,9 +16,9 @@ KERNEL_NAME="$1"
 shift # Shift arguments to parse the rest of the options
 
 # Set script paths
-SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_BUILDER_SCRIPT="$SCRIPT_DIR/build/kernel/compile_kernel.sh"
-DEPLOY_SCRIPT="$SCRIPT_DIR/deploy/deploy_debian.sh"
+SCRIPTS_DIR="$(realpath "$(dirname "$0")/..")"
+KERNEL_BUILDER_SCRIPT="$SCRIPTS_DIR/build/kernel/compile_kernel.sh"
+DEPLOY_SCRIPT="$SCRIPTS_DIR/deploy/deploy_debian.sh"
 
 # Parse arguments
 CONFIG_ARG=""
@@ -220,7 +220,7 @@ fi
 
 # Tag the build if --tag was provided
 if [ -n "$TAG_NAME" ]; then
-  TAG_SCRIPT="$SCRIPT_DIR/tags/kernel_tags.sh"
+  TAG_SCRIPT="$SCRIPTS_DIR/release/kernel_tags.sh"
   if [ -x "$TAG_SCRIPT" ]; then
     TAG_CMD="\"$TAG_SCRIPT\" tag \"$TAG_NAME\" --kernel \"$KERNEL_NAME\" --localversion \"$LOCALVERSION_ARG\""
     [ -n "$TAG_DESCRIPTION" ] && TAG_CMD="$TAG_CMD --description \"$TAG_DESCRIPTION\""

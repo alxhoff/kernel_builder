@@ -24,24 +24,43 @@ repository, and preparing toolchains.
 kernel_builder.py      # build orchestrator (entry point)
 kernel_deployer.py     # deploy orchestrator (entry point)
 kernel_debugger.py     # debug/trace orchestrator (entry point)
+bin/                   # short aliases for the most-used scripts
 kernels/               # cloned kernel source trees (one per --kernel-name)
 toolchains/            # cloned cross-compile toolchains
 scripts/
-  build/               # compile + package wrappers around kernel_builder.py
+  release/             # tagged-release workflow (build_and_tag,
+                       #   kernel_tags, compile_and_package)
+  build/               # kernel / module / packaging compile wrappers
   deploy/              # deploy wrappers around kernel_deployer.py
   flash/               # Jetson flashing, rootfs prep, live-USB helpers
   ota/                 # OTA payload creation and robot fleet updates
-  tags/                # kernel_tags.sh + tag management
   tracing/             # ftrace / function-graph / RTCPU tracing helpers
   camera/              # v4l2, RealSense, and camera streaming tools
   can/                 # TCAN / SLCAN-FD tools + CAN log analysis
   device/              # on-target logs, serial, load, storage, system info
   cleanup/             # clean build artifacts
-  tags/                # tag-based kernel snapshot / promote / deploy
+  ctags/               # generate/list/delete ctags source-index files
   usb_disk/            # ISO creation and USB flashing helpers
   utils/               # chroot, dtb, docker, and misc utilities
   config/              # device_ip / device_username defaults (gitignored)
 ```
+
+## Short aliases (`bin/`)
+
+The most-used entry points are exposed as short wrapper scripts in `bin/` so
+you don't have to remember deep paths. For example:
+
+```bash
+./bin/tags list                         # scripts/release/kernel_tags.sh
+./bin/build cartken_5_1_5_realsense     # scripts/release/build_and_tag.sh
+./bin/package cartken_6_2 --localversion cartken6.2
+./bin/menuconfig cartken_6_2
+./bin/chroot 5.1.5
+./bin/dtb extract /path/to/something.dtb
+```
+
+See [bin/README.md](./bin/README.md) for the full list. Add `bin/` to your
+`$PATH` to drop the `./bin/` prefix entirely.
 
 Every shell script reads the target device's IP and username from
 `scripts/config/device_ip` and `scripts/config/device_username` when those
@@ -191,9 +210,11 @@ Most commands accept `--dry-run` to preview the exact remote commands.
 ## Tag-based kernel snapshots
 
 Tagged kernel artifacts (kernel + modules + `.deb`) can be captured, promoted,
-deployed, and compared with `scripts/tags/kernel_tags.sh`. See
-[scripts/tags/README.md](./scripts/tags/README.md) for the full workflow,
-including one-shot build-and-tag, fleet deployment, and the manifest schema.
+deployed, and compared with `scripts/release/kernel_tags.sh` (short alias:
+`./bin/tags`). The one-shot interactive **build → package → tag → publish**
+flow is `scripts/release/build_and_tag.sh` (short alias: `./bin/build`). See
+[scripts/release/README.md](./scripts/release/README.md) for the full
+workflow, including fleet deployment and the manifest schema.
 
 ## Examples
 

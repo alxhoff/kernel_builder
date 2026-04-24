@@ -11,12 +11,12 @@
 
 set -e
 
-SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-REPO_ROOT="$(realpath "$SCRIPT_DIR/..")"
+SCRIPTS_DIR="$(realpath "$(dirname "$0")/..")"
+REPO_ROOT="$(realpath "$SCRIPTS_DIR/..")"
 KERNELS_DIR="$REPO_ROOT/kernels"
 CONFIGS_DIR="$REPO_ROOT/configs"
-COMPILE_SCRIPT="$SCRIPT_DIR/build/packaging/compile_and_package.sh"
-TAGS_SCRIPT="$SCRIPT_DIR/tags/kernel_tags.sh"
+COMPILE_SCRIPT="$SCRIPTS_DIR/release/compile_and_package.sh"
+TAGS_SCRIPT="$SCRIPTS_DIR/release/kernel_tags.sh"
 TAGS_FILE="$REPO_ROOT/kernel_tags.json"
 
 # ── helpers ──────────────────────────────────────────────────────────────────

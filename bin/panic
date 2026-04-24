@@ -1,0 +1,7 @@
+#!/bin/bash
+# Resolve kernel panic addresses against vmlinux
+# Short alias for scripts/utils/kernel/resolve_kernel_panic.sh. See bin/README.md for the full list.
+
+set -e
+REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." &> /dev/null && pwd)"
+exec "$REPO_ROOT/scripts/utils/kernel/resolve_kernel_panic.sh" "$@"

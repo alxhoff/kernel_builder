@@ -335,7 +335,7 @@ Integration complete.
 
 Next steps:
   1. Rebuild the kernel, e.g.:
-       ./scripts/kernel_builder/compile_and_package.sh $KERNEL_NAME --localversion <your-tag>
+       ./scripts/release/compile_and_package.sh $KERNEL_NAME --localversion <your-tag>
      The 8192eu.ko module will be produced by the in-tree build and end up in
      the generated Debian package at:
        /lib/modules/<version>/kernel/drivers/staging/rtl8192eu/8192eu.ko

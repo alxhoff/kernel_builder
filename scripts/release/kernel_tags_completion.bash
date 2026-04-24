@@ -163,4 +163,5 @@ complete -F _kernel_tags kernel_tags.sh
 complete -F _kernel_tags kernel_tags
 
 # Also complete if invoked via full path
-complete -F _kernel_tags ./scripts/kernel_builder/kernel_tags.sh
+complete -F _kernel_tags ./scripts/release/kernel_tags.sh
+complete -F _kernel_tags ./bin/tags

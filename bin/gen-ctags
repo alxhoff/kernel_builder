@@ -1,0 +1,7 @@
+#!/bin/bash
+# Generate ctags index files over kernel source
+# Short alias for scripts/ctags/generate_ctags.sh. See bin/README.md for the full list.
+
+set -e
+REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." &> /dev/null && pwd)"
+exec "$REPO_ROOT/scripts/ctags/generate_ctags.sh" "$@"

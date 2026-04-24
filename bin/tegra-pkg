@@ -1,0 +1,7 @@
+#!/bin/bash
+# Download + extract Linux_for_Tegra package (Docker)
+# Short alias for scripts/flash/rootfs_prep/setup_tegra_package_docker.sh. See bin/README.md for the full list.
+
+set -e
+REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." &> /dev/null && pwd)"
+exec "$REPO_ROOT/scripts/flash/rootfs_prep/setup_tegra_package_docker.sh" "$@"

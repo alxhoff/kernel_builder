@@ -9,7 +9,8 @@ Debian packages to x86, Jetson, and Raspberry Pi targets.
   device (wraps `kernel_deployer.py deploy-device` /
   `deploy_deployer.py deploy-jetson`).
 - `deploy_debian.sh` — push a packaged `.deb` produced by `bindeb-pkg` /
-  `compile_and_package.sh` (wraps `kernel_deployer.py deploy-debian`).
+  `scripts/release/compile_and_package.sh` (wraps
+  `kernel_deployer.py deploy-debian`).
 - `deploy_targeted_modules.sh` — deploy a subset of out-of-tree modules
   (wraps `kernel_deployer.py deploy-targeted-modules`).
 - `compile_and_deploy_kernel.sh`, `compile_and_deploy_targeted_modules.sh` —
@@ -31,5 +32,5 @@ Debian packages to x86, Jetson, and Raspberry Pi targets.
   shipping modules.
 
 For tag-based deployment (with manifest tracking, fleet parallelism, and
-verification) use `scripts/tags/kernel_tags.sh deploy` instead. See
-[scripts/tags/README.md](../tags/README.md).
+verification) use `scripts/release/kernel_tags.sh deploy` instead. See
+[scripts/release/README.md](../release/README.md).

@@ -1,0 +1,7 @@
+#!/bin/bash
+# Enter a chroot into a Jetson rootfs tree
+# Short alias for scripts/utils/chroot/jetson_chroot.sh. See bin/README.md for the full list.
+
+set -e
+REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." &> /dev/null && pwd)"
+exec "$REPO_ROOT/scripts/utils/chroot/jetson_chroot.sh" "$@"

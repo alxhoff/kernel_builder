@@ -8,8 +8,6 @@ modules, and Debian packages.
 - `kernel/` — full-kernel compile helpers.
   - `compile_kernel.sh` — build a kernel (wraps
     `kernel_builder.py compile`; pass-through for all flags).
-  - `build_and_tag.sh` — interactive one-shot **build → package → tag →
-    publish** flow. See [tags/README.md](../tags/README.md).
   - `build_6_2.sh` — opinionated build for JetPack 6.2 kernels
     (`nvbuild.sh`-based).
   - `menuconfig_kernel.sh`, `xconfig_kernel.sh`, `nconfig_kernel.sh`,
@@ -17,6 +15,8 @@ modules, and Debian packages.
   - `clean_kernel.sh`, `mrproper_kernel.sh` — cleanup targets.
   - `manage_kernels.sh` — helper to list / switch / inspect the kernels in
     `kernels/`.
+  - `integrate_rtl8192eu.sh` — import the Realtek RTL8192EU vendor driver
+    into a kernel tree as an in-tree staging driver.
   - `example_workflow_jetson.sh` — reference end-to-end workflow.
   - `pull_build_and_package_kernel.sh` — used by remote setup flows; fetches
     and builds a kernel over HTTPS.
@@ -25,9 +25,11 @@ modules, and Debian packages.
   - `compile_targeted_modules.sh` — build a subset of out-of-tree modules
     (wraps `kernel_builder.py compile-target-modules`).
 - `packaging/` — Debian / headers packaging.
-  - `compile_and_package.sh` — build + produce a `.deb` (low-level target
-    used by `build_and_tag.sh` and the tag flow).
   - `compile_kernel_headers_deb.sh` — build a headers `.deb`.
+
+> The tagged-release workflow (`build_and_tag.sh`, `kernel_tags.sh`,
+> `compile_and_package.sh`) now lives under
+> [`../release/`](../release/README.md).
 
 ## Conventions
 

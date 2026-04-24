@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Generate ctags for kernel source and overlays
-# Usage: ./generate_kernel_tags.sh [options]
-# Example: ./generate_kernel_tags.sh -k jetson
+# Usage: ./generate_ctags.sh [options]
+# Example: ./generate_ctags.sh -k jetson
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KERNELS_DIR="$REPO_ROOT/kernels"

@@ -94,7 +94,7 @@ Most of the shell helpers live under `scripts/` — see the top-level
    `extlinux.conf`. `--kernel-only` skips module deployment.
 
 7. **Deploy a `.deb` package** (built via `--build-target bindeb-pkg` or
-   `scripts/build/packaging/compile_and_package.sh`):
+   `scripts/release/compile_and_package.sh`):
    ```bash
    python3 kernel_deployer.py deploy-debian \
      --kernel-name jetson \
@@ -166,13 +166,13 @@ For reproducible builds that record the kernel, `.deb`, `.config`, and git
 state:
 
 ```bash
-./scripts/build/kernel/build_and_tag.sh cartken_5_1_5_realsense --soc orin
-./scripts/tags/kernel_tags.sh deploy 170426 --ip 10.42.0.5 --install
-./scripts/tags/kernel_tags.sh verify 170426 --ip 10.42.0.5
+./bin/build cartken_5_1_5_realsense --soc orin   # or ./scripts/release/build_and_tag.sh
+./bin/tags deploy 170426 --ip 10.42.0.5 --install
+./bin/tags verify 170426 --ip 10.42.0.5
 ```
 
 Full workflow, including fleet deployment and the manifest schema, is in
-[../scripts/tags/README.md](../scripts/tags/README.md).
+[../scripts/release/README.md](../scripts/release/README.md).
 
 ## Debugging and tracing (Jetson)
 
