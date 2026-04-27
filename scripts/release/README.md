@@ -164,10 +164,20 @@ default (copy-only). Use `--install` to also run `dpkg -i`. SSH
 `ControlMaster` is used to avoid multiple password prompts, and `--password`
 with `sshpass` eliminates prompts entirely.
 
+When no target flags are given, the target IP and SSH user are read from
+`scripts/config/device_ip` and `scripts/config/device_username` (falling
+back to user `cartken`). `--install` is never implicit — it requires root
+on the target, and most Jetsons have root SSH disabled out of the box.
+
 ### Single device
 
 ```bash
+# Uses scripts/config/device_ip + device_username
+./bin/tags deploy 240426
+
+# Explicit overrides
 ./bin/tags deploy v5.1.5-rs-2400 --ip 10.42.0.5
+./bin/tags deploy v5.1.5-rs-2400 --ip 10.42.0.5 --user cartken
 ./bin/tags deploy v5.1.5-rs-2400 --ip 10.42.0.5 --install
 ./bin/tags deploy v5.1.5-rs-2400 --ip 10.42.0.5 --remote-dir /opt/kernels
 ./bin/tags deploy v5.1.5-rs-2400 --ip 10.42.0.5 --dry-run

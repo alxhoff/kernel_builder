@@ -17,6 +17,25 @@ KERNEL_DEBS_DIR="$REPO_ROOT/kernel_debs"
 ARCHIVE_DIR="$REPO_ROOT/kernel_archive"
 PRODUCTION_DIR="$REPO_ROOT/production_kernels"
 PRODUCTION_LOG="$PRODUCTION_DIR/build_log.yaml"
+DEVICE_IP_FILE="$SCRIPT_DIR/config/device_ip"
+DEVICE_USER_FILE="$SCRIPT_DIR/config/device_username"
+DEFAULT_DEPLOY_USER="cartken"
+
+# Read the first non-empty, non-comment line from a config file.
+# Prints nothing if the file is missing or empty.
+_read_config_value() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    if [ -n "$line" ]; then
+      printf '%s' "$line"
+      return 0
+    fi
+  done < "$file"
+}
 
 # Status lifecycle: development -> testing -> staging -> production
 VALID_STATUSES=("development" "testing" "staging" "production")
@@ -1972,11 +1991,16 @@ Usage: kernel_tags.sh deploy <TAG_NAME> [target options] [options]
 
 Copy a tagged kernel's .deb to one or more remote machines. By default only
 copies the file; use --install to also run dpkg -i and optionally reboot.
+(Install requires root on the target, so it is opt-in.)
+
+If no target option is given, the IP is read from scripts/config/device_ip
+and the SSH user from scripts/config/device_username (falling back to
+'cartken' if unset).
 
 Uses SSH ControlMaster to avoid multiple password prompts per target. Provide
 --password to avoid being prompted at all (requires sshpass).
 
-Target selection (at least one required):
+Target selection (optional; falls back to scripts/config/device_ip):
   --ip <address>             Target IP (can be repeated)
   --robots <list>            Comma-separated robot numbers, supports ranges
                              e.g. --robots 1,2,5-8
@@ -1985,16 +2009,19 @@ Target selection (at least one required):
   --hosts-file <file>        File with one IP per line (# comments allowed)
 
 Options:
-  --user <user>              SSH user (default: cartken)
+  --user <user>              SSH user (default: scripts/config/device_username or cartken)
   --password <pass>          SSH password (uses sshpass, avoids interactive prompts)
   --remote-dir <path>        Where to put the .deb on the remote (default: ~/kernel_debs)
-  --install                  Also install with dpkg -i after copying
+  --install                  Also install with dpkg -i after copying (needs root on target)
   --no-reboot                Skip reboot after install (only relevant with --install)
   --sequential               Copy to targets one at a time (default: parallel for 2+ targets)
   --dry-run                  Show what would be done without executing
 
 Examples:
-  # Copy to a single robot
+  # Copy to the default device from scripts/config/device_ip
+  kernel_tags.sh deploy 240426
+
+  # Copy to a specific IP
   kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5
 
   # Copy to robots 1, 2, and 5 through 8 using password
@@ -2005,7 +2032,7 @@ Examples:
   # Copy to a list of hosts from a file
   kernel_tags.sh deploy v5.1.5-rs-2400 --hosts-file fleet.txt
 
-  # Full install + reboot
+  # Full install + reboot (target must allow root)
   kernel_tags.sh deploy v5.1.5-rs-2400 --ip 10.42.0.5 --install
 
   # Dry run to preview
@@ -2030,9 +2057,10 @@ EOF
     exit 1
   fi
 
-  local device_ips=() user="cartken" password="" do_install=false do_reboot=true
+  local device_ips=() user="$DEFAULT_DEPLOY_USER" password="" do_install=false do_reboot=true
   local dry_run=false hosts_file="" remote_dir="~/kernel_debs" sequential=false
   local robot_numbers_raw="" robot_ip_prefix=""
+  local user_explicit=false
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -2040,7 +2068,7 @@ EOF
       --robots)          robot_numbers_raw="$2"; shift 2 ;;
       --robot-ip-prefix) robot_ip_prefix="$2"; shift 2 ;;
       --hosts-file)      hosts_file="$2"; shift 2 ;;
-      --user)            user="$2"; shift 2 ;;
+      --user)            user="$2"; user_explicit=true; shift 2 ;;
       --password)        password="$2"; shift 2 ;;
       --remote-dir)      remote_dir="$2"; shift 2 ;;
       --install)         do_install=true; shift ;;
@@ -2051,6 +2079,13 @@ EOF
       *) echo "Error: Unknown option '$1' for 'deploy' command"; exit 1 ;;
     esac
   done
+
+  # Default the SSH user from scripts/config/device_username if none was given.
+  if [ "$user_explicit" = false ]; then
+    local cfg_user
+    cfg_user="$(_read_config_value "$DEVICE_USER_FILE")"
+    [ -n "$cfg_user" ] && user="$cfg_user"
+  fi
 
   # Resolve robot numbers to IPs
   if [ -n "$robot_numbers_raw" ]; then
@@ -2078,8 +2113,21 @@ EOF
     done < "$hosts_file"
   fi
 
+  # If no explicit target was given, fall back to scripts/config/device_ip.
+  local default_ip_used=false
   if [ ${#device_ips[@]} -eq 0 ]; then
-    echo "Error: No targets specified. Use --ip, --robots, or --hosts-file."
+    local cfg_ip
+    cfg_ip="$(_read_config_value "$DEVICE_IP_FILE")"
+    if [ -n "$cfg_ip" ]; then
+      device_ips+=("$cfg_ip")
+      default_ip_used=true
+    fi
+  fi
+
+  if [ ${#device_ips[@]} -eq 0 ]; then
+    echo "Error: No targets specified and no default IP found."
+    echo "  Use --ip, --robots, or --hosts-file, or set a default in:"
+    echo "    $DEVICE_IP_FILE"
     echo "Run 'kernel_tags.sh deploy --help' for full usage."
     exit 1
   fi
@@ -2133,7 +2181,9 @@ EOF
       echo "  Parallel:     no (sequential)"
     fi
   else
-    echo "  Target:       $user@${device_ips[0]}"
+    local target_suffix=""
+    [ "$default_ip_used" = true ] && target_suffix=" (from $DEVICE_IP_FILE)"
+    echo "  Target:       $user@${device_ips[0]}$target_suffix"
   fi
   echo "  Mode:         $mode$([ "$mode" = "install" ] && [ "$do_reboot" = true ] && echo " + reboot")"
   [ -n "$password" ] && echo "  Auth:         password (sshpass)"
