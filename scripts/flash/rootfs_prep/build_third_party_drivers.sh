@@ -55,23 +55,30 @@ if [[ -z "$KERNEL_SRC_ROOT" || -z "$CROSS_COMPILE" || -z "$ROOTFS_ROOT_DIR" || -
 fi
 
 cd $ROOTFS_ROOT_DIR
-# NOTE: rtl8192eu used to be built here as an out-of-tree module. It has been
-# integrated directly into the kernel tree (drivers/staging/rtl8192eu/, enabled
-# via CONFIG_RTL8192EU=m) by scripts/build/kernel/integrate_rtl8192eu.sh, so
-# it is now produced as part of the normal kernel build and no longer needs to
-# be rebuilt here. If you are working with a kernel tree that does not yet have
-# the in-tree integration, add "rtl8192eu" back to the list below.
-THIRD_PARTY_DRIVERS="rtl88x2bu"
+# NOTE: The rtl8192eu and rtl88x2bu drivers used to be built here as
+# out-of-tree modules. They have both been integrated directly into the
+# kernel tree (drivers/staging/{rtl8192eu,rtl88x2bu}/, enabled via
+# CONFIG_RTL8192EU=m / CONFIG_RTL8822BU=m) by:
+#   scripts/build/kernel/integrate_rtl8192eu.sh
+#   scripts/build/kernel/integrate_rtl88x2bu.sh
+# so they are now produced as part of the normal kernel build and no longer
+# need to be rebuilt here. If you are working with a kernel tree that does
+# not yet have the in-tree integration, add the relevant driver back to the
+# THIRD_PARTY_DRIVERS list below.
+THIRD_PARTY_DRIVERS=""
 
-echo "Building third party drivers"
-
-for DRIVER in $THIRD_PARTY_DRIVERS; do
-	echo "Building and installing $DRIVER"
-    LOCALVERSION="-cartken${PATCH}"
-	BUILD_SCRIPT="${DRIVER}.sh"
-	echo "$TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION"
-	$TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION
-done
+if [[ -n "$THIRD_PARTY_DRIVERS" ]]; then
+    echo "Building third party drivers"
+    for DRIVER in $THIRD_PARTY_DRIVERS; do
+        echo "Building and installing $DRIVER"
+        LOCALVERSION="-cartken${PATCH}"
+        BUILD_SCRIPT="${DRIVER}.sh"
+        echo "$TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION"
+        $TEGRA_DIR/$BUILD_SCRIPT --kernel-src $KERNEL_SRC_ROOT --toolchain $CROSS_COMPILE --localversion $LOCALVERSION
+    done
+else
+    echo "No third-party drivers configured; skipping out-of-tree driver build."
+fi
 
 ROOTFS_BOOT_DIR="$ROOTFS_ROOT_DIR/boot/"
 # Extract the kernel version from the Image file
@@ -91,5 +98,11 @@ MODULE_DEST_DIR="$KERNEL_LIB_DIR/kernel/drivers/net/wireless"
 
 # Ensure the destination directory exists
 sudo mkdir -p "$MODULE_DEST_DIR"
-cp "$TEGRA_DIR"/*.ko "$MODULE_DEST_DIR"
+# Only copy out-of-tree .ko files if any were built into TEGRA_DIR.
+shopt -s nullglob
+TEGRA_KOS=("$TEGRA_DIR"/*.ko)
+shopt -u nullglob
+if [[ ${#TEGRA_KOS[@]} -gt 0 ]]; then
+    cp "${TEGRA_KOS[@]}" "$MODULE_DEST_DIR"
+fi
 depmod -b $ROOTFS_ROOT_DIR $KERNEL_VERSION
