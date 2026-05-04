@@ -23,7 +23,6 @@ complete -c panic       -d "Resolve kernel panic addresses (scripts/utils/kernel
 complete -c chroot      -d "Enter a chroot into a Jetson rootfs (scripts/utils/chroot/jetson_chroot.sh)"
 complete -c dtb         -d "DTB/DTS decompile/search/verify helper"
 complete -c logs        -d "Retrieve kernel/system logs over SSH"
-complete -c robot-img   -d "Build / manage robot rootfs images"
 complete -c tegra-pkg   -d "Download + extract Linux_for_Tegra (Docker)"
 complete -c ota-rootfs  -d "Setup rootfs as OTA-ready robot image"
 complete -c gen-ctags   -d "Generate ctags index files over kernel source"

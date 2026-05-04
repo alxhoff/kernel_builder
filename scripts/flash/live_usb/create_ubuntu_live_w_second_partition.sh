@@ -25,6 +25,11 @@ This script:
   1. Downloads Ubuntu 20.04.6 ISO (if not present)
   2. Writes it to the selected USB device
   3. Creates a second ext4 partition (~32 GB) labeled "$LABEL"
+  4. Populates the workspace with the Cartken L4T bundle, flash_jetson_*.sh, move_cartken_flash.sh,
+     and (--robots/--password) VPN material under cartken_flash/vpn/
+
+  The legacy cartken_flash.sh helper was removed; see FLASH_README.txt on the workspace volume
+  or use scripts/flash/rootfs_prep/setup_rootfs_as_robot_for_flashing.sh from a dev machine.
 
 Options:
   --device <sdX>   Specify target USB block device (e.g., sdb)
@@ -255,11 +260,11 @@ echo "tar -xvf "$OUTFILE" -C "$EXTRACT_LOC""
 tar -xvf "$OUTFILE" -C "$EXTRACT_LOC"
 rm -f "$OUTFILE"
 
-# --- Fetch script from GitHub ---
-echo "[*] Downloading flash script..."
-curl -fsSL \
-  https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/flash_robot_from_live_usb.sh \
-  -o "$EXTRACT_LOC/cartken_flash.sh"
+# --- Fetch helper scripts from GitHub ---
+# Legacy cartken_flash.sh (flash_robot_from_live_usb.sh) was removed; flash a
+# configured rootfs from a dev machine via setup_rootfs_as_robot_for_flashing.sh,
+# or run flash_jetson_ALL_sdmmc_partition_qspi.sh here after customizing rootfs.
+echo "[*] Downloading flash helper scripts..."
 curl -fsSL \
   https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/flash_jetson_ALL_sdmmc_partition_qspi.sh \
   -o "$EXTRACT_LOC/flash_jetson_ALL_sdmmc_partition_qspi.sh"
@@ -267,9 +272,25 @@ curl -fsSL \
   https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/move_cartken_flash.sh \
   -o "$MOUNT_DIR/move_cartken_flash.sh"
 
-chmod +x "$EXTRACT_LOC/cartken_flash.sh"
 chmod +x "$EXTRACT_LOC/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 chmod +x "$MOUNT_DIR/move_cartken_flash.sh"
+
+cat > "$EXTRACT_LOC/FLASH_README.txt" <<'ENDREADME'
+Robot flash helpers on this partition
+
+Previously this bundle included cartken_flash.sh (robot number + VPN + rootfs
+tweaks + flash). That flow was retired.
+
+Use on a workstation with this repo checked out:
+
+  sudo ./scripts/flash/rootfs_prep/setup_rootfs_as_robot_for_flashing.sh ...
+
+Or from this extracted tree after you have configured Linux_for_Tegra/rootfs:
+
+  sudo ./flash_jetson_ALL_sdmmc_partition_qspi.sh
+
+See scripts/flash/rootfs_prep/ in kernel_builder for current workflows.
+ENDREADME
 
 # --- Pull certs from multiple robots ---
 mv "$TMP_CERT_DIR" "$EXTRACT_LOC"

@@ -229,23 +229,9 @@ else
     echo "Warning: Hotspot configuration file not found: $HOTSPOT_FILE"
 fi
 
-SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
-AUTH_KEYS_PATH="$ROOTFS/home/cartken/.ssh/authorized_keys"
-
-echo "Injecting SSH key into $AUTH_KEYS_PATH"
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[dry-run] mkdir -p \"$(dirname "$AUTH_KEYS_PATH")\""
-    echo "[dry-run] chmod 700 \"$(dirname "$AUTH_KEYS_PATH")\""
-    echo "[dry-run] echo \"$SSH_KEY\" >> \"$AUTH_KEYS_PATH\""
-    echo "[dry-run] chmod 600 \"$AUTH_KEYS_PATH\""
-else
-    mkdir -p "$(dirname "$AUTH_KEYS_PATH")"
-    chmod 700 "$(dirname "$AUTH_KEYS_PATH")"
-    touch "$AUTH_KEYS_PATH"
-    grep -qxF "$SSH_KEY" "$AUTH_KEYS_PATH" || echo "$SSH_KEY" >> "$AUTH_KEYS_PATH"
-    chmod 600 "$AUTH_KEYS_PATH"
-	chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
-fi
+# SSH access is provisioned by AWX (it-management roles
+# common/configure-ssh-connections + common/robot-sshd-config-update) on
+# first connect; rootfs prep no longer injects an authorized_keys entry.
 
 echo "Creating OTA payload (docker)..."
 run "$OTA_DIR/create_ota_payload_docker.sh" \

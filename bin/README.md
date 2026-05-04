@@ -18,7 +18,6 @@ them from the repo root without typing long paths. Every wrapper simply
 | `chroot` | `scripts/utils/chroot/jetson_chroot.sh` | Enter a chroot into a Jetson rootfs tree |
 | `dtb` | `scripts/utils/dtb/dtb_dts_helper.sh` | DTB / DTS decompile / search / verify helper |
 | `logs` | `scripts/device/logs/retrieve_logs.sh` | Pull kernel / system logs from a device over SSH |
-| `robot-img` | `scripts/flash/rootfs_prep/system_images_workflow/robot_image_manager.sh` | Build / manage robot rootfs images |
 | `tegra-pkg` | `scripts/flash/rootfs_prep/setup_tegra_package_docker.sh` | Download + extract Linux_for_Tegra (Docker) |
 | `ota-rootfs` | `scripts/ota/setup_rootfs_as_robot_for_ota.sh` | Setup rootfs as OTA-ready robot image |
 | `gen-ctags` | `scripts/ctags/generate_ctags.sh` | Generate ctags index files over kernel source |

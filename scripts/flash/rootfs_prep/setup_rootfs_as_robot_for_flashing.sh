@@ -188,8 +188,14 @@ fi
 
 
 # --- Config ---
+# SSH access is provisioned by AWX (it-management roles
+# common/configure-ssh-connections + common/robot-sshd-config-update),
+# not at flash time, so this script no longer injects an authorized_keys
+# entry. AWX's first run will generate the per-robot host key, fetch a
+# host certificate from the backend SSH CA, write the user CA / authorized
+# principals under /etc/ssh/cartken_sshd/, and switch ongoing access to
+# cartken-sshd on port 8612.
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
-SSH_KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWZqz53cFupV4m8yzdveB6R8VgM17OKDuznTRaKxHIx info@cartken.com'
 INTERFACES=(wlan0 modem1 modem2 modem3)
 CERT_PATH=""
 KEY_PATH=""
@@ -455,16 +461,6 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   else
     echo "CARTKEN_CART_NUMBER=$ROBOT_NUMBER" >> "$ROOTFS_PATH/etc/environment"
   fi
-
-  echo "Injecting SSH key into $ROOTFS_PATH/home/cartken/.ssh/authorized_keys"
-  # --- Inject SSH key ---
-  AUTH_KEYS_PATH="$ROOTFS_PATH/home/cartken/.ssh/authorized_keys"
-  mkdir -p "$(dirname "$AUTH_KEYS_PATH")"
-  chmod 700 "$(dirname "$AUTH_KEYS_PATH")"
-  touch "$AUTH_KEYS_PATH"
-  grep -qxF "$SSH_KEY" "$AUTH_KEYS_PATH" || echo "$SSH_KEY" >> "$AUTH_KEYS_PATH"
-  chmod 600 "$AUTH_KEYS_PATH"
-  chown -R 1000:1000 "$(dirname "$AUTH_KEYS_PATH")"
 fi
 
 read -rp "✅ Rootfs at $L4T_DIR is ready for flashing. Please put the robot in recovery mode and press [Enter] to continue..."
