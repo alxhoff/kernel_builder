@@ -188,13 +188,19 @@ fi
 
 
 # --- Config ---
-# SSH access is provisioned by AWX (it-management roles
-# common/configure-ssh-connections + common/robot-sshd-config-update),
-# not at flash time, so this script no longer injects an authorized_keys
-# entry. AWX's first run will generate the per-robot host key, fetch a
-# host certificate from the backend SSH CA, write the user CA / authorized
-# principals under /etc/ssh/cartken_sshd/, and switch ongoing access to
-# cartken-sshd on port 8612.
+# SSH access for AWX uses cartken-jetson-sshd-v2 (port 8612) with backend-signed
+# host certificates and a backend-issued user CA. v1 (port 22, password +
+# legacy authorized_keys) is being phased out; this script targets v2-from-
+# first-boot:
+#   1. We pre-populate /etc/ssh/cartken_sshd/{ssh_host_cartken_ed25519_key,
+#      ssh_host_cartken_ed25519_key.pub, ssh_host_cartken_ed25519_key-cert.pub,
+#      ssh_user_ca.pub, authorized_principals[, _local]} in the rootfs.
+#   2. The chroot step (see chroot_configured_commands.txt) installs the
+#      cartken-jetson-sshd-v2 deb so the unit is enabled before flash.
+# The provisioning therefore has to run BEFORE the chroot runs, otherwise the
+# v2 deb's postinst would land on an empty config dir.
+# AWX's update-jetson role (common/robot-sshd-config-update) re-runs the same
+# provisioning every pass to refresh the (short-lived) host certificate.
 REMOTE_PATH="/etc/openvpn/cartken/2.0/crt"
 INTERFACES=(wlan0 modem1 modem2 modem3)
 CERT_PATH=""
@@ -210,7 +216,7 @@ It can optionally pull certs and inject configuration for a specific robot.
 
 Options:
   --target-bsp <version> Target JetPack version (e.g., 5.1.2). (Required)
-  --soc <soc>            Target SoC (e.g., t234 for Orin). (Required)
+  --soc <soc>            Target SoC platform: 'orin' or 'xavier'. Default: orin.
   --robot-number <id>    Set robot number and fetch certs + inject hostname/env.
   --docker               Run the script inside a Docker container for a consistent environment.
   --dry-run              Simulate connectivity and cert fetch without execution.
@@ -220,14 +226,41 @@ Options:
   --key                  Provide the VPN key directly.
   --zip                  Provide a zip file containing the VPN certificate and key.
   --l4t-dir <path>       Specify the L4T directory path. (Optional, default is derived from TARGET_BSP)
+  --env <env>            Cartken backend environment to sign SSH CA material against
+                         (production | staging | sandbox). Default: production.
+  --skip-ssh-ca          Do not provision /etc/ssh/cartken_sshd/. The
+                         cartken-jetson-sshd-v2 deb is still installed by the
+                         chroot, so cartken-sshd will fail to start on first
+                         boot until AWX update-jetson writes the missing
+                         files. Use only when the SSH CA backend is
+                         unreachable.
+  --host-cert-validity <duration>
+                         Validity for the signed host certificate (e.g. 24h, 48h, 7d).
+                         Keep it short: AWX update-jetson re-signs the cert with a
+                         fresh validity on its first connect. Default: 48h.
+  --tag <tag>            Refresh the cartken packages baked into the rootfs from
+                         the named gitlab tag (e.g. v7.5.0-sshca8) before the
+                         chroot runs. Lets you re-flash an existing rootfs at a
+                         newer tag without re-running setup_tegra_package.sh.
+                         Requires --access-token. If the tag does not contain
+                         cartken-jetson-sshd-v2*.deb the script aborts before
+                         touching the rootfs further.
+  --access-token <tok>   GitLab access token used by get_packages.sh when --tag
+                         is set. Ignored otherwise.
   -h, --help             Show this help message and exit.
 
 Examples:
-  $0 --target-bsp 5.1.2 --soc t234 --robot-number 302
+  $0 --target-bsp 5.1.2 --soc orin --robot-number 302
+  $0 --target-bsp 5.1.5 --soc orin --robot-number 302 --env staging
+  $0 --target-bsp 5.1.5 --soc orin --robot-number 302 --env staging \\
+     --tag v7.5.0-sshca8 --access-token glpat-xxx
 
 Notes:
 - This script requires a local BSP directory (e.g., 5.1.2/Linux_for_Tegra).
 - This script must be run as root.
+- Provisioning SSH CA material uses cartken-dev. Run
+    cartken account login <env>
+  in your normal user shell first; the script invokes cartken via sudo -u "\$SUDO_USER".
 EOF
 }
 
@@ -240,6 +273,11 @@ PASSWORD=""
 SKIP_VPN=0
 ZIP_PATH=""
 L4T_DIR_ARG=""
+BACKEND_ENV="production"
+SKIP_SSH_CA=0
+HOST_CERT_VALIDITY="48h"
+TAG=""
+ACCESS_TOKEN=""
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -295,11 +333,53 @@ while [[ $# -gt 0 ]]; do
       L4T_DIR_ARG="$2"
       shift 2
       ;;
+    --env)
+      BACKEND_ENV="$2"
+      shift 2
+      ;;
+    --skip-ssh-ca)
+      SKIP_SSH_CA=1
+      shift
+      ;;
+    --host-cert-validity)
+      HOST_CERT_VALIDITY="$2"
+      shift 2
+      ;;
+    --tag)
+      TAG="$2"
+      shift 2
+      ;;
+    --access-token)
+      ACCESS_TOKEN="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"; exit 1
       ;;
   esac
 done
+
+if [[ -n "$TAG" && -z "$ACCESS_TOKEN" ]]; then
+  echo "Error: --tag '$TAG' requires --access-token <gitlab token>." >&2
+  exit 1
+fi
+
+case "$BACKEND_ENV" in
+  production|staging|sandbox|prod|localhost) ;;
+  *)
+    echo "Error: --env must be one of production|staging|sandbox (got '$BACKEND_ENV')." >&2
+    exit 1
+    ;;
+esac
+[[ "$BACKEND_ENV" == "prod" ]] && BACKEND_ENV="production"
+
+case "$SOC" in
+  orin|xavier) ;;
+  *)
+    echo "Error: --soc must be 'orin' or 'xavier' (got '$SOC')." >&2
+    exit 1
+    ;;
+esac
 
 
 
@@ -323,7 +403,7 @@ else
 fi
 ROOTFS_PATH="$L4T_DIR/rootfs"
 FLASH_SCRIPT="$L4T_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
-CHROOT_CMD_FILE="chroot_configured_commands.txt"
+CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_configured_commands.txt"
 
 # --- Check for L4T directory ---
 if [[ ! -d "$L4T_DIR" ]]; then
@@ -345,6 +425,37 @@ if [[ "$DISTRO" == "ubuntu" ]]; then
    sudo apt-get update
    sudo apt-get install -y qemu-user-static libxml2-utils sshpass curl unzip
 fi
+
+# Resolve the absolute path to `cartken` under $SUDO_USER. We can't rely on
+# PATH inside the script: when run via `sudo`, secure_path strips ~/.local/bin
+# (where pip-user installs of cartken-dev typically land), and nested
+# `sudo -u $SUDO_USER` doesn't load the user's login profile either. We probe
+# common locations + a login shell as a fallback, then use the resulting
+# absolute path for every subsequent invocation.
+resolve_cartken_bin() {
+  if [[ -z "${SUDO_USER:-}" ]]; then
+    return 1
+  fi
+  local user_home
+  user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6 || true)"
+  if [[ -n "$user_home" && -x "$user_home/.local/bin/cartken" ]]; then
+    echo "$user_home/.local/bin/cartken"
+    return 0
+  fi
+  local found
+  found="$(sudo -u "$SUDO_USER" -i -- bash -c 'command -v cartken' 2>/dev/null || true)"
+  if [[ -n "$found" && -x "$found" ]]; then
+    echo "$found"
+    return 0
+  fi
+  for candidate in /usr/local/bin/cartken /usr/bin/cartken; do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
 # --- Pull certs and maybe chroot ---
 if [[ -n "$ROBOT_NUMBER" ]]; then
@@ -391,10 +502,26 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
       NEED_KEY=1
   fi
 
-  if [[ "$SKIP_VPN" -eq 0 && ( "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ) ]]; then
-
-    echo "Fetching robot IPs..."
-    ROBOT_IPS=$(sudo -u "$SUDO_USER" bash -c "cartken r ip \"$ROBOT_NUMBER\" 2>&1")
+  if [[ "$SKIP_VPN" -eq 1 ]]; then
+    if [[ "$NEED_CERT" -eq 1 && "$NEED_KEY" -eq 0 ]] || [[ "$NEED_CERT" -eq 0 && "$NEED_KEY" -eq 1 ]]; then
+      echo "Error: only one of --crt / --key was provided alongside --skip-vpn." >&2
+      echo "Either pass both, or drop --crt/--key entirely to skip VPN setup." >&2
+      exit 1
+    fi
+    echo "--skip-vpn active, skipping VPN certificate copy."
+  elif [[ "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ]]; then
+    if [[ -z "${CARTKEN_BIN:-}" ]]; then
+      CARTKEN_BIN="$(resolve_cartken_bin || true)"
+    fi
+    if [[ -z "$CARTKEN_BIN" ]]; then
+      echo "Error: 'cartken' could not be found for user '$SUDO_USER'; needed to fetch robot IPs." >&2
+      exit 1
+    fi
+    echo "Fetching robot IPs via $CARTKEN_BIN..."
+    # -H so the inner cartken process sees HOME=/home/$SUDO_USER, otherwise
+    # Python's user-site (~/.local/lib/python*/site-packages) isn't found and
+    # `cartken` fails with ModuleNotFoundError when launched via outer sudo.
+    ROBOT_IPS=$(sudo -u "$SUDO_USER" -H -E -- "$CARTKEN_BIN" r ip "$ROBOT_NUMBER" 2>&1)
     echo "$ROBOT_IPS"
     ROBOT_IP=""
 
@@ -432,34 +559,209 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
       run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.crt" "$LOCAL_DEST/"
       run scp "cartken@$ROBOT_IP:$REMOTE_PATH/robot.key" "$LOCAL_DEST/"
     fi
-  elif [[ "$SKIP_VPN" -eq 1 && ( "$NEED_CERT" -eq 1 || "$NEED_KEY" -eq 1 ) ]]; then
-      echo "Error: --key or --crt missing, and --skip-vpn prevents fallback."
-      exit 1
-  else
-      echo "--skip-vpn active, skipping VPN certificate copy."
   fi
 
-  echo "Running chroot..."
-  touch "$CHROOT_CMD_FILE"
+  # --- Optionally refresh cartken packages from gitlab BEFORE the chroot ---
+  # The rootfs already has /root/packages/ baked in by setup_tegra_package.sh,
+  # but that snapshot is whatever tag was passed at that time (default: latest).
+  # When --tag is given, re-pull the named release and overwrite the rootfs's
+  # copy so the chroot's `dpkg -i` lines (notably cartken-jetson-sshd-v2.deb)
+  # come from the right tag. Lets you re-flash an existing rootfs at a newer
+  # tag without re-running setup_tegra_package.sh end to end.
+  #
+  # Done before SSH CA provisioning so a missing/incomplete tag aborts before
+  # we burn a backend host-cert request.
+  if [[ -n "$TAG" ]]; then
+    GET_PACKAGES_SH="$SCRIPT_DIRECTORY/get_packages.sh"
+    if [[ ! -x "$GET_PACKAGES_SH" ]]; then
+      echo "Error: $GET_PACKAGES_SH not found or not executable." >&2
+      exit 1
+    fi
+    echo "Refreshing cartken packages at tag '$TAG' into $L4T_DIR/packages/..."
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[dry-run] (cd $L4T_DIR && $GET_PACKAGES_SH --access-token <redacted> --tag $TAG)"
+      echo "[dry-run] verify $L4T_DIR/packages/cartken-jetson-debians/cartken-jetson-sshd-v2*.deb exists"
+      echo "[dry-run] rm -rf $ROOTFS_PATH/root/packages"
+      echo "[dry-run] cp -r $L4T_DIR/packages $ROOTFS_PATH/root/"
+    else
+      (cd "$L4T_DIR" && "$GET_PACKAGES_SH" --access-token "$ACCESS_TOKEN" --tag "$TAG")
+
+      # The whole point of routing through --tag (vs trusting whatever was
+      # already in /root/packages) is to guarantee v2 SSH support, so abort
+      # loudly if the tag is missing the v2 deb instead of silently flashing
+      # a robot that won't have cartken-sshd.
+      NEW_DEBS_DIR="$L4T_DIR/packages/cartken-jetson-debians"
+      if ! ls "$NEW_DEBS_DIR"/cartken-jetson-sshd-v2*.deb >/dev/null 2>&1; then
+        echo "Error: tag '$TAG' did not include cartken-jetson-sshd-v2*.deb in" >&2
+        echo "  $NEW_DEBS_DIR" >&2
+        echo "Aborting: this tag would flash a robot without v2 SSH support." >&2
+        exit 1
+      fi
+
+      echo "Replacing $ROOTFS_PATH/root/packages with the freshly-pulled copy."
+      rm -rf "$ROOTFS_PATH/root/packages"
+      cp -r "$L4T_DIR/packages" "$ROOTFS_PATH/root/"
+    fi
+  fi
+
+  # --- Provision SSH CA material BEFORE the chroot ---
+  # The chroot installs cartken-jetson-sshd-v2.deb; its postinst will land on
+  # /etc/ssh/cartken_sshd/ and the unit will start on first boot. Bake the
+  # files first so the daemon comes up working, without an AWX round-trip.
+  if [[ "$SKIP_SSH_CA" -eq 1 ]]; then
+    echo "--skip-ssh-ca set; not provisioning /etc/ssh/cartken_sshd/."
+    echo "WARNING: cartken-jetson-sshd-v2 will still be installed in the rootfs"
+    echo "and cartken-sshd will fail to start on first boot until AWX"
+    echo "update-jetson writes the missing files."
+  else
+    # Mirrors common/robot-sshd-config-update from it-management. cartken-dev
+    # signs the host key and fetches the user CA via the operator's session.
+    if [[ -z "${SUDO_USER:-}" ]]; then
+      echo "Error: SUDO_USER is unset; cannot run cartken under a non-root user." >&2
+      echo "Re-run via 'sudo $0 ...' from a normal user shell that has run" >&2
+      echo "  cartken account login $BACKEND_ENV" >&2
+      exit 1
+    fi
+
+    USER_CA_HELPER="$SCRIPT_DIRECTORY/fetch_user_ca_pubkey.py"
+    if [[ ! -f "$USER_CA_HELPER" ]]; then
+      echo "Error: helper '$USER_CA_HELPER' is missing." >&2
+      exit 1
+    fi
+
+    CARTKEN_BIN="$(resolve_cartken_bin || true)"
+    if [[ -z "$CARTKEN_BIN" ]]; then
+      echo "Error: 'cartken' could not be found for user '$SUDO_USER'." >&2
+      echo "Looked in: ~$SUDO_USER/.local/bin, login PATH, /usr/local/bin, /usr/bin." >&2
+      echo "Install cartken-dev and run 'cartken account login $BACKEND_ENV'," >&2
+      echo "or re-run this script with --skip-ssh-ca to defer SSH CA setup to AWX." >&2
+      exit 1
+    fi
+    echo "Using cartken at: $CARTKEN_BIN"
+
+    CARTKEN_SSHD_DIR="$ROOTFS_PATH/etc/ssh/cartken_sshd"
+    HOST_KEY_PATH="$CARTKEN_SSHD_DIR/ssh_host_cartken_ed25519_key"
+    HOST_PUB_PATH="${HOST_KEY_PATH}.pub"
+    HOST_CERT_PATH="${HOST_KEY_PATH}-cert.pub"
+    USER_CA_PATH="$CARTKEN_SSHD_DIR/ssh_user_ca.pub"
+    PRINCIPALS_PATH="$CARTKEN_SSHD_DIR/authorized_principals"
+    PRINCIPALS_LOCAL_PATH="$CARTKEN_SSHD_DIR/authorized_principals_local"
+
+    echo "Provisioning $CARTKEN_SSHD_DIR for cart$ROBOT_NUMBER (env=$BACKEND_ENV)..."
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "[dry-run] mkdir -p $CARTKEN_SSHD_DIR && chmod 0755 $CARTKEN_SSHD_DIR"
+      echo "[dry-run] rm -f $HOST_KEY_PATH $HOST_PUB_PATH $HOST_CERT_PATH"
+      echo "[dry-run] ssh-keygen -t ed25519 -N '' -f $HOST_KEY_PATH -C cart$ROBOT_NUMBER"
+      echo "[dry-run] sudo -u $SUDO_USER mktemp -d -t cartken_host_cert.XXXXXX  (then \$BASE/out as --output)"
+      echo "[dry-run] sudo -u $SUDO_USER $CARTKEN_BIN robot ssh-cert $ROBOT_NUMBER host -k $HOST_PUB_PATH -o <tmp>/out --env $BACKEND_ENV --validity-duration $HOST_CERT_VALIDITY"
+      echo "[dry-run] mv <tmp>/out/cert-0.pub $HOST_CERT_PATH"
+      echo "[dry-run] sudo -u $SUDO_USER mktemp -t cartken_user_ca.XXXXXX (then --output that path)"
+      echo "[dry-run] sudo -u $SUDO_USER python3 $USER_CA_HELPER --env $BACKEND_ENV --output <tmp>"
+      echo "[dry-run] mv <tmp> $USER_CA_PATH"
+      echo "[dry-run] write $PRINCIPALS_PATH and $PRINCIPALS_LOCAL_PATH"
+    else
+      mkdir -p "$CARTKEN_SSHD_DIR"
+      chmod 0755 "$CARTKEN_SSHD_DIR"
+
+      # Always regenerate: the rootfs may have been reconfigured for a different
+      # robot, in which case any pre-existing key is stale and would not match
+      # the cert we are about to sign. Remove host key + pub + any old cert
+      # before keygen so ssh-keygen does not prompt to overwrite.
+      rm -f "$HOST_KEY_PATH" "$HOST_PUB_PATH" "$HOST_CERT_PATH"
+      ssh-keygen -t ed25519 -N "" -f "$HOST_KEY_PATH" -C "cart$ROBOT_NUMBER"
+      chmod 0600 "$HOST_KEY_PATH"
+      chmod 0644 "$HOST_PUB_PATH"
+
+      # Short validity is intentional: AWX's common/robot-sshd-config-update
+      # re-signs the host cert on its first connect, so this only needs to
+      # cover the gap between flashing and the first AWX run plus a buffer.
+      #
+      # `cartken robot ssh-cert host -o <dir>` writes cert-N.pub files into
+      # <dir>; <dir> must NOT pre-exist. For host certs there is always
+      # exactly one cert (cert-0.pub). User certs may have multiple during
+      # CA rotation.
+      HOST_CERT_TMP_BASE="$(sudo -u "$SUDO_USER" mktemp -d -t cartken_host_cert.XXXXXX)"
+      HOST_CERT_TMP_DIR="$HOST_CERT_TMP_BASE/out"
+
+      echo "Signing host certificate (validity=$HOST_CERT_VALIDITY) via 'cartken robot ssh-cert ... host'..."
+      # -H so cartken's Python sees the right HOME for user-site packages
+      # (avoids ModuleNotFoundError: cartken_dev when run from sudo'd script).
+      sudo -u "$SUDO_USER" -H -E -- "$CARTKEN_BIN" robot ssh-cert "$ROBOT_NUMBER" host \
+        --public-key "$HOST_PUB_PATH" \
+        --output "$HOST_CERT_TMP_DIR" \
+        --validity-duration "$HOST_CERT_VALIDITY" \
+        --env "$BACKEND_ENV"
+
+      if [[ ! -f "$HOST_CERT_TMP_DIR/cert-0.pub" ]]; then
+        echo "Error: cartken did not produce $HOST_CERT_TMP_DIR/cert-0.pub" >&2
+        ls -la "$HOST_CERT_TMP_DIR" >&2 || true
+        rm -rf "$HOST_CERT_TMP_BASE"
+        exit 1
+      fi
+      mv "$HOST_CERT_TMP_DIR/cert-0.pub" "$HOST_CERT_PATH"
+      chmod 0644 "$HOST_CERT_PATH"
+      rm -rf "$HOST_CERT_TMP_BASE"
+
+      echo "Fetching user CA public key(s) via fetch_user_ca_pubkey.py..."
+      # The helper runs as $SUDO_USER (it uses the user's cartken-dev session),
+      # so it can't write directly into the root-owned rootfs. Write to a
+      # user-owned tmp file first, then mv into place as root. Same pattern as
+      # the host-cert step above. -H so cartken_dev imports cleanly.
+      USER_CA_TMP="$(sudo -u "$SUDO_USER" mktemp -t cartken_user_ca.XXXXXX)"
+      sudo -u "$SUDO_USER" -H -E -- python3 "$USER_CA_HELPER" \
+        --env "$BACKEND_ENV" \
+        --output "$USER_CA_TMP"
+      mv "$USER_CA_TMP" "$USER_CA_PATH"
+      chmod 0644 "$USER_CA_PATH"
+
+      # Mirror common/robot-sshd-config-update on it-management
+      # (awx_ssh_ca_integration_2): authorized_principals = cart<N> + admin;
+      # authorized_principals_local additionally allows cart<N>-local and
+      # admin-local for hotspot / inter-board connections.
+      printf 'cart%s\nadmin\n' "$ROBOT_NUMBER" > "$PRINCIPALS_PATH"
+      chmod 0644 "$PRINCIPALS_PATH"
+      printf 'cart%s\ncart%s-local\nadmin\nadmin-local\n' \
+        "$ROBOT_NUMBER" "$ROBOT_NUMBER" > "$PRINCIPALS_LOCAL_PATH"
+      chmod 0644 "$PRINCIPALS_LOCAL_PATH"
+
+      chown -R 0:0 "$CARTKEN_SSHD_DIR"
+      echo "Provisioned $CARTKEN_SSHD_DIR for cart$ROBOT_NUMBER."
+    fi
+  fi
+
+  echo "Running chroot (installs cartken-jetson-sshd-v2 among others)..."
+  if [[ ! -s "$CHROOT_CMD_FILE" ]]; then
+    echo "Error: chroot command file '$CHROOT_CMD_FILE' is missing or empty." >&2
+    echo "Refusing to run chroot with no commands; this would silently leave" >&2
+    echo "cartken-jetson-sshd-v2 (and others) uninstalled." >&2
+    exit 1
+  fi
   run sudo "$L4T_DIR/jetson_chroot.sh" "$ROOTFS_PATH" "$SOC" "$CHROOT_CMD_FILE"
 
   # --- Set hostname and env ---
   NEW_HOSTNAME="cart${ROBOT_NUMBER}jetson"
-  echo "Setting hostname to $NEW_HOSTNAME in $ROOTFS_PATH/etc/hostname"
-  echo "$NEW_HOSTNAME" > "$ROOTFS_PATH/etc/hostname"
-
-  echo "Updating /etc/hosts to reflect new hostname"
-  if grep -q "^127\.0\.1\.1" "$ROOTFS_PATH/etc/hosts"; then
-    sed -i "s/^127\.0\.1\.1.*/127.0.1.1    $NEW_HOSTNAME/" "$ROOTFS_PATH/etc/hosts"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] echo $NEW_HOSTNAME > $ROOTFS_PATH/etc/hostname"
+    echo "[dry-run] update 127.0.1.1 line in $ROOTFS_PATH/etc/hosts to $NEW_HOSTNAME"
+    echo "[dry-run] set CARTKEN_CART_NUMBER=$ROBOT_NUMBER in $ROOTFS_PATH/etc/environment"
   else
-    echo "127.0.1.1    $NEW_HOSTNAME" >> "$ROOTFS_PATH/etc/hosts"
-  fi
+    echo "Setting hostname to $NEW_HOSTNAME in $ROOTFS_PATH/etc/hostname"
+    echo "$NEW_HOSTNAME" > "$ROOTFS_PATH/etc/hostname"
 
-  echo "Writing CARTKEN_CART_NUMBER=$ROBOT_NUMBER to /etc/environment"
-  if grep -q "^CARTKEN_CART_NUMBER=" "$ROOTFS_PATH/etc/environment"; then
-    sed -i "s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$ROBOT_NUMBER/" "$ROOTFS_PATH/etc/environment"
-  else
-    echo "CARTKEN_CART_NUMBER=$ROBOT_NUMBER" >> "$ROOTFS_PATH/etc/environment"
+    echo "Updating /etc/hosts to reflect new hostname"
+    if grep -q "^127\.0\.1\.1" "$ROOTFS_PATH/etc/hosts"; then
+      sed -i "s/^127\.0\.1\.1.*/127.0.1.1    $NEW_HOSTNAME/" "$ROOTFS_PATH/etc/hosts"
+    else
+      echo "127.0.1.1    $NEW_HOSTNAME" >> "$ROOTFS_PATH/etc/hosts"
+    fi
+
+    echo "Writing CARTKEN_CART_NUMBER=$ROBOT_NUMBER to /etc/environment"
+    if grep -q "^CARTKEN_CART_NUMBER=" "$ROOTFS_PATH/etc/environment"; then
+      sed -i "s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$ROBOT_NUMBER/" "$ROOTFS_PATH/etc/environment"
+    else
+      echo "CARTKEN_CART_NUMBER=$ROBOT_NUMBER" >> "$ROOTFS_PATH/etc/environment"
+    fi
   fi
 fi
 
