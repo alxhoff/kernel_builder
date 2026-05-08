@@ -1,7 +1,19 @@
 #!/bin/bash
-# Interactive menuconfig-style TUI over the kernel_builder workflows.
-# See bin/README.md for the full alias list.
+# Interactive menuconfig-style TUI (Textual). Legacy whiptail: scripts/menu/kb-menu-legacy.sh
+# Deps: pip install -r python/requirements-ui.txt (or use .venv-kbmenu — see scripts/menu/README.md)
 
 set -e
 REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." &> /dev/null && pwd)"
-exec "$REPO_ROOT/scripts/menu/kb-menu.sh" "$@"
+cd "$REPO_ROOT"
+export PYTHONPATH="$REPO_ROOT/python${PYTHONPATH:+:$PYTHONPATH}"
+
+if [[ -n "${KB_MENU_PYTHON:-}" && -x "${KB_MENU_PYTHON}" ]]; then
+	exec "${KB_MENU_PYTHON}" -m kb_menu "$@"
+fi
+if [[ -x "$REPO_ROOT/.venv-kbmenu/bin/python" ]]; then
+	exec "$REPO_ROOT/.venv-kbmenu/bin/python" -m kb_menu "$@"
+fi
+if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+	exec "$REPO_ROOT/.venv/bin/python" -m kb_menu "$@"
+fi
+exec python3 -m kb_menu "$@"

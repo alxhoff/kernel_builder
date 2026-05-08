@@ -1,0 +1,4 @@
+# Optional UI for kb-menu (Textual TUI). Use a venv, e.g.:
+#   python3 -m venv .venv && .venv/bin/pip install -r python/requirements-ui.txt
+#   .venv/bin/python -m kb_menu
+textual>=0.80.0

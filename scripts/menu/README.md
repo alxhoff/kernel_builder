@@ -1,8 +1,8 @@
 # menu/
 
-`menuconfig`-style TUI for the kernel_builder workflows. Single-file
-whiptail front end that exposes the rootfs_prep / OTA / kernel-rebuild /
-deploy entry points as guided forms instead of long flag-laden invocations.
+**menuconfig-style TUI** for kernel_builder: **Textual** (Python), with a
+split option list + help panel. Same persisted config as before
+(`.kb-menu.config`).
 
 ## Run
 
@@ -10,59 +10,57 @@ deploy entry points as guided forms instead of long flag-laden invocations.
 ./bin/kb-menu
 ```
 
-(or `./scripts/menu/kb-menu.sh` directly)
+Install UI dependencies once (use a venv if your distro blocks `pip install`):
 
-Requires `whiptail` (Ubuntu/Debian: `sudo apt install whiptail`; Arch /
-Manjaro: `sudo pacman -S libnewt`). No other deps.
+```bash
+python3 -m venv .venv-kbmenu
+.venv-kbmenu/bin/pip install -r python/requirements-ui.txt
+```
 
-## Top-level menu
+`bin/kb-menu` prefers, in order: `$KB_MENU_PYTHON`, `.venv-kbmenu/bin/python`,
+`.venv/bin/python`, then `python3`.
 
-| Item | Wraps |
-|------|-------|
-| Build BSP rootfs | `scripts/flash/rootfs_prep/setup_tegra_package.sh` (with optional `--docker`) |
-| Configure & flash robot | `scripts/flash/rootfs_prep/setup_rootfs_as_robot_for_flashing.sh` |
-| Build + flash | Chains the two above with shared values |
-| OTA workflows | `scripts/ota/create_full_ota_update.sh`, `scripts/ota/setup_rootfs_as_robot_for_ota.sh` |
-| Kernel rebuild | `helpers/build_kernel.sh` inside an extracted BSP |
-| Deploy | `scripts/deploy/update_bootloader.sh`, `update_uefi.sh`, `create_ekb_update.sh` |
-| Utilities | List extracted BSPs, drop into `jetson_chroot.sh`, view last-run log |
-| Settings | Edit persisted defaults |
+**Kernel tags** actions need **`jq`** (same as `scripts/release/kernel_tags.sh`).
 
-Each leaf collects its inputs through a series of whiptail forms (radio
-list / inputbox / passwordbox / checklist), shows you a confirmation
-dialog with the assembled values, and then exits whiptail and runs the
-real script with normal terminal output. After the script exits the
-menu reappears.
+### Legacy whiptail UI
+
+If you need the old newt dialogs:
+
+```bash
+./scripts/menu/kb-menu-legacy.sh
+```
+
+(requires `whiptail` / libnewt)
+
+## Layout
+
+- **Left:** categories / actions (arrow keys, Enter to run).
+- **Right:** short help for the highlighted line (menuconfig-style).
+- **Esc:** back (or quit from the top menu).
+- **q:** quit.
+- Confirm / input / checklists open as modals; commands run in a log modal
+  (output is also tee’d to `.kb-menu.last.log`).
+
+## Main menu (categories)
+
+| Category | Meaning |
+|----------|---------|
+| **Jetson BSP & rootfs** | `setup_tegra_package.sh`, robot flash rootfs, or both. Not `storage/kernels` compile. |
+| **Kernel** | `kernel_builder.py` compile, `compile_and_package.sh`, Kconfig, clean/mrproper, Docker, BSP `build_kernel.sh`. |
+| **Kernel tags** | `kernel_tags.sh` — manifest, deploy, verify, etc. |
+| **OTA** | `create_full_ota_update.sh`, `setup_rootfs_as_robot_for_ota.sh`. |
+| **Running device** | Bootloader / UEFI / EKB under `scripts/deploy/`. |
+| **Workspace** | List BSPs, chroot, last log. |
+| **Settings** | Edit `.kb-menu.config` defaults. |
 
 ## Persistence
 
-All form values land in `scripts/menu/.kb-menu.config` (chmod 600,
-gitignored) so re-running pre-fills your previous choices — the same
-ergonomics as kernel `make menuconfig`'s `.config`.
+`scripts/menu/.kb-menu.config` (chmod 600, gitignored) stores `KB_MENU_*`
+variables — compatible with the legacy bash loader.
 
-This file may contain a GitLab access token. It's never committed
-(`.gitignore`'d) but it does live on disk in plain text, just like a
-`~/.netrc`. If you'd rather not persist it, clear it from
-**Settings → Access token → clear** and the TUI will prompt for it on
-each run that needs it.
+## Adding a workflow
 
-## Logs
-
-The most recent command's full output is tee'd to
-`scripts/menu/.kb-menu.last.log` (also gitignored) and viewable from
-**Utilities → View last command log**.
-
-## Adding a new workflow
-
-`kb-menu.sh` is one file with one menu function per workflow. To add a
-new one:
-
-1. Define `menu_<thing>()` that collects inputs via the existing
-   `prompt_*` / `form_advanced_options` / `wt --menu` helpers, then
-   builds an `cmd=( ... )` array and finishes with
-   `confirm_run` + `run_cmd "${cmd[@]}"`.
-2. Add an entry to the relevant `wt --menu` (top-level or a submenu).
-
-Re-use the existing helpers — `prompt_jetpack`, `prompt_soc`,
-`prompt_env`, `discover_bsps`, `ensure_access_token`,
-`form_advanced_options` — rather than re-rolling the same prompts.
+1. Add an async function in `python/kb_menu/workflows.py` (or a submodule).
+2. Wire it from a `MenuEntry` in `python/kb_menu/app.py` or an inner
+   `MenuHubScreen` in `workflows.py`.
+3. Use `app.dlg_*` helpers and `await app.run_cmd([...])` for the real command.

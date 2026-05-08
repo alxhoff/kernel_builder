@@ -20,7 +20,7 @@ them from the repo root without typing long paths. Every wrapper simply
 | `logs` | `scripts/device/logs/retrieve_logs.sh` | Pull kernel / system logs from a device over SSH |
 | `tegra-pkg` | `scripts/flash/rootfs_prep/setup_tegra_package.sh --docker` | Download + extract Linux_for_Tegra (Docker) |
 | `ota-rootfs` | `scripts/ota/setup_rootfs_as_robot_for_ota.sh` | Setup rootfs as OTA-ready robot image |
-| `kb-menu` | `scripts/menu/kb-menu.sh` | `menuconfig`-style TUI: guided forms over rootfs_prep / OTA / kernel / deploy |
+| `kb-menu` | `python -m kb_menu` (see `python/requirements-ui.txt`) | Textual TUI: menuconfig-style hub + modals; legacy: `scripts/menu/kb-menu-legacy.sh` |
 | `gen-ctags` | `scripts/ctags/generate_ctags.sh` | Generate ctags index files over kernel source |
 
 ## Usage

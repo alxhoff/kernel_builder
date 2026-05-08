@@ -1,7 +1,7 @@
 # Build outputs and runtime data, all under storage/
-storage/kernels/*
 it-management
 repo
+storage/kernels/*
 !storage/kernels/.gitkeep
 storage/toolchains/*
 !storage/toolchains/.gitkeep
@@ -17,4 +17,5 @@ tags
 .dockerfile_hash
 __pycache__
 .cache/
+.venv-kbmenu/
 scripts/rootfs/

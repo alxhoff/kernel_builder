@@ -114,8 +114,10 @@ files are present. Templates with the `.template` suffix ship in the repo.
 
 ## Interactive workflow (`kb-menu`)
 
-For a guided walkthrough — pick a JetPack version, build a BSP, flash a
-robot, run an OTA update, etc. — start the TUI:
+The TUI groups work by **category**: **Jetson BSP & rootfs** (L4T / flash
+image prep) is separate from **Kernel** (trees under `storage/kernels/` —
+compile, package, menuconfig, etc.), plus OTA, on-device firmware, and
+workspace helpers.
 
 ```bash
 ./bin/kb-menu

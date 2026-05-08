@@ -3,8 +3,22 @@
 import argparse
 import os
 import subprocess
+import sys
 from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
+
+
+def _host_cross_compile_suffix(toolchain_name: str | None, toolchain_version: str | None) -> str:
+    """Absolute CROSS_COMPILE prefix for host builds (make -C kernel uses kernel cwd)."""
+    if not toolchain_name or not toolchain_version:
+        return ""
+    bindir = os.path.abspath(
+        os.path.join(
+            "storage", "toolchains", toolchain_name, toolchain_version, "bin", toolchain_name
+        )
+    )
+    return f" CROSS_COMPILE={bindir}-"
+
 
 def locate_dtb_file(kernel_name, dtb_name):
     kernel_source_dir = os.path.join("storage", "kernels", kernel_name, "kernel", "kernel")
@@ -30,12 +44,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("storage", "kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
+    cc_suffix = _host_cross_compile_suffix(toolchain_name, toolchain_version)
 
     # Base command for invoking make
-    base_command = f"make -C {kernel_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
-
-    if toolchain_name and toolchain_version:
-        base_command += f" CROSS_COMPILE={os.path.join('storage', 'toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
+    base_command = f"make -C {kernel_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}{cc_suffix}"
 
     if localversion:
         base_command += f" LOCALVERSION=-{localversion}"
@@ -60,9 +72,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
         if os.path.exists(top_level_makefile):
             make_dir = os.path.join(kernels_dir, kernel_name)
 
-            dtbs_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
-            if toolchain_name and toolchain_version:
-                dtbs_make_command += f" CROSS_COMPILE={os.path.join('storage', 'toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
+            dtbs_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}{cc_suffix}"
 
             dtbs_command = f"{dtbs_make_command} dtbs KERNEL_HEADERS={kernel_dir}"
             combined_command += f"{dtbs_command} && "
@@ -74,9 +84,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
         if os.path.exists(top_level_makefile):
             make_dir = os.path.join(kernels_dir, kernel_name)
 
-            modules_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}"
-            if toolchain_name and toolchain_version:
-                modules_make_command += f" CROSS_COMPILE={os.path.join('storage', 'toolchains', toolchain_name, toolchain_version, 'bin', toolchain_name)}-"
+            modules_make_command = f"make -C {make_dir} ARCH={arch} -j{threads if threads else '$(nproc)'}{cc_suffix}"
 
             modules_command = f"{modules_make_command} modules KERNEL_HEADERS={kernel_dir}"
             combined_command += f"{modules_command} && "
@@ -107,10 +115,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
                                         overlay_paths.append(find_output.splitlines()[0])
                                     else:
                                         print(f"Error: Overlay file {overlay_file} not found.")
-                                        return
+                                        return 1
                                 except subprocess.CalledProcessError:
                                     print(f"Error: Failed to find overlay file {overlay_file}.")
-                                    return
+                                    return 1
 
                             output_dtb_name = f"{os.path.splitext(dtb_name)[0]}-merged.dtb"
                             output_dtb_path = os.path.join(os.path.dirname(dtb_path), output_dtb_name)
@@ -122,10 +130,10 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
                                     subprocess.run(fdtoverlay_command, shell=True, check=True)
                                 except FileNotFoundError:
                                     print("Error: fdtoverlay command not found. Please install it.")
-                                    return
+                                    return 1
                                 except subprocess.CalledProcessError as e:
                                     print(f"Error running fdtoverlay: {e}")
-                                    return
+                                    return 1
 
                             print(f"Renaming {output_dtb_path} to {dtb_path}")
                             if not dry_run:
@@ -156,7 +164,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
 
         # Copy the DTB file with modified filename to include localversion
         if dtb_name:
-            dtb_path = locate_dtb_file(kernel_dir, dtb_name)
+            dtb_path = locate_dtb_file(kernel_name, dtb_name)
             if dtb_path:
                 new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
                 combined_command += f"cp {dtb_path} ../modules/boot/{new_dtb_name}"
@@ -171,9 +179,11 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
     # Run the combined command directly on the host
     if dry_run:
         print(f"[Dry-run] Would run combined command: {combined_command}")
-    else:
-        print(f"Running combined command: {combined_command}")
-        subprocess.Popen(combined_command, shell=True).wait()
+        return 0
+    print(f"Running combined command: {combined_command}")
+    proc = subprocess.run(combined_command, shell=True)
+    return proc.returncode
+
 
 def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
     # Compiles the kernel using Docker for encapsulation.
@@ -192,9 +202,14 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
     # Get total number of CPUs on the machine
     total_cpus = os.cpu_count()
 
+    # -t requires a real TTY; kb-menu (and CI) pipe stdout to tee, which breaks
+    # "docker run -it" with "the input device is not a TTY". Batch builds do
+    # not need a pseudo-TTY.
+    docker_tty = ["-it"] if (sys.stdin.isatty() and sys.stdout.isatty()) else []
+
     # Construct the Docker command
     docker_command_base = [
-        "docker", "run", "--rm", "-it", "--init", "-u", f"{user_id}:{group_id}",
+        "docker", "run", "--rm", *docker_tty, "--init", "-u", f"{user_id}:{group_id}",
         "--cpus=" + str(total_cpus)
     ] + volume_args + [
         "-w", "/builder", "kernel_builder", "/bin/bash", "-c"
@@ -293,19 +308,21 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
     else:
         full_command_phase_1 = docker_command_base + [combined_command_phase_1]
         print(f"Running Docker command (Phase 1): {' '.join(full_command_phase_1)}")
-        subprocess.Popen(full_command_phase_1, env=env).wait()
+        phase1_rc = subprocess.Popen(full_command_phase_1, env=env).wait()
+        if phase1_rc != 0:
+            return phase1_rc
 
     # Phase 1.5: Handle Overlays
     if overlays:
         if not dtb_name:
             print("Error: --dtb-name must be provided when using --overlays.")
-            return
+            return 1
 
         # Find the base DTB file path inside the container
         base_dtb_path_host = locate_dtb_file(kernel_name, dtb_name)
         if not base_dtb_path_host:
             print(f"Error: Base DTB file {dtb_name} not found.")
-            return
+            return 1
 
         base_dtb_path_docker = base_dtb_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
 
@@ -323,10 +340,10 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
                     overlay_paths_docker.append(overlay_path_docker)
                 else:
                     print(f"Error: Overlay file {overlay_file} not found.")
-                    return
+                    return 1
             except subprocess.CalledProcessError:
                 print(f"Error: Failed to find overlay file {overlay_file}.")
-                return
+                return 1
 
         # Construct the fdtoverlay command for docker
         output_dtb_name = f"{os.path.splitext(dtb_name)[0]}-merged.dtb"
@@ -342,7 +359,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
             process.wait()
             if process.returncode != 0:
                 print("Error: fdtoverlay command failed.")
-                return
+                return 1
 
         # Now, on the host, rename the file
         output_dtb_path_host = os.path.join(os.path.dirname(base_dtb_path_host), output_dtb_name)
@@ -379,7 +396,10 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
         process.wait()
         if process.returncode != 0:
             print("Error: Docker encountered an error during execution.")
-            exit(process.returncode)
+            return process.returncode
+
+    return 0
+
 
 def main():
     parser = argparse.ArgumentParser(description="Kernel Builder Script")
@@ -459,8 +479,44 @@ def main():
     elif args.command == "clone-device-tree":
         clone_device_tree(device_tree_url=args.device_tree_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "compile":
+        if (
+            args.toolchain_name
+            and args.toolchain_version
+            and not args.dry_run
+        ):
+            gcc_rel = os.path.join(
+                "storage",
+                "toolchains",
+                args.toolchain_name,
+                args.toolchain_version,
+                "bin",
+                f"{args.toolchain_name}-gcc",
+            )
+            if not os.path.isfile(os.path.abspath(gcc_rel)):
+                abs_gcc = os.path.abspath(gcc_rel)
+                print(
+                    f"Error: Cross-compiler not found: {abs_gcc}",
+                    file=sys.stderr,
+                )
+                print(
+                    "Expected layout: storage/toolchains/<toolchain-name>/<toolchain-version>/bin/<toolchain-name>-gcc",
+                    file=sys.stderr,
+                )
+                print(
+                    "Clone the toolchain from the repository root, for example:\n"
+                    "  python3 python/kernel_builder.py clone-toolchain \\\n"
+                    "    --toolchain-url https://github.com/alxhoff/Jetson-Linux-Toolchain \\\n"
+                    "    --toolchain-name aarch64-buildroot-linux-gnu \\\n"
+                    "    --toolchain-version 9.3",
+                    file=sys.stderr,
+                )
+                print(
+                    "If you use a different prefix, set --toolchain-name / --toolchain-version to match the bin/ filenames.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
         if args.host_build:
-            compile_kernel_host(
+            rc = compile_kernel_host(
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
@@ -476,10 +532,10 @@ def main():
                 build_dtb=args.build_dtb,
                 build_modules=args.build_modules,
                 overlays=args.overlays,
-                dry_run=args.dry_run
+                dry_run=args.dry_run,
             )
         else:
-            compile_kernel_docker(
+            rc = compile_kernel_docker(
                 kernel_name=args.kernel_name,
                 arch=args.arch,
                 toolchain_name=args.toolchain_name,
@@ -496,8 +552,9 @@ def main():
                 build_dtb=args.build_dtb,
                 build_modules=args.build_modules,
                 overlays=args.overlays,
-                dry_run=args.dry_run
+                dry_run=args.dry_run,
             )
+        sys.exit(rc)
     elif args.command == "inspect":
         inspect_docker_image()
     elif args.command == "cleanup":
