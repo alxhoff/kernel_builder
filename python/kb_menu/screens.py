@@ -38,7 +38,8 @@ class MenuHubScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield Static(
-            "↑↓ move · Enter open · Esc back · q quit — pick a row; help for that item is on the right.",
+            "↑↓ move · Enter open · Esc back · q quit — help for the highlighted row is on the right "
+            "(scroll the help panel when text is long).",
             id="nav-hint",
             markup=False,
         )

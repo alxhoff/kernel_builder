@@ -127,48 +127,84 @@ class KbMenuApp(App[None]):
         self.push_screen(
             MenuHubScreen(
                 "kb-menu",
-                "BSP/rootfs vs kernel trees — choose a category",
+                "Cartken kernel + Jetson bring-up — pick an area; highlight a row for full help on the right",
                 [
                     MenuEntry(
                         "bsp",
-                        "Jetson BSP & rootfs",
-                        "L4T extract, setup_tegra_package, robot flash rootfs — not kernel tree compile.",
+                        "Jetson BSP & rootfs (L4T on disk)",
+                        (
+                            "Everything that prepares NVIDIA L4T under bsp/ and shapes a rootfs for "
+                            "a robot before imaging.\n\n"
+                            "• Prepare — download/extract L4T, apply Cartken GitLab tag, drivers, "
+                            "optional kernel/display/chroot (setup_tegra_package.sh).\n"
+                            "• Customize rootfs — take an existing BSP tree and add cart<robot> "
+                            "identity, certs, env, optional tag pull (setup_rootfs_as_robot_for_"
+                            "flashing.sh). Not the same as compiling a kernel in storage/kernels/.\n"
+                            "• Full pipeline — both steps in order.\n\n"
+                            "Open this submenu for longer explanations per action."
+                        ),
                         wf.open_bsp_menu,
                     ),
                     MenuEntry(
                         "kernel",
-                        "Kernel trees",
-                        "compile, .deb packaging, Kconfig, clean, Docker image, BSP-tree rebuild.",
+                        "Kernel trees (storage/kernels)",
+                        (
+                            "Work on standalone kernel checkouts: compile, build .deb packages, "
+                            "modules-only builds, Kconfig editors, clean/mrproper, Docker image "
+                            "management, and in-BSP rebuild via Linux_for_Tegra. This is the "
+                            "day-to-day kernel development path separate from flashing rootfs."
+                        ),
                         wf.open_kernel_menu,
                     ),
                     MenuEntry(
                         "releases",
-                        "Kernel tags & releases",
-                        "kernel_tags.sh — manifest, production_kernels, deploy, verify (needs jq).",
+                        "Kernel tags & releases (kernel_tags)",
+                        (
+                            "Release engineering: list/show tags, export manifest, create or delete "
+                            "tags, promote lifecycle status, diff releases, verify on hardware, "
+                            "deploy .deb. Requires jq. Uses scripts/release/kernel_tags.sh and "
+                            "related storage for manifests and archives."
+                        ),
                         wf.open_releases_menu,
                     ),
                     MenuEntry(
                         "ota",
-                        "OTA",
-                        "create_full_ota_update.sh and OTA rootfs setup.",
+                        "OTA updates",
+                        (
+                            "Build full OTA payloads and prepare rootfs trees for over-the-air "
+                            "delivery (scripts/ota/*). Different entry points and flags from USB "
+                            "flash rootfs prep in BSP."
+                        ),
                         wf.open_ota_menu,
                     ),
                     MenuEntry(
                         "device",
-                        "Running device",
-                        "Bootloader, UEFI, EKB over SSH.",
+                        "Running device (SSH)",
+                        (
+                            "Post-install maintenance on a live Jetson: bootloader update, UEFI "
+                            "update, EKB .deb workflow. Assumes network access and credentials; "
+                            "does not replace mass-flash or recovery."
+                        ),
                         wf.open_device_menu,
                     ),
                     MenuEntry(
                         "workspace",
-                        "Workspace",
-                        "List BSPs, chroot, view last command log.",
+                        "Workspace & inspection",
+                        (
+                            "Read-only / diagnostic helpers: list BSP folders under bsp/, enter a "
+                            "rootfs with jetson_chroot.sh, read the last command log from kb-menu "
+                            "runs (.kb-menu.last.log)."
+                        ),
                         wf.open_workspace_menu,
                     ),
                     MenuEntry(
                         "settings",
-                        "Settings",
-                        "Edit persisted defaults (.kb-menu.config).",
+                        "Saved defaults",
+                        (
+                            "Edit scripts/menu/.kb-menu.config (JetPack, SoC, token, toolchain, "
+                            "kernel tree name, DTB defaults, …). Wizards pre-fill from these "
+                            "values so you are not retyping toolchains and tags every time."
+                        ),
                         wf.open_settings_menu,
                     ),
                 ],

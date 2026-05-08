@@ -17,24 +17,73 @@ async def open_bsp_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Jetson BSP & rootfs",
-            "L4T / Linux_for_Tegra — not storage/kernels compile",
+            "L4T / Linux_for_Tegra under bsp/ — separate from kernel trees in storage/kernels/",
             [
                 MenuEntry(
                     "prepare",
-                    "Prepare BSP + rootfs",
-                    "setup_tegra_package.sh — extract L4T, rootfs, optional Docker.",
+                    "Prepare L4T BSP (download, extract, Cartken layers)",
+                    (
+                        "WHAT IT DOES\n"
+                        "Runs scripts/flash/rootfs_prep/setup_tegra_package.sh (sudo). "
+                        "It fetches and unpacks the NVIDIA Jetson Linux (L4T) BSP for your JetPack "
+                        "version, applies Cartken-specific layers (drivers, pinmux, display stack, "
+                        "etc.) from GitLab using the tag you choose, and can build kernel/display "
+                        "pieces inside that BSP tree unless you skip them in Advanced.\n\n"
+                        "WHEN TO USE IT\n"
+                        "First time or when you need a fresh bsp/<version>/Linux_for_Tegra tree "
+                        "before customizing a rootfs. This step does not push an image to a robot; "
+                        "it prepares the source tree on disk.\n\n"
+                        "INPUTS\n"
+                        "JetPack version, SoC (orin/xavier), GitLab tag, access token, native vs "
+                        "Docker, plus Advanced flags (no-download, skip kernel build, chroot, …).\n\n"
+                        "OUTPUT\n"
+                        "Populated BSP layout under bsp/ suitable for the next step (robot rootfs "
+                        "customization) or for manual flashing workflows."
+                    ),
                     build_bsp,
                 ),
                 MenuEntry(
                     "flash",
-                    "Robot flash rootfs",
-                    "setup_rootfs_as_robot_for_flashing.sh — SSH CA, packages, flash.",
+                    "Customize rootfs for a robot (pre-flash)",
+                    (
+                        "WHAT IT DOES\n"
+                        "Runs scripts/flash/rootfs_prep/setup_rootfs_as_robot_for_flashing.sh (sudo). "
+                        "You select an already-extracted BSP (folder under bsp/) as --target-bsp. "
+                        "The script layers robot identity onto that rootfs: robot number "
+                        "(cart<N>), environment (production/staging/sandbox), host/SSH CA material "
+                        "with a validity window, optional VPN/CA steps, packages, and optional "
+                        "pull of a fresh GitLab tag into the tree.\n\n"
+                        "WHEN TO USE IT\n"
+                        "After Prepare (or if you already have a BSP tree). Use this when you want "
+                        "a rootfs ready to flash or image for a specific robot role—not when you "
+                        "only want to compile a kernel from storage/kernels/.\n\n"
+                        "INPUTS\n"
+                        "Target BSP folder, SoC, robot number, env, cert validity, whether to pull a "
+                        "new tag (needs token), Advanced (skip VPN, skip SSH CA, clean rootfs, "
+                        "dry-run).\n\n"
+                        "NOTE\n"
+                        "Name says 'flashing' because it prepares the image you will flash; the "
+                        "script itself runs on your host and modifies the rootfs tree."
+                    ),
                     flash_robot,
                 ),
                 MenuEntry(
                     "both",
-                    "Prepare then robot flash",
-                    "Runs prepare, then offers step 2 (flash).",
+                    "Full pipeline: prepare BSP, then customize rootfs",
+                    (
+                        "WHAT IT DOES\n"
+                        "Runs the Prepare wizard to completion, then asks whether to run the "
+                        "Customize rootfs for a robot wizard immediately afterward.\n\n"
+                        "WHEN TO USE IT\n"
+                        "End-to-end: from 'get L4T + Cartken BSP on disk' through 'this rootfs is "
+                        "configured for cart robot N'. Step 2 still shows its own prompts (target "
+                        "BSP, robot number, etc.) so you can align them with what Prepare just "
+                        "produced.\n\n"
+                        "WHEN NOT TO USE IT\n"
+                        "If you only need to refresh the BSP, use Prepare alone. If the BSP is "
+                        "already prepared and you only need another robot configuration, use "
+                        "Customize rootfs alone."
+                    ),
                     build_and_flash,
                 ),
             ],
@@ -48,21 +97,90 @@ async def open_kernel_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Kernel (storage/kernels)",
-            "Kernel source trees under storage/kernels/",
+            "Out-of-tree kernels under storage/kernels/<name>/ — not the L4T BSP kernel unless you point there",
             [
-                MenuEntry("compile", "Compile (no .deb)", "kernel_builder.py compile.", kernel_compile),
+                MenuEntry(
+                    "compile",
+                    "Compile kernel & modules (no .deb)",
+                    (
+                        "Runs python/kernel_builder.py compile (Docker by default, or host with "
+                        "--host-build in Advanced). Produces Image, modules tree, optional DTB "
+                        "copy under the kernel tree—no Debian package.\n\n"
+                        "Wizard covers tree, arch, localversion, config, build targets, threads, "
+                        "DTB/overlays from saved defaults, toolchain from Settings, and advanced "
+                        "flags (clean, dry-run, build-dtb, …)."
+                    ),
+                    kernel_compile,
+                ),
                 MenuEntry(
                     "package",
-                    "Build .deb package",
-                    "compile_and_package.sh (same as bin/package).",
+                    "Build & package as .deb",
+                    (
+                        "Runs scripts/release/compile_and_package.sh (same idea as bin/package): "
+                        "compile then wrap the result as an installable .deb, with optional "
+                        "kernel_tags metadata (--tag, description, status).\n\n"
+                        "Use when you need a releasable package, not just a build tree."
+                    ),
                     kernel_package,
                 ),
-                MenuEntry("modules", "Modules only", "make modules shortcut.", kernel_modules_only),
-                MenuEntry("kconfig", "Kconfig editors", "menuconfig / nconfig / xconfig / savedefconfig.", kernel_kconfig),
-                MenuEntry("clean", "make clean", "clean_kernel.sh.", kernel_clean),
-                MenuEntry("mrproper", "make mrproper", "mrproper_kernel.sh — wipes build tree.", kernel_mrproper),
-                MenuEntry("docker", "Docker image", "build / rebuild / inspect / cleanup kernel_builder image.", kernel_docker),
-                MenuEntry("rebuild", "Rebuild in BSP tree", "Linux_for_Tegra/build_kernel.sh.", kernel_rebuild_bsp),
+                MenuEntry(
+                    "modules",
+                    "Modules only (faster incremental)",
+                    (
+                        "Shortcut to kernel_builder.py with --build-target modules: rebuild kernel "
+                        "modules and modules_install layout only. Useful after source changes when "
+                        "you do not need a full Image rebuild."
+                    ),
+                    kernel_modules_only,
+                ),
+                MenuEntry(
+                    "kconfig",
+                    "Kernel configuration UIs",
+                    (
+                        "Runs scripts/build/kernel/* for menuconfig, nconfig, xconfig, or "
+                        "savedefconfig against the selected storage/kernels tree. Uses your "
+                        "saved toolchain. xconfig needs DISPLAY."
+                    ),
+                    kernel_kconfig,
+                ),
+                MenuEntry(
+                    "clean",
+                    "make clean (keep .config)",
+                    (
+                        "Runs clean_kernel.sh → kernel_builder compile --build-target clean. "
+                        "Removes most build products but keeps configuration; lighter than mrproper."
+                    ),
+                    kernel_clean,
+                ),
+                MenuEntry(
+                    "mrproper",
+                    "make mrproper (full tree reset)",
+                    (
+                        "Runs mrproper_kernel.sh — wipes the kernel build tree including .config. "
+                        "Use when you need a pristine tree; you will need to re-run defconfig/"
+                        "oldconfig afterward."
+                    ),
+                    kernel_mrproper,
+                ),
+                MenuEntry(
+                    "docker",
+                    "kernel_builder Docker image",
+                    (
+                        "Manage the kernel_builder container image: build, rebuild, inspect, or "
+                        "cleanup. Default compiles use this image unless you pass --host-build."
+                    ),
+                    kernel_docker,
+                ),
+                MenuEntry(
+                    "rebuild",
+                    "Rebuild inside BSP Linux_for_Tegra",
+                    (
+                        "Uses NVIDIA's build_kernel.sh under an extracted BSP (bsp/…/Linux_for_"
+                        "Tegra). This is the in-BSP kernel workflow, not storage/kernels. Pick "
+                        "BSP and options when prompted."
+                    ),
+                    kernel_rebuild_bsp,
+                ),
             ],
         )
     )
@@ -74,10 +192,29 @@ async def open_ota_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "OTA",
-            "Over-the-air payloads and rootfs",
+            "Artifacts for over-the-air updates (separate from USB flash rootfs prep)",
             [
-                MenuEntry("payload", "Full OTA payload", "create_full_ota_update.sh.", ota_payload),
-                MenuEntry("rootfs", "OTA rootfs", "setup_rootfs_as_robot_for_ota.sh.", ota_rootfs),
+                MenuEntry(
+                    "payload",
+                    "Build full OTA update payload",
+                    (
+                        "Runs scripts/ota/create_full_ota_update.sh. Bundles what the OTA pipeline "
+                        "expects (images, metadata, etc.) for a given robot/tag/BSP base. "
+                        "Confirm robots, JetPack, tag, and advanced VPN/dry-run options in the wizard."
+                    ),
+                    ota_payload,
+                ),
+                MenuEntry(
+                    "rootfs",
+                    "Prepare rootfs for OTA (not USB flash)",
+                    (
+                        "Runs scripts/ota/setup_rootfs_as_robot_for_ota.sh. Similar spirit to the "
+                        "flash-prep script but tuned for OTA delivery: robot number, SoC, tag, "
+                        "target/base BSP, optional skip flags. Use when your update path is OTA, "
+                        "not raw flash."
+                    ),
+                    ota_rootfs,
+                ),
             ],
         )
     )
@@ -89,11 +226,37 @@ async def open_device_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Running device",
-            "Firmware over SSH",
+            "Deploy to a live Jetson over SSH (assumes reachability and sudo where scripts require it)",
             [
-                MenuEntry("bootloader", "Bootloader", "update_bootloader.sh.", deploy_bootloader),
-                MenuEntry("uefi", "UEFI", "update_uefi.sh.", deploy_uefi),
-                MenuEntry("ekb", "EKB .deb", "create_ekb_update.sh.", deploy_ekb),
+                MenuEntry(
+                    "bootloader",
+                    "Update bootloader / flash partitions",
+                    (
+                        "Runs scripts/deploy/update_bootloader.sh against a host you specify. "
+                        "Used when you need to refresh bootloader-related components without a "
+                        "full reflash; follow on-device prompts and script safety checks."
+                    ),
+                    deploy_bootloader,
+                ),
+                MenuEntry(
+                    "uefi",
+                    "Update UEFI firmware",
+                    (
+                        "Runs scripts/deploy/update_uefi.sh. Pushes UEFI payloads appropriate to "
+                        "your BSP/device; confirm target IP/credentials in the flow."
+                    ),
+                    deploy_uefi,
+                ),
+                MenuEntry(
+                    "ekb",
+                    "EKB / encryption-bypass package (.deb)",
+                    (
+                        "Runs scripts/deploy/create_ekb_update.sh to build or stage an EKB .deb "
+                        "for devices that use NVIDIA's encrypted-boot workflow. Not every robot "
+                        "needs this—use when your security model calls for EKB updates."
+                    ),
+                    deploy_ekb,
+                ),
             ],
         )
     )
@@ -105,11 +268,37 @@ async def open_workspace_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Workspace",
-            "Inspect and chroot",
+            "Inspect repo state, enter a rootfs chroot, read logs — no flashing",
             [
-                MenuEntry("bsps", "List BSPs", "Extracted BSPs under bsp/.", util_list_bsps),
-                MenuEntry("chroot", "jetson_chroot", "Enter Jetson rootfs chroot.", util_chroot),
-                MenuEntry("log", "Last command log", ".kb-menu.last.log", util_view_log),
+                MenuEntry(
+                    "bsps",
+                    "List extracted BSPs",
+                    (
+                        "Shows which JetPack/BSP directories exist under bsp/ (output of Prepare "
+                        "or manual extracts). Use to pick a sensible --target-bsp before flash or "
+                        "OTA scripts."
+                    ),
+                    util_list_bsps,
+                ),
+                MenuEntry(
+                    "chroot",
+                    "Enter rootfs with jetson_chroot.sh",
+                    (
+                        "Runs scripts/utils/chroot/jetson_chroot.sh with a Linux_for_Tegra/rootfs "
+                        "path and SoC. Drops you into a shell inside the image for package tweaks, "
+                        "inspection, or debugging. Requires sudo."
+                    ),
+                    util_chroot,
+                ),
+                MenuEntry(
+                    "log",
+                    "View last kb-menu command log",
+                    (
+                        "Opens scripts/menu/.kb-menu.last.log — stdout/stderr from the most recent "
+                        "Run modal. Use when you need to copy errors or review a long build."
+                    ),
+                    util_view_log,
+                ),
             ],
         )
     )
@@ -122,39 +311,151 @@ async def open_settings_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Settings",
-            "Persisted in scripts/menu/.kb-menu.config",
+            "Saved defaults written to scripts/menu/.kb-menu.config (KB_MENU_*); wizards pre-fill from here",
             [
-                MenuEntry("jp", f"JetPack default ({c.get('JETPACK')})", "Default BSP folder / version.", settings_jetpack),
-                MenuEntry("soc", f"SoC ({c.get('SOC')})", "orin or xavier.", settings_soc),
-                MenuEntry("env", f"Env ({c.get('ENV')})", "production | staging | sandbox.", settings_env),
-                MenuEntry("tag", f"Tag ({c.get('TAG') or 'unset'})", "GitLab tag default.", settings_tag),
-                MenuEntry("token", "Access token", "GitLab token (masked).", settings_token),
-                MenuEntry("robot", f"Robot # ({c.get('ROBOT_NUMBER') or 'unset'})", "Default robot number.", settings_robot),
-                MenuEntry("validity", f"Cert validity ({c.get('HOST_CERT_VALIDITY')})", "e.g. 48h, 7d.", settings_validity),
-                MenuEntry("localver", f"localversion ({c.get('LOCALVERSION')})", "Kernel suffix default.", settings_localver),
-                MenuEntry("kname", f"Kernel tree ({c.get('KERNEL_NAME')})", "storage/kernels name.", settings_kname),
-                MenuEntry("arch", f"Compile arch ({c.get('COMPILE_ARCH')})", "arm64 | x86_64 | arm.", settings_arch),
+                MenuEntry(
+                    "jp",
+                    f"JetPack default ({c.get('JETPACK')})",
+                    (
+                        "Default JetPack version string used when a wizard asks for JetPack (BSP "
+                        "prepare, paths under bsp/). Must match folders you actually maintain."
+                    ),
+                    settings_jetpack,
+                ),
+                MenuEntry(
+                    "soc",
+                    f"SoC ({c.get('SOC')})",
+                    (
+                        "orin or xavier — drives chroot, some deploy scripts, and BSP-related "
+                        "prompts. Wrong SoC can break pinmux or rootfs assumptions."
+                    ),
+                    settings_soc,
+                ),
+                MenuEntry(
+                    "env",
+                    f"Env ({c.get('ENV')})",
+                    (
+                        "production | staging | sandbox — default environment label for robot "
+                        "rootfs customization (flash/OTA) and related tooling."
+                    ),
+                    settings_env,
+                ),
+                MenuEntry(
+                    "tag",
+                    f"Tag ({c.get('TAG') or 'unset'})",
+                    (
+                        "Default GitLab tag for Cartken layers (BSP prepare, optional tag pull "
+                        "during flash). Not the same as kernel_tags release names unless you align them."
+                    ),
+                    settings_tag,
+                ),
+                MenuEntry(
+                    "token",
+                    "GitLab access token",
+                    (
+                        "Private token for GitLab APIs/repos used by BSP prepare and tag-pull flows. "
+                        "Stored in .kb-menu.config; treat the file as secret."
+                    ),
+                    settings_token,
+                ),
+                MenuEntry(
+                    "robot",
+                    f"Robot # ({c.get('ROBOT_NUMBER') or 'unset'})",
+                    (
+                        "Default robot index for cart<N> identity in rootfs scripts (you can "
+                        "override per run in the wizard)."
+                    ),
+                    settings_robot,
+                ),
+                MenuEntry(
+                    "validity",
+                    f"Cert validity ({c.get('HOST_CERT_VALIDITY')})",
+                    (
+                        "Default validity window for host/SSH CA material (e.g. 48h, 7d) when "
+                        "configuring a robot rootfs."
+                    ),
+                    settings_validity,
+                ),
+                MenuEntry(
+                    "localver",
+                    f"localversion ({c.get('LOCALVERSION')})",
+                    (
+                        "Default kernel LOCALVERSION suffix (often with a leading dash in config). "
+                        "Used as starting value in compile/package/tag wizards."
+                    ),
+                    settings_localver,
+                ),
+                MenuEntry(
+                    "kname",
+                    f"Kernel tree ({c.get('KERNEL_NAME')})",
+                    (
+                        "Default name under storage/kernels/<name> for compile/package workflows."
+                    ),
+                    settings_kname,
+                ),
+                MenuEntry(
+                    "arch",
+                    f"Compile arch ({c.get('COMPILE_ARCH')})",
+                    (
+                        "Default ARCH for kernel_builder (arm64, x86_64, arm). Normalized on load."
+                    ),
+                    settings_arch,
+                ),
                 MenuEntry(
                     "toolchain",
                     f"Toolchain ({c.get('PACKAGE_TOOLCHAIN_NAME')} / {c.get('PACKAGE_TOOLCHAIN_VERSION')})",
-                    "Cross-compile prefix + version for compile, package, Kconfig, clean.",
+                    (
+                        "Cross-compile triplet and version folder under storage/toolchains/<name>/"
+                        "<version>/bin/. Used for all compile, package, Kconfig, clean, mrproper "
+                        "flows—set once, rarely changed."
+                    ),
                     settings_toolchain,
                 ),
-                MenuEntry("pkgcfg", f"Package config ({c.get('PACKAGE_CONFIG') or 'empty'})", "defconfig for package.", settings_pkgcfg),
-                MenuEntry("ccfg", f"Compile config ({c.get('COMPILE_CONFIG') or 'empty'})", "kernel_builder compile --config.", settings_ccfg),
+                MenuEntry(
+                    "pkgcfg",
+                    f"Package config ({c.get('PACKAGE_CONFIG') or 'empty'})",
+                    (
+                        "Default make target/config for compile_and_package (e.g. defconfig name). "
+                        "Empty means let the script/kernel tree default apply."
+                    ),
+                    settings_pkgcfg,
+                ),
+                MenuEntry(
+                    "ccfg",
+                    f"Compile config ({c.get('COMPILE_CONFIG') or 'empty'})",
+                    (
+                        "Default kernel_builder --config argument (e.g. tegra_defconfig). Empty "
+                        "omits explicit config step in the wizard default."
+                    ),
+                    settings_ccfg,
+                ),
                 MenuEntry(
                     "dtbc",
                     f"Compile DTB ({c.get('COMPILE_DTB_NAME') or 'empty'})",
-                    "Default --dtb-name for compile and kernel_tags tag (empty = omit flag).",
+                    (
+                        "Default DTB filename for compile and kernel_tags tag create. Empty skips "
+                        "--dtb-name. Change when your board uses a different blob."
+                    ),
                     settings_compile_dtb,
                 ),
                 MenuEntry(
                     "dtbp",
                     f"Package DTB ({c.get('PACKAGE_DTB_NAME') or 'empty'})",
-                    "Default --dtb-name for compile_and_package / bin/package (empty = omit).",
+                    (
+                        "Default DTB for compile_and_package / bin/package only; can differ from "
+                        "compile DTB if packaging another variant."
+                    ),
                     settings_package_dtb,
                 ),
-                MenuEntry("clear", "Reset all saved values", "Delete .kb-menu.config and exit.", settings_clear),
+                MenuEntry(
+                    "clear",
+                    "Reset all saved values",
+                    (
+                        "Deletes .kb-menu.config and exits kb-menu. Next launch recreates defaults. "
+                        "Use when you want a clean slate (tokens, toolchains, DTB defaults all reset)."
+                    ),
+                    settings_clear,
+                ),
             ],
         )
     )
@@ -169,22 +470,135 @@ async def open_releases_menu(app: Any) -> None:
     app.push_screen(
         MenuHubScreen(
             "Kernel releases & tags",
-            "kernel_tags.sh / bin/tags",
+            "kernel_tags.sh — versioned kernel .deb releases, manifest JSON, production_kernels (needs jq)",
             [
-                MenuEntry("list", "List tags", "Filters, optional --all.", kt_list),
-                MenuEntry("show", "Show one tag", "Full JSON record.", kt_show),
-                MenuEntry("log", "Build log", "Chronological log.", kt_log),
-                MenuEntry("kernels", "Kernel trees status", "storage/kernels overview.", kt_kernels),
-                MenuEntry("get-deb", "Archived .deb path", "get-deb.", kt_get_deb),
-                MenuEntry("export", "Export manifest", "JSON or text.", kt_export),
-                MenuEntry("tag", "Create tag", "Archive + optional production_kernels.", kt_tag_create),
-                MenuEntry("promote", "Promote status", "development → … → production.", kt_promote),
-                MenuEntry("notes", "Append note", "notes --add.", kt_notes),
-                MenuEntry("diff", "Diff two tags", "kernel_tags diff.", kt_diff),
-                MenuEntry("verify", "Verify on device", "SSH check vs tag.", kt_verify),
-                MenuEntry("deploy", "Deploy .deb", "Copy / install to robot(s).", kt_deploy),
-                MenuEntry("delete", "Delete tag", "Removes manifest + archive.", kt_delete),
-                MenuEntry("paths", "Artifact paths", "Where JSON and debs live.", kt_paths_help),
+                MenuEntry(
+                    "list",
+                    "List tags",
+                    (
+                        "Lists release tags from the manifest with optional status filters. Use to "
+                        "see what has been built, promoted, or archived without opening JSON by hand."
+                    ),
+                    kt_list,
+                ),
+                MenuEntry(
+                    "show",
+                    "Show one tag",
+                    (
+                        "Prints the full JSON record for a single tag: kernel name, localversion, "
+                        "paths, status, notes—useful for debugging or CI inspection."
+                    ),
+                    kt_show,
+                ),
+                MenuEntry(
+                    "log",
+                    "Build / release log",
+                    (
+                        "Shows the chronological kernel_tags log (who built what, when). Handy after "
+                        "a long compile/package pipeline."
+                    ),
+                    kt_log,
+                ),
+                MenuEntry(
+                    "kernels",
+                    "Kernel trees status",
+                    (
+                        "Summarizes storage/kernels trees vs what the manifest knows—helps spot "
+                        "untracked trees or missing checkouts."
+                    ),
+                    kt_kernels,
+                ),
+                MenuEntry(
+                    "get-deb",
+                    "Resolve archived .deb path",
+                    (
+                        "Looks up the stored path or artifact location for a tagged .deb (get-deb). "
+                        "Use before scp or install."
+                    ),
+                    kt_get_deb,
+                ),
+                MenuEntry(
+                    "export",
+                    "Export manifest",
+                    (
+                        "Dumps manifest data as JSON or text for backups, diffs, or external "
+                        "dashboards. Optional status filter."
+                    ),
+                    kt_export,
+                ),
+                MenuEntry(
+                    "tag",
+                    "Create new release tag",
+                    (
+                        "Creates a manifest entry: archives metadata, optional GitLab publish, "
+                        "optional production_kernels registration. This is the 'release this build' "
+                        "action after you have a .deb."
+                    ),
+                    kt_tag_create,
+                ),
+                MenuEntry(
+                    "promote",
+                    "Promote tag status",
+                    (
+                        "Moves a tag along the development → testing → staging → production "
+                        "lifecycle (or your configured states). Use for release discipline."
+                    ),
+                    kt_promote,
+                ),
+                MenuEntry(
+                    "notes",
+                    "Append note to tag",
+                    (
+                        "Adds a human-readable note to a tag record (incident, QA result, customer). "
+                        "Does not change binaries."
+                    ),
+                    kt_notes,
+                ),
+                MenuEntry(
+                    "diff",
+                    "Diff two tags",
+                    (
+                        "Compares two manifest entries—kernel versions, configs, artifact hashes—"
+                        "to see what changed between releases."
+                    ),
+                    kt_diff,
+                ),
+                MenuEntry(
+                    "verify",
+                    "Verify installed kernel on device",
+                    (
+                        "SSH to a robot and checks running kernel/modules against what the tag "
+                        "expects. Use after deploy to confirm the right .deb landed."
+                    ),
+                    kt_verify,
+                ),
+                MenuEntry(
+                    "deploy",
+                    "Deploy .deb to robot(s)",
+                    (
+                        "Copies or installs the tagged .deb to one or more hosts via the deploy "
+                        "helpers (paths/SSH from wizard). Not the same as OTA full payload."
+                    ),
+                    kt_deploy,
+                ),
+                MenuEntry(
+                    "delete",
+                    "Delete tag",
+                    (
+                        "Removes a tag from the manifest and associated archive metadata. "
+                        "Destructive—use when a release was created by mistake."
+                    ),
+                    kt_delete,
+                ),
+                MenuEntry(
+                    "paths",
+                    "Where artifacts live",
+                    (
+                        "Explains filesystem layout for manifest JSON, archives, and related "
+                        "paths so you can find files outside kb-menu."
+                    ),
+                    kt_paths_help,
+                ),
             ],
         )
     )
@@ -325,10 +739,14 @@ async def flash_robot(app: Any) -> None:
 
 async def build_and_flash(app: Any) -> None:
     await app.dlg_info(
-        "Two-step workflow:\n"
-        "1) Prepare BSP + rootfs\n"
-        "2) Robot flash rootfs\n\n"
-        "Step 2 uses values from step 1."
+        "Full BSP pipeline (two wizards)\n\n"
+        "1) Prepare L4T BSP — downloads/extracts L4T, applies Cartken GitLab tag, "
+        "optional kernel/display/chroot steps. Produces/updates bsp/<jetpack>/…\n\n"
+        "2) Customize rootfs for a robot — picks that BSP as target-bsp, sets robot "
+        "number, env, certs, optional tag pull. Prepares the rootfs tree for imaging/"
+        "flashing.\n\n"
+        "You will confirm step 2 separately; you can cancel there if you only needed "
+        "Prepare."
     )
     await build_bsp(app)
     if not await app.dlg_confirm("Step 2", "Run robot flash rootfs now?"):
