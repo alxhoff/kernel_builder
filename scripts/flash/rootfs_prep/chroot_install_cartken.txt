@@ -1,0 +1,30 @@
+# Single source of truth for the cartken-* package layer.
+#
+# Runs as the second chroot pass in setup_tegra_package.sh (after
+# chroot_install_os_jp{5,6}.txt has installed the OS deps), and again
+# from setup_rootfs_as_robot_for_flashing.sh and setup_rootfs_as_robot_for_ota.sh
+# whenever a per-robot rootfs is prepared (so a --tag swap re-installs from
+# the freshly pulled debs).
+#
+# Re-runnable: starts each pass by purging *every* installed cartken-*
+# package, then reinstalls the full intended set in a single transaction.
+# Removing a deb from this list will therefore actually remove it from the
+# rootfs the next time this file runs - no separate "uninstall" step needed.
+echo "Recovering from any half-configured packages from previous runs"
+dpkg --configure -a || true
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
+echo "Make /root/packages readable by apt sandbox user _apt"
+[ -d /root/packages ] && chmod -R a+rX /root/packages
+echo "Purging every cartken-* package so reinstall is from a clean slate"
+if INSTALLED=$(dpkg-query -W -f='${Package}\n' 'cartken-*' 2>/dev/null) && [ -n "$INSTALLED" ]; then DEBIAN_FRONTEND=noninteractive apt-get -y purge $INSTALLED; fi
+echo "Defensive: ensure python3-pip + ifupdown exist (jp{5,6}.txt normally installs these, but this file is also re-runnable on rootfs that have not seen the OS layer recently)"
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ifupdown
+echo "Installing viki (cartken python wheel)"
+python3 -m pip install /root/packages/cartken-wheels/viki-*.whl
+echo "Installing the full cartken-* set in one apt invocation so dep order is auto-resolved"
+DEBIAN_FRONTEND=noninteractive apt-get install -y /root/packages/cartken-jetson-debians/cartken-jetson-can-setup.deb /root/packages/cartken-jetson-debians/cartken-jetson-can-interface.deb /root/packages/cartken-jetson-debians/cartken-jetson-wifi-kernel-modules.deb /root/packages/cartken-jetson-debians/cartken-jetson-wifi-access-point.deb /root/packages/cartken-jetson-debians/cartken-jetson-modem-kernel-modules.deb /root/packages/cartken-jetson-debians/cartken-wifi-tools.deb /root/packages/cartken-jetson-debians/cartken-jetson-wifi-manager.deb /root/packages/cartken-jetson-debians/cartken-networking-base.deb /root/packages/cartken-jetson-debians/cartken-vpn-common-credentials.deb /root/packages/cartken-jetson-debians/cartken-modem-tools.deb /root/packages/cartken-jetson-debians/cartken-jetson-modem-manager.deb /root/packages/cartken-jetson-debians/cartken-routing-tables.deb /root/packages/cartken-jetson-debians/cartken-modem-routing-table-manager.deb /root/packages/cartken-jetson-debians/cartken-vpn.deb /root/packages/cartken-jetson-debians/cartken-jetson-sshd-v2.deb
+echo "Cleaning up unused dependencies + apt cache + dangling systemd symlinks"
+DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge || true
+apt-get clean || true
+find /etc/systemd/system -xtype l -delete 2>/dev/null || true

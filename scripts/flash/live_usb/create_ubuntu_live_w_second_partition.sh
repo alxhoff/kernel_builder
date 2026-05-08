@@ -269,7 +269,7 @@ curl -fsSL \
   https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/flash_jetson_ALL_sdmmc_partition_qspi.sh \
   -o "$EXTRACT_LOC/flash_jetson_ALL_sdmmc_partition_qspi.sh"
 curl -fsSL \
-  https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/move_cartken_flash.sh \
+  https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/device/storage/move_cartken_flash.sh \
   -o "$MOUNT_DIR/move_cartken_flash.sh"
 
 chmod +x "$EXTRACT_LOC/flash_jetson_ALL_sdmmc_partition_qspi.sh"

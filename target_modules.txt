@@ -1,3 +1,0 @@
-kernel/nvidia/drivers/media/i2c/d4xx.ko
-kernel/nvidia/drivers/media/i2c/max9295.ko
-kernel/nvidia/drivers/media/i2c/max9296.ko

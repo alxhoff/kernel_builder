@@ -2,11 +2,140 @@
 
 set -ex
 
-if ! command -v jq &> /dev/null
-then
-    echo "jq could not be found, please install it first"
-    exit
+# --- Optional Docker wrapper ----------------------------------------------
+# If --docker is given, re-launch this script inside a consistent
+# ubuntu:22.04 container that has all the host build-deps preinstalled
+# (qemu-user-static, build-essential, kmod, flex, bison, libelf-dev, ...).
+# Same pattern as setup_rootfs_as_robot_for_flashing.sh's --docker mode.
+#
+# This replaces the old separate setup_tegra_package_docker.sh wrapper:
+# one entry point, one set of flags, no risk of the two drifting.
+#
+# Wrapper-only flags (consumed here, NOT passed into the container):
+#   --docker     -> enable Docker mode
+#   --inspect    -> drop into /bin/bash instead of running the script
+#   --rebuild    -> force-rebuild the jetson_builder:latest image
+#
+# Pre-scan args before the main parse loop runs so we can act on the
+# wrapper-only flags first.
+DOCKER_FLAG_PRESENT=0
+INSPECT=0
+REBUILD=0
+for arg in "$@"; do
+	case "$arg" in
+		--docker)  DOCKER_FLAG_PRESENT=1 ;;
+		--inspect) INSPECT=1 ;;
+		--rebuild) REBUILD=1 ;;
+	esac
+done
+
+if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
+	if [[ "$EUID" -ne 0 ]]; then
+		echo "This script must be run with sudo when using --docker." >&2
+		exit 1
+	fi
+
+	# Quiet down `set -x` for the wrapper itself; it's noisy and the
+	# wrapper steps are self-documenting via their echo'd messages.
+	set +x
+
+	SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+	IMAGE="ubuntu:22.04"
+	CONTAINER_NAME="tegra_setup"
+	DOCKER_TAG="jetson_builder:latest"
+
+	echo "Checking host dependencies for cross-architecture container support..."
+	if [ -f /etc/os-release ]; then
+		# shellcheck source=/dev/null
+		. /etc/os-release
+		OS=$NAME
+	else
+		echo "Cannot determine the operating system." >&2
+		exit 1
+	fi
+
+	if [[ "$OS" == "Ubuntu" || "$OS" == "Debian GNU/Linux" ]]; then
+		if ! dpkg -l | grep -q "qemu-user-static" || ! dpkg -l | grep -q "binfmt-support"; then
+			echo "Installing QEMU and binfmt support for Debian/Ubuntu..."
+			apt-get update
+			apt-get install -y qemu-user-static binfmt-support
+		fi
+	elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" ]]; then
+		if ! pacman -Q | grep -q "qemu-user-static" || ! pacman -Q | grep -q "binfmt-support"; then
+			echo "Installing QEMU and binfmt support for Arch Linux..."
+			pacman -Syu --noconfirm qemu-user-static qemu-user-static-binfmt
+		fi
+	else
+		echo "Unsupported operating system for automatic dependency installation: $OS" >&2
+		exit 1
+	fi
+
+	echo "Registering QEMU handlers with the kernel for ARM64 emulation..."
+	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
+
+	if [[ "$REBUILD" -eq 1 || "$(docker images -q "$DOCKER_TAG" 2>/dev/null)" == "" ]]; then
+		echo "Building Docker image '$DOCKER_TAG'..."
+		docker pull "$IMAGE"
+		docker build --dns=8.8.8.8 --dns=8.8.4.4 -t "$DOCKER_TAG" - <<EOF
+FROM $IMAGE
+RUN apt-get update && apt-get install -y \
+	sudo tar bzip2 git wget curl openssh-client iputils-ping \
+	docker.io jq qemu-user-static binfmt-support unzip \
+	build-essential kmod flex bison libelf-dev bc dwarves \
+	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev
+EOF
+	else
+		echo "Using existing Docker image: $DOCKER_TAG"
+	fi
+
+	# Stop any previous run that crashed and left a container behind.
+	if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
+		echo "Removing existing container: $CONTAINER_NAME"
+		docker rm -f "$CONTAINER_NAME"
+	fi
+
+	# Forward every arg except the wrapper-only flags. printf %q quotes
+	# values that contain spaces / special chars correctly.
+	INNER_ARGS=()
+	for arg in "$@"; do
+		case "$arg" in
+			--docker|--inspect|--rebuild) ;;
+			*) INNER_ARGS+=("$(printf '%q' "$arg")") ;;
+		esac
+	done
+
+	if [[ "$INSPECT" -eq 1 ]]; then
+		CONTAINER_CMD="/bin/bash"
+	else
+		CONTAINER_CMD="./$(basename "${BASH_SOURCE[0]}") ${INNER_ARGS[*]}"
+	fi
+
+	# -it for --inspect (interactive shell), -i otherwise (so that this
+	# can be invoked from non-interactive contexts like CI / OTA build
+	# scripts without a controlling tty).
+	if [[ "$INSPECT" -eq 1 ]]; then
+		DOCKER_INTERACTIVE_FLAGS=("-it")
+	else
+		DOCKER_INTERACTIVE_FLAGS=("-i")
+	fi
+
+	echo "Re-launching inside Docker (image=$DOCKER_TAG, container=$CONTAINER_NAME)."
+	echo "All subsequent output is from the container."
+	docker run --rm "${DOCKER_INTERACTIVE_FLAGS[@]}" \
+		--name "$CONTAINER_NAME" \
+		--privileged \
+		--network=host \
+		-v "$SCRIPT_DIR:/workspace" \
+		-v "/var/run/docker.sock:/var/run/docker.sock" \
+		-w "/workspace" \
+		-e HOME="/workspace" \
+		-e SUDO_USER="${SUDO_USER-}" \
+		"$DOCKER_TAG" \
+		/bin/bash -c "$CONTAINER_CMD"
+
+	exit $?
 fi
+# --- End Docker wrapper ---------------------------------------------------
 
 # Ensure script is run as root
 if [[ $EUID -ne 0 ]]; then
@@ -94,6 +223,13 @@ show_help() {
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
 	echo "  --just-clone		    Only pulls the sources, nothing more"
     echo "  --prompt                Prompt user to press Enter at each major step"
+    echo "  --docker                Re-launch inside a pre-configured ubuntu:22.04 container"
+    echo "                          for a consistent build environment. All subsequent"
+    echo "                          options are forwarded into the container."
+    echo "  --inspect               (with --docker) Drop into /bin/bash inside the container"
+    echo "                          instead of running the script. Useful for debugging."
+    echo "  --rebuild               (with --docker) Force-rebuild the jetson_builder image"
+    echo "                          (e.g. after editing the Dockerfile in this script)."
     echo "  -h, --help              Show this help message"
     exit 0
 }
@@ -145,6 +281,11 @@ while [[ $# -gt 0 ]]; do
             PROMPT=true
             shift
             ;;
+        --inspect|--rebuild)
+            echo "Error: $1 only applies together with --docker." >&2
+            echo "       See $0 --help." >&2
+            exit 1
+            ;;
         -h|--help)
             show_help
             ;;
@@ -165,11 +306,42 @@ if [[ -z "$ACCESS_TOKEN" ]]; then
 	exit 1
 fi
 
-ROOTFS_FILE="$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
-KERNEL_FILE="$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
-DRIVER_FILE="$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
+# Multi-GB BSP / kernel-source / rootfs tarballs go into a dedicated
+# downloads/ subdir so they don't clutter the rootfs_prep/ root. Migrate
+# any legacy downloads sitting at the old location (rootfs_prep/*.tbz2 or
+# rootfs_prep/*.tar.gz) into downloads/ so re-runs don't waste bandwidth
+# re-fetching them.
+DOWNLOADS_DIR="$SCRIPT_DIRECTORY/downloads"
+mkdir -p "$DOWNLOADS_DIR"
+shopt -s nullglob
+for legacy in "$SCRIPT_DIRECTORY"/*.tbz2 "$SCRIPT_DIRECTORY"/*.tar.gz; do
+	[[ -f "$legacy" ]] || continue
+	target="$DOWNLOADS_DIR/$(basename "$legacy")"
+	if [[ ! -f "$target" ]]; then
+		echo "Migrating legacy download $(basename "$legacy") into downloads/..."
+		mv "$legacy" "$target"
+	fi
+done
+shopt -u nullglob
 
-TEGRA_BASE_DIR="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
+ROOTFS_FILE="$DOWNLOADS_DIR/$(basename "${ROOTFS_URLS[$JETPACK_VERSION]}")"
+KERNEL_FILE="$DOWNLOADS_DIR/$(basename "${KERNEL_URLS[$JETPACK_VERSION]}")"
+DRIVER_FILE="$DOWNLOADS_DIR/$(basename "${DRIVER_URLS[$JETPACK_VERSION]}")"
+
+# Extracted L4T BSPs land in bsp/<jetpack>/Linux_for_Tegra/. The bsp/
+# wrapper makes it obvious at a glance what the version-numbered dirs are
+# (vs. random "5.1.5/" sitting at the rootfs_prep/ root). Migrate any
+# legacy version-named dir from rootfs_prep/ into bsp/ on the fly so
+# previous-run BSPs don't get re-downloaded just because they are at the
+# old location.
+BSP_ROOT="$SCRIPT_DIRECTORY/bsp"
+mkdir -p "$BSP_ROOT"
+LEGACY_BSP="$SCRIPT_DIRECTORY/$JETPACK_VERSION"
+if [[ -d "$LEGACY_BSP" && ! -d "$BSP_ROOT/$JETPACK_VERSION" ]]; then
+	echo "Migrating legacy BSP dir $LEGACY_BSP -> $BSP_ROOT/$JETPACK_VERSION..."
+	sudo mv "$LEGACY_BSP" "$BSP_ROOT/$JETPACK_VERSION"
+fi
+TEGRA_BASE_DIR="$BSP_ROOT/$JETPACK_VERSION"
 TEGRA_DIR="$TEGRA_BASE_DIR/Linux_for_Tegra"
 
 prompt_user
@@ -309,51 +481,46 @@ fi
 
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
+# Stage helper scripts into $TEGRA_DIR. The chroot driver lives in
+# scripts/utils/chroot/ (one source of truth across the repo); everything
+# else is a sibling of this script. Copying from local checkout (rather
+# than fetching from GitHub master, which we used to do here via the
+# contents API + curl/wget) means:
+#   - no jq host dep, no GitHub API rate limits
+#   - feature-branch edits to these scripts actually run, instead of
+#     being silently overwritten by master
+#   - works fully offline once the BSP tarballs have been downloaded
+chroot_script_src="$SCRIPT_DIRECTORY/../../utils/chroot/jetson_chroot.sh"
 chroot_script="$TEGRA_DIR/jetson_chroot.sh"
-echo "Checking for chroot script..."
-if [ ! -f "$chroot_script" ]; then
-	echo "Downloading chroot script..."
-	wget -O "$chroot_script" "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/utils/chroot/jetson_chroot.sh"
-	chmod +x $chroot_script
-	echo "chroot script downloaded successfully."
-fi
-
-GIT_ROOTFS_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/scripts/flash/rootfs_prep"
-
-echo "Fetching list of files in rootfs folder..."
-FILES=$(curl -s "$GIT_ROOTFS_URL")
-
-# Check if the response is valid JSON
-if ! echo "$FILES" | jq empty 2>/dev/null; then
-	echo "Error: Failed to retrieve file list or invalid JSON response."
-	echo "Response: $FILES"
+if [ ! -f "$chroot_script_src" ]; then
+	echo "Error: chroot driver not found at $chroot_script_src" >&2
 	exit 1
 fi
+echo "Copying chroot driver into $TEGRA_DIR..."
+cp "$chroot_script_src" "$chroot_script"
+chmod +x "$chroot_script"
 
-FILE_URLS=$(echo "$FILES" | jq -r '.[] | select(.type=="file") | .download_url' | grep -v '^$')
-
-if [[ -z "$FILE_URLS" ]]; then
-	echo "Error: No valid files found in GitHub response."
+echo "Copying rootfs_prep helpers into $TEGRA_DIR..."
+shopt -s nullglob
+# Sources: top-level entry points + chroot .txts that live at the rootfs_prep
+# root, plus the internal helpers under helpers/. We flatten everything into
+# $TEGRA_DIR so the chroot driver and the in-rootfs scripts can keep
+# referencing each other by basename without caring about the source layout.
+helper_files=(
+	"$SCRIPT_DIRECTORY"/*.sh
+	"$SCRIPT_DIRECTORY"/*.txt
+	"$SCRIPT_DIRECTORY"/helpers/*.sh
+	"$SCRIPT_DIRECTORY"/helpers/*.py
+)
+shopt -u nullglob
+if [[ ${#helper_files[@]} -eq 0 ]]; then
+	echo "Error: no helper scripts found at $SCRIPT_DIRECTORY" >&2
 	exit 1
 fi
-
-echo "Downloading all rootfs scripts into $TEGRA_DIR..."
-
-for FILE in $FILE_URLS; do
-	if [[ -z "$FILE" || "$FILE" == "null" ]]; then
-		echo "Skipping invalid or empty file URL."
-		continue
-	fi
-
-	FILE_NAME="$(basename "$FILE")"
-	echo "Downloading $FILE_NAME..."
-	# Use -O to force overwrite; otherwise wget creates .1/.2 suffixed copies
-	# and re-runs would keep using stale scripts from a previous invocation.
-	wget --show-progress -O "$TEGRA_DIR/$FILE_NAME" "$FILE"
-done
+cp "${helper_files[@]}" "$TEGRA_DIR/"
 
 # Clean up any stale suffixed copies left over from previous runs that used
-# the old -P behaviour (e.g. chroot_setup_commands.txt.1).
+# the old wget -P behaviour (e.g. chroot_setup_commands.txt.1).
 find "$TEGRA_DIR" -maxdepth 1 -regextype posix-extended \
 	-regex '.*\.(sh|txt|md)\.[0-9]+' -print -delete || true
 
@@ -361,52 +528,92 @@ prompt_user
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 	echo "Setting up chroot environment for SoC: $SOC..."
-	sudo $TEGRA_DIR/jetson_chroot.sh $TEGRA_DIR/rootfs "$SOC" essential_chroot_setup_commands.txt
+	# Pre-apply_binaries pass: just bring the freshly-extracted L4T rootfs to
+	# the point where its package manager works. Used to live in
+	# essential_chroot_setup_commands.txt - inlined here to keep the chroot
+	# .txt set down to the two real things (OS layer + cartken layer).
+	ESSENTIAL_CMDS_FILE="$(mktemp -p "$TEGRA_DIR" essential_chroot_setup_commands.XXXXXX.txt)"
+	cat > "$ESSENTIAL_CMDS_FILE" <<'EOF'
+apt update
+apt install -y libglib2.0-0 apt-utils
+EOF
+	sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$ESSENTIAL_CMDS_FILE"
+	rm -f "$ESSENTIAL_CMDS_FILE"
 else
 	echo "Skipping rootfs setup in chroot as requested."
 fi
 
-rm $TEGRA_DIR/setup_tegra_package.sh
+# Don't leave a copy of this script inside the BSP — it would shadow the
+# canonical version under scripts/flash/rootfs_prep/ if the user ever cd'd
+# into $TEGRA_DIR and ran ./setup_tegra_package.sh, and there's no flow
+# that needs it there.
+rm -f "$TEGRA_DIR/setup_tegra_package.sh"
 echo "Setting execute permissions for scripts..."
 chmod +x "$TEGRA_DIR/"*.sh
-echo "All rootfs scripts downloaded successfully."
+echo "All rootfs helper scripts staged in $TEGRA_DIR."
 
 prompt_user
 
 cd $TEGRA_DIR
-echo "Setting up rootfs with nvidia binaries and default user"
-echo "Removing existing device nodes before setup..."
+echo "Applying NVIDIA binaries and creating default cartken user..."
+# Inlined from the old setup_rootfs.sh wrapper (which only had one caller,
+# this script, and shared a confusingly similar name with
+# setup_rootfs_as_robot_for_flashing.sh). l4t_flash_prerequisites.sh has
+# already run earlier in this script, so we don't repeat it here.
+echo "Removing existing device nodes before apply_binaries..."
 sudo rm -f "$TEGRA_DIR/rootfs/dev/random"
 sudo rm -f "$TEGRA_DIR/rootfs/dev/urandom"
-sudo $TEGRA_DIR/setup_rootfs.sh --l4t-dir $TEGRA_DIR
+sudo "$TEGRA_DIR/apply_binaries.sh"
+echo "Creating default user (cartken/cartken, hostname cart1jetson, autologin)..."
+(
+	cd "$TEGRA_DIR/tools"
+	sudo ./l4t_create_default_user.sh \
+		-u cartken -p cartken -n cart1jetson \
+		--autologin --accept-license
+)
 
 prompt_user
 
 echo "Running get_packages.sh with access token and tag: $TAG..."
 $TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
+# Wipe the rootfs's previous packages dir before copying in the freshly-pulled
+# set. Without this, a tag that drops a deb leaves stale artefacts at
+# /root/packages/ inside the rootfs which then survive into the flashed image.
+sudo rm -rf "$TEGRA_DIR/rootfs/root/packages"
 sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
 
 prompt_user
 
-# Select the chroot command file matching the target JetPack major version.
-# JP 5.x uses legacy package names (nvidia-docker2, nvidia-cuda) whereas JP 6.x
-# uses nvidia-container-toolkit and nvidia-jetpack-runtime.
+# The rootfs is built up in two ordered chroot passes, by design:
+#   1. OS layer (chroot_install_os_jp{5,6}.txt) - apt deps, nvidia-l4t
+#      holds, stock sshd config, etc. JP-specific because JP5 and JP6 have
+#      different NVIDIA package names.
+#   2. cartken layer (chroot_install_cartken.txt) - single source of truth
+#      for cartken-* debs and viki. Self-cleaning: purges every installed
+#      cartken-* package before reinstalling the full set, so removing a
+#      deb from that file actually removes it from the rootfs next run.
+# Both passes also run again from the per-robot scripts
+# (setup_rootfs_as_robot_for_flashing.sh / for_ota.sh) so a --tag swap
+# rebuilds the cartken layer without re-running this script end to end.
 case "$JETPACK_VERSION" in
 	5.1.2|5.1.3|5.1.4|5.1.5)
-		CHROOT_COMMANDS_FILE="chroot_setup_commands_jp5.txt"
+		OS_CHROOT_FILE="chroot_install_os_jp5.txt"
 		;;
 	6.0DP|6.1|6.2)
-		CHROOT_COMMANDS_FILE="chroot_setup_commands_jp6.txt"
+		OS_CHROOT_FILE="chroot_install_os_jp6.txt"
 		;;
 	*)
 		echo "Error: No chroot command file mapping for JetPack $JETPACK_VERSION"
 		exit 1
 		;;
 esac
+CARTKEN_CHROOT_FILE="chroot_install_cartken.txt"
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
-	echo "Setting up chroot environment for SoC: $SOC using $CHROOT_COMMANDS_FILE..."
-	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" "$CHROOT_COMMANDS_FILE"
+	echo "Pass 1/2: OS layer chroot for SoC=$SOC using $OS_CHROOT_FILE..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" "$OS_CHROOT_FILE"
+	echo "Pass 2/2: cartken layer chroot for SoC=$SOC using $CARTKEN_CHROOT_FILE..."
+	sudo $TEGRA_DIR/jetson_chroot.sh rootfs "$SOC" "$CARTKEN_CHROOT_FILE"
 else
 	echo "Skipping rootfs setup in chroot as requested."
 fi

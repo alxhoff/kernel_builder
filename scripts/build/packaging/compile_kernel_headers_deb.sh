@@ -5,7 +5,7 @@
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
+KERNEL_BUILDER_PATH="$SCRIPT_DIR/../python/kernel_builder.py"
 
 set -e
 
@@ -170,7 +170,7 @@ fi
 
 echo "Creating Debian package for kernel headers..."
 
-KERNEL_SRC_DIR="kernels/$KERNEL_NAME/kernel/kernel"
+KERNEL_SRC_DIR="storage/kernels/$KERNEL_NAME/kernel/kernel"
 
 if [ ! -f "$KERNEL_SRC_DIR/Makefile" ]; then
     echo "Error: Makefile not found in $KERNEL_SRC_DIR"
@@ -199,7 +199,7 @@ rm -rf "$PKG_DIR"
 mkdir -p "$PKG_DIR/DEBIAN"
 mkdir -p "$PKG_DIR/usr/src/${PKG_NAME}"
 
-HEADERS_DIR="kernels/$KERNEL_NAME/headers"
+HEADERS_DIR="storage/kernels/$KERNEL_NAME/headers"
 cp -r "$HEADERS_DIR/include" "$PKG_DIR/usr/src/${PKG_NAME}/"
 # The headers_install target in kernel creates arch-specific headers under the arch/$ARCH folder
 # so we need to copy that as well.

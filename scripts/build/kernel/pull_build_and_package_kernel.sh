@@ -107,7 +107,7 @@ if [[ ! -d "$KERNEL_SRC_ROOT/kernel" ]]; then
 	fi
 
 	# Apply patches if enabled
-	GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/patches/$PATCH"
+	GIT_PATCH_URL="https://api.github.com/repos/alxhoff/kernel_builder/contents/sources/patches/$PATCH"
 	if [ "$PATCH_SOURCE" = true ]; then
 		PATCH_DIR="$TMP_DIR/kernel_patches"
 		mkdir -p "$PATCH_DIR"
@@ -136,7 +136,7 @@ fi
 KERNEL_SRC="$KERNEL_SRC_ROOT/kernel/kernel"
 cd "$KERNEL_SRC"
 #make $MAKE_ARGS mrproper
-wget -O arch/arm64/configs/defconfig "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/configs/$PATCH/defconfig"
+wget -O arch/arm64/configs/defconfig "https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/sources/configs/$PATCH/defconfig"
 
 if $MENUCONFIG; then
     make $MAKE_ARGS menuconfig

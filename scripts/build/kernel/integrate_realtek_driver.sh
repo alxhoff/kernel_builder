@@ -81,11 +81,11 @@ show_help() {
     cat <<EOF
 Usage: $0 <KERNEL_NAME> --driver <name> [OPTIONS]
 
-Integrate a Realtek vendor Wi-Fi driver into kernels/<KERNEL_NAME>/kernel/kernel
+Integrate a Realtek vendor Wi-Fi driver into storage/kernels/<KERNEL_NAME>/kernel/kernel
 as an in-tree staging driver.
 
 Arguments:
-  KERNEL_NAME           Name of the kernel tree under kernels/ (e.g. cartken_5_1_5).
+  KERNEL_NAME           Name of the kernel tree under storage/kernels/ (e.g. cartken_5_1_5).
 
 Required:
   --driver <name>       Which driver to integrate. Supported: ${!DRIVER_REPO[@]}.
@@ -156,7 +156,7 @@ KCONFIG_SYMBOL="${DRIVER_SYMBOL[$DRIVER]}"
 MODULE_NAME="${DRIVER_MODULE[$DRIVER]}"
 KCONFIG_DESC="${DRIVER_DESC[$DRIVER]}"
 
-KERNEL_ROOT="$REPO_ROOT/kernels/$KERNEL_NAME/kernel/kernel"
+KERNEL_ROOT="$REPO_ROOT/storage/kernels/$KERNEL_NAME/kernel/kernel"
 if [[ ! -d "$KERNEL_ROOT" ]]; then
     echo "Error: kernel source not found at $KERNEL_ROOT" >&2
     exit 1
@@ -445,7 +445,7 @@ Next steps:
        /lib/modules/<version>/kernel/drivers/staging/$DRIVER_DIRNAME/$MODULE_NAME.ko
 
   2. If you build a full rootfs via
-       scripts/flash/rootfs_prep/build_third_party_drivers.sh
+       scripts/flash/rootfs_prep/helpers/build_third_party_drivers.sh
      or one of the L4T scripts under scripts/rootfs/<bsp>/Linux_for_Tegra/,
      remove "$DRIVER" from THIRD_PARTY_DRIVERS so the driver isn't built
      twice. The flash/rootfs_prep variant in this repo has already been

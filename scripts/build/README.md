@@ -1,10 +1,13 @@
 # build/
 
-Shell wrappers around `kernel_builder.py` for compiling kernels, out-of-tree
+Shell wrappers around `python/kernel_builder.py` for compiling kernels, out-of-tree
 modules, and Debian packages.
 
 ## Layout
 
+- `install_kernel_deps.sh` — apt-install the host-side build dependencies
+  (build-essential, flex, bison, libssl-dev, libelf-dev, etc.) needed by
+  the helpers below. Run once per host.
 - `kernel/` — full-kernel compile helpers.
   - `compile_kernel.sh` — build a kernel (wraps
     `kernel_builder.py compile`; pass-through for all flags).
@@ -22,8 +25,6 @@ modules, and Debian packages.
     and builds a kernel over HTTPS.
 - `modules/` — module-only compilation.
   - `compile_jetson_modules.sh` — compile all modules for a Jetson kernel.
-  - `compile_targeted_modules.sh` — build a subset of out-of-tree modules
-    (wraps `kernel_builder.py compile-target-modules`).
 - `packaging/` — Debian / headers packaging.
   - `compile_kernel_headers_deb.sh` — build a headers `.deb`.
 

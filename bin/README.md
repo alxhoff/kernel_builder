@@ -18,8 +18,9 @@ them from the repo root without typing long paths. Every wrapper simply
 | `chroot` | `scripts/utils/chroot/jetson_chroot.sh` | Enter a chroot into a Jetson rootfs tree |
 | `dtb` | `scripts/utils/dtb/dtb_dts_helper.sh` | DTB / DTS decompile / search / verify helper |
 | `logs` | `scripts/device/logs/retrieve_logs.sh` | Pull kernel / system logs from a device over SSH |
-| `tegra-pkg` | `scripts/flash/rootfs_prep/setup_tegra_package_docker.sh` | Download + extract Linux_for_Tegra (Docker) |
+| `tegra-pkg` | `scripts/flash/rootfs_prep/setup_tegra_package.sh --docker` | Download + extract Linux_for_Tegra (Docker) |
 | `ota-rootfs` | `scripts/ota/setup_rootfs_as_robot_for_ota.sh` | Setup rootfs as OTA-ready robot image |
+| `kb-menu` | `scripts/menu/kb-menu.sh` | `menuconfig`-style TUI: guided forms over rootfs_prep / OTA / kernel / deploy |
 | `gen-ctags` | `scripts/ctags/generate_ctags.sh` | Generate ctags index files over kernel source |
 
 ## Usage
@@ -35,16 +36,29 @@ them from the repo root without typing long paths. Every wrapper simply
 ./bin/panic vmlinux 0xffff800010082040
 ```
 
-## Adding `bin/` to your `PATH`
+## Installing onto your `$PATH`
 
-Dropping the `./` prefix is easy — add this repo's `bin/` to `PATH` in your
-shell config:
+The recommended way is `make install` from the repo root, which copies the
+`bin/*` wrappers into `$PREFIX/bin` (default `~/.local/bin`) and the fish
+completions into `$PREFIX/share/fish/vendor_completions.d/`. Each installed
+copy has its `REPO_ROOT` baked in, so the wrappers keep working even when
+launched from outside the repo.
+
+```bash
+make install                       # PREFIX=~/.local
+make install PREFIX=/usr/local     # system-wide (sudo)
+make uninstall                     # tear down
+```
+
+If you'd rather not copy the files (e.g. you want edits in `bin/` to be
+picked up live), add the repo's `bin/` directly to `$PATH`:
 
 ### Fish
 
 ```fish
 # ~/.config/fish/config.fish
 set -gx PATH /path/to/kernel_builder/bin $PATH
+source /path/to/kernel_builder/completions/kb.fish
 ```
 
 ### Bash / Zsh
@@ -58,18 +72,8 @@ After that, `build`, `tags`, `package`, etc. work from anywhere — the
 wrappers resolve the repo root relative to their own location (via
 `readlink -f`), so they still call the correct scripts.
 
-## Fish tab-completion
-
-Autocompletion for the alias names themselves is shipped in
-`completions/kb.fish`:
-
-```fish
-# ~/.config/fish/config.fish
-source /path/to/kernel_builder/completions/kb.fish
-```
-
-Each alias forwards its flags to the underlying script, so tab-completion for
-option names is whatever the target script provides (for `tags` in
+Each alias forwards its flags to the underlying script, so tab-completion
+for option names is whatever the target script provides (for `tags` in
 particular, see `scripts/release/kernel_tags_completion.bash`).
 
 ## Adding more aliases

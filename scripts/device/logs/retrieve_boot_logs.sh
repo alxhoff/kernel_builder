@@ -4,7 +4,7 @@
 # Usage: ./retrieve_boot_logs.sh <destination-file> [<device-ip>] [<username>]
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
+KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../python/kernel_debugger.py"
 
 if [[ "$#" -lt 1 ]]; then
   echo "Usage: $0 <destination-file> [<device-ip>] [<username>]"

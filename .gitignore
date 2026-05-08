@@ -1,20 +1,20 @@
-!target_modules.txt
-kernel_tags.json
+# Build outputs and runtime data, all under storage/
+storage/kernels/*
+it-management
+repo
+!storage/kernels/.gitkeep
+storage/toolchains/*
+!storage/toolchains/.gitkeep
+storage/kernel_archive/*
+!storage/kernel_archive/.gitkeep
+storage/kernel_debs/
+
+# Generic
 vanilla_rootfs
 *.cap
-kernels/*
-!kernels/.gitkeep
-toolchains/*
-!toolchains/.gitkeep
-output/*
-!output/.gitkeep
 tags
 .vscode
 .dockerfile_hash
-kernel_debs
-kernel_archive/*
-!kernel_archive/.gitkeep
-
 __pycache__
 .cache/
 scripts/rootfs/

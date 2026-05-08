@@ -11,11 +11,11 @@ set -e
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
 REPO_ROOT="$(realpath "$SCRIPT_DIR/..")"
-TAGS_FILE="$REPO_ROOT/kernel_tags.json"
-KERNELS_DIR="$REPO_ROOT/kernels"
-KERNEL_DEBS_DIR="$REPO_ROOT/kernel_debs"
-ARCHIVE_DIR="$REPO_ROOT/kernel_archive"
-PRODUCTION_DIR="$REPO_ROOT/production_kernels"
+TAGS_FILE="$REPO_ROOT/storage/kernel_tags.json"
+KERNELS_DIR="$REPO_ROOT/storage/kernels"
+KERNEL_DEBS_DIR="$REPO_ROOT/storage/kernel_debs"
+ARCHIVE_DIR="$REPO_ROOT/storage/kernel_archive"
+PRODUCTION_DIR="$REPO_ROOT/storage/production_kernels"
 PRODUCTION_LOG="$PRODUCTION_DIR/build_log.yaml"
 DEVICE_IP_FILE="$SCRIPT_DIR/config/device_ip"
 DEVICE_USER_FILE="$SCRIPT_DIR/config/device_username"
@@ -228,7 +228,7 @@ find_deb_package() {
     return
   fi
 
-  # Auto-detect from kernel_debs/ by localversion
+  # Auto-detect from storage/kernel_debs/ by localversion
   if [ -n "$localversion" ] && [ -d "$KERNEL_DEBS_DIR" ]; then
     local matches
     matches=$(ls -t "$KERNEL_DEBS_DIR"/linux-custom-*"-${localversion}.deb" 2>/dev/null | head -1)
@@ -252,7 +252,7 @@ archive_deb_package() {
   if [ -z "$source_deb" ] || [ ! -f "$source_deb" ]; then
     echo "  Skipping deb archive: no matching .deb found"
     if [ -n "$localversion" ]; then
-      echo "    (looked for kernel_debs/*-${localversion}.deb)"
+      echo "    (looked for storage/kernel_debs/*-${localversion}.deb)"
     fi
     echo ""
     return
@@ -265,10 +265,10 @@ archive_deb_package() {
   deb_filename=$(basename "$source_deb")
 
   cp "$source_deb" "$archive_tag_dir/$deb_filename"
-  echo "  Archived: $deb_filename -> kernel_archive/$tag_name/"
+  echo "  Archived: $deb_filename -> storage/kernel_archive/$tag_name/"
 
   # Return the archive path (relative to repo root)
-  echo "kernel_archive/$tag_name/$deb_filename"
+  echo "storage/kernel_archive/$tag_name/$deb_filename"
 }
 
 # ── config archiving ─────────────────────────────────────────────────────────
@@ -297,15 +297,15 @@ archive_kernel_config() {
   done
 
   if [ -z "$config_path" ]; then
-    echo "  Skipping config archive: no .config found under kernels/$kernel_name/"
+    echo "  Skipping config archive: no .config found under storage/kernels/$kernel_name/"
     return
   fi
 
   local archive_tag_dir="$ARCHIVE_DIR/$tag_name"
   mkdir -p "$archive_tag_dir"
   cp "$config_path" "$archive_tag_dir/kernel.config"
-  echo "  Archived kernel config -> kernel_archive/$tag_name/kernel.config"
-  echo "kernel_archive/$tag_name/kernel.config"
+  echo "  Archived kernel config -> storage/kernel_archive/$tag_name/kernel.config"
+  echo "storage/kernel_archive/$tag_name/kernel.config"
 }
 
 # ── patch archiving ──────────────────────────────────────────────────────────
@@ -321,7 +321,7 @@ archive_kernel_patches() {
   repos=($(find_git_repos "$kernel_name"))
 
   if [ ${#repos[@]} -eq 0 ]; then
-    echo "  Skipping patch archive: no git repos found under kernels/$kernel_name/"
+    echo "  Skipping patch archive: no git repos found under storage/kernels/$kernel_name/"
     return
   fi
 
@@ -398,10 +398,10 @@ archive_kernel_patches() {
   # Create a tarball for easy transport
   if [ "$total_patches" -gt 0 ]; then
     tar czf "$ARCHIVE_DIR/$tag_name/patches.tar.gz" -C "$ARCHIVE_DIR/$tag_name" patches
-    echo "  Archived $total_patches patch(es) -> kernel_archive/$tag_name/patches.tar.gz"
+    echo "  Archived $total_patches patch(es) -> storage/kernel_archive/$tag_name/patches.tar.gz"
   fi
 
-  echo "kernel_archive/$tag_name/patches.tar.gz"
+  echo "storage/kernel_archive/$tag_name/patches.tar.gz"
 }
 
 # ── production kernels publishing ─────────────────────────────────────────────
@@ -432,7 +432,7 @@ publish_to_production() {
   local deb_filename
   deb_filename=$(basename "$deb_source")
 
-  echo "  Publishing to production_kernels/$soc/$jetpack_version/..."
+  echo "  Publishing to storage/production_kernels/$soc/$jetpack_version/..."
   mkdir -p "$dest_dir"
   cp "$deb_source" "$dest_dir/$deb_filename"
   echo "  Copied: $deb_filename"
@@ -491,7 +491,7 @@ EOF
     echo "  Warning: Git add failed."
   fi
 
-  echo "production_kernels/$soc/$jetpack_version/$deb_filename"
+  echo "storage/production_kernels/$soc/$jetpack_version/$deb_filename"
 }
 
 show_help() {
@@ -535,16 +535,16 @@ Commands:
     --soc <type>               SOC type (orin, xavier). Enables production_kernels publishing
     --deb-package <path>       Path to the generated .deb package (auto-detected from localversion)
     --no-source-tag            Skip tagging the kernel source git repositories
-    --no-archive               Skip archiving the .deb package to kernel_archive/
+    --no-archive               Skip archiving the .deb package to storage/kernel_archive/
     --no-publish               Skip publishing to production_kernels
     --force                    Overwrite existing tag (preserves notes & deploy history)
 
   When tagging, this tool will:
     1. Record the build metadata in kernel_tags.json
-    2. Create a git tag in all source repos under kernels/<kernel>/ (unless --no-source-tag)
-    3. Copy the .deb to kernel_archive/<tag>/ for redeployment (unless --no-archive)
+    2. Create a git tag in all source repos under storage/kernels/<kernel>/ (unless --no-source-tag)
+    3. Copy the .deb to storage/kernel_archive/<tag>/ for redeployment (unless --no-archive)
     4. Archive the kernel .config for reproducibility
-    5. Publish .deb to production_kernels/<soc>/<jetpack>/ and auto-commit (if --soc)
+    5. Publish .deb to storage/production_kernels/<soc>/<jetpack>/ and auto-commit (if --soc)
 
   Example:
     kernel_tags.sh tag v5.1.5-rs-2400 \
@@ -668,7 +668,7 @@ Options:
   --soc <type>               SOC type (orin, xavier). Enables publishing to production_kernels
   --deb-package <path>       Path to the .deb package (auto-detected from localversion)
   --no-source-tag            Skip tagging the kernel source git repositories
-  --no-archive               Skip archiving the .deb package to kernel_archive/
+  --no-archive               Skip archiving the .deb package to storage/kernel_archive/
   --no-publish               Skip publishing to production_kernels (even if --soc is set)
   --force                    Overwrite an existing tag (preserves notes & deployment history)
 
@@ -758,7 +758,7 @@ EOF
     # Clean up old archive
     if [ -d "$ARCHIVE_DIR/$tag_name" ]; then
       rm -rf "$ARCHIVE_DIR/$tag_name"
-      echo "  Removed old archive: kernel_archive/$tag_name/"
+      echo "  Removed old archive: storage/kernel_archive/$tag_name/"
     fi
 
     # Remove old entry from manifest
@@ -833,7 +833,7 @@ EOF
     echo "$archive_output" | head -n -1
 
     # If last line looks like an archive path, use it
-    if [[ "$last_line" == kernel_archive/* ]]; then
+    if [[ "$last_line" == storage/kernel_archive/* ]]; then
       archived_deb="$last_line"
     fi
     echo ""
@@ -850,7 +850,7 @@ EOF
     local config_last_line
     config_last_line=$(echo "$config_output" | tail -1)
     echo "$config_output" | head -n -1
-    if [[ "$config_last_line" == kernel_archive/* ]]; then
+    if [[ "$config_last_line" == storage/kernel_archive/* ]]; then
       archived_config="$config_last_line"
     fi
     echo ""
@@ -865,7 +865,7 @@ EOF
     local patches_last_line
     patches_last_line=$(echo "$patches_output" | tail -1)
     echo "$patches_output" | head -n -1
-    if [[ "$patches_last_line" == kernel_archive/* ]]; then
+    if [[ "$patches_last_line" == storage/kernel_archive/* ]]; then
       archived_patches="$patches_last_line"
     fi
     echo ""
@@ -896,7 +896,7 @@ EOF
     publish_last_line=$(echo "$publish_output" | tail -1)
     echo "$publish_output" | head -n -1
 
-    if [[ "$publish_last_line" == production_kernels/* ]]; then
+    if [[ "$publish_last_line" == storage/production_kernels/* ]]; then
       published_path="$publish_last_line"
     fi
     echo ""
@@ -1206,7 +1206,7 @@ Usage: kernel_tags.sh delete <TAG_NAME>
 
 Remove a tag from the manifest. Also removes:
   - Git tags from source repositories
-  - Archived .deb from kernel_archive/
+  - Archived .deb from storage/kernel_archive/
 
 Prompts for confirmation if the tag is in production status.
 
@@ -1258,7 +1258,7 @@ EOF
   # Remove archived deb directory
   if [ -d "$ARCHIVE_DIR/$tag_name" ]; then
     rm -rf "$ARCHIVE_DIR/$tag_name"
-    echo "  Removed archive: kernel_archive/$tag_name/"
+    echo "  Removed archive: storage/kernel_archive/$tag_name/"
   fi
 
   jq --arg tag "$tag_name" 'del(.[] | select(.tag == $tag))' "$TAGS_FILE" > "$TAGS_FILE.tmp" \
@@ -1386,14 +1386,14 @@ cmd_kernels() {
     cat <<'EOF'
 Usage: kernel_tags.sh kernels
 
-List all available kernel sources under kernels/ with their status.
+List all available kernel sources under storage/kernels/ with their status.
 
 Shows for each kernel:
   - Git repo info (branch, commit, remote)
   - Source git tags
-  - Matching built .deb packages in kernel_debs/
+  - Matching built .deb packages in storage/kernel_debs/
   - Tagged builds from the manifest
-  - Archived .deb count in kernel_archive/
+  - Archived .deb count in storage/kernel_archive/
 
 Example:
   kernel_tags.sh kernels
@@ -1402,7 +1402,7 @@ EOF
   fi
 
   if [ ! -d "$KERNELS_DIR" ]; then
-    echo "No kernels/ directory found."
+    echo "No storage/kernels/ directory found."
     return
   fi
 
@@ -1487,7 +1487,7 @@ EOF
       done
 
       if [ ${#matched_debs[@]} -gt 0 ]; then
-        echo "  Built debs: (${#matched_debs[@]} in kernel_debs/)"
+        echo "  Built debs: (${#matched_debs[@]} in storage/kernel_debs/)"
         for d in "${matched_debs[@]}"; do
           echo "    $d"
         done
@@ -1520,14 +1520,14 @@ EOF
       fi
     done
     if [ "$archive_count" -gt 0 ]; then
-      echo "  Archived debs: $archive_count (in kernel_archive/)"
+      echo "  Archived debs: $archive_count (in storage/kernel_archive/)"
     fi
 
     echo ""
   done
 
   if [ "$found" = false ]; then
-    echo "No kernel source directories found under kernels/"
+    echo "No kernel source directories found under storage/kernels/"
   fi
 }
 

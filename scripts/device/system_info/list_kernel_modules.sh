@@ -8,7 +8,7 @@
 
 # Get the path to the kernel_debugger.py script
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
+KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../python/kernel_debugger.py"
 
 # Check if device_ip file exists
 if [ -f "$SCRIPT_DIR/config/device_ip" ]; then

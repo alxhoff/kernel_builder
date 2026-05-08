@@ -1,0 +1,4 @@
+# Persisted last-used values (may contain a GitLab access token; chmod 600).
+.kb-menu.config
+# Last-run command output (kept around for reading via 'View last command log').
+.kb-menu.last.log

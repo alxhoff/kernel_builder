@@ -8,10 +8,13 @@ On-target inspection and stressing helpers, grouped by concern.
 - `serial/` — serial console helpers.
 - `load/` — synthetic load for stability testing
   (`generate_load_stressng.sh`, `generate_load_const.sh`,
-  `docker_stability_test.sh`).
-- `storage/` — Jetson SSD / LVM migration helpers
-  (`migrate_ssd_to_lvm.sh`, `reset_ssd_for_migration_test.sh`).
-- `system_info/` — kernel module inventory and default-kernel selection
-  (`list_kernel_modules.sh`, `set_default_kernel_jetson.sh`).
+  `docker_stability_test.sh`, `setup_stability_test.sh`).
+- `storage/` — Jetson SSD / LVM migration plus disk imaging
+  (`migrate_ssd_to_lvm.sh`, `reset_ssd_for_migration_test.sh`,
+  `disc_backup.sh`, `move_cartken_flash.sh`).
+- `system_info/` — kernel module inventory, default-kernel selection,
+  and host / register diagnostics
+  (`list_kernel_modules.sh`, `set_default_kernel_jetson.sh`,
+  `get_system_information.sh`, `compare_registers.sh`).
 - `dynamic_debug/` — dynamic debug / trace control
   (`manage_dynamic_debug.sh`, `retrieve_trace.sh`).

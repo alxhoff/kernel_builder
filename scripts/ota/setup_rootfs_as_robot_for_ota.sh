@@ -78,7 +78,7 @@ TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
 L4T_DIR="$TEGRA_DIR"
 OTA_DIR="$SCRIPT_DIRECTORY/ota_update"
 ROOTFS="$TEGRA_DIR/rootfs"
-CHROOT_CMD_FILE="chroot_configured_commands.txt"
+CHROOT_CMD_FILE="chroot_install_cartken.txt"
 
 ROBOT_SUFFIX=$(printf "cart%03d" "$ROBOT_NUMBER")
 NEW_HOSTNAME="${ROBOT_SUFFIX}jetson"

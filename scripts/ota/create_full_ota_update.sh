@@ -14,7 +14,7 @@ usage() {
     echo "  --base-jetpack   The current Jetson BSP version you have."
     echo "  --target-jetpack The Jetson BSP version you are updating to (can be the same as base)."
     echo "  --dry-run        Show the commands without executing them."
-    echo "\nIf the base and target BSP versions are the same, the second call to setup_tegra_package_docker.sh is skipped."
+    echo "\nIf the base and target BSP versions are the same, the second call to setup_tegra_package.sh --docker is skipped."
     exit 1
 }
 
@@ -55,6 +55,12 @@ BASE_BSP_ROOT="$WORKDIR/$BASE_JETPACK"
 TARGET_BSP_ROOT="$WORKDIR/$TARGET_JETPACK"
 L4T_DIR="$TARGET_BSP_ROOT/Linux_for_Tegra"
 
+# setup_tegra_package.sh lives in scripts/flash/rootfs_prep/. The Docker
+# wrapper that used to live alongside it has been merged in as a --docker
+# flag; we use it from here so the OTA build runs in a known-good ubuntu
+# build env regardless of the host distro.
+SETUP_TEGRA_PACKAGE="$(cd "$WORKDIR/../flash/rootfs_prep" && pwd)/setup_tegra_package.sh"
+
 # Ensure required arguments are set
 if [[ -z "$ACCESS_TOKEN" || -z "$TAG" || -z "$BASE_JETPACK" || -z "$TARGET_JETPACK" ]]; then
     usage
@@ -67,14 +73,14 @@ run_command() {
     fi
 }
 
-echo "Running setup_tegra_package_docker.sh with target Jetpack version: $TARGET_JETPACK"
-run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
+echo "Running setup_tegra_package.sh --docker with target Jetpack version: $TARGET_JETPACK"
+run_command "$SETUP_TEGRA_PACKAGE" --docker --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$TARGET_JETPACK"
 
 if [[ "$BASE_JETPACK" != "$TARGET_JETPACK" ]]; then
-	echo "Running setup_tegra_package_docker.sh with base Jetpack version: $BASE_JETPACK"
-	run_command "$WORKDIR"/setup_tegra_package_docker.sh --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$BASE_JETPACK" --skip-kernel-build --skip-chroot-build
+	echo "Running setup_tegra_package.sh --docker with base Jetpack version: $BASE_JETPACK"
+	run_command "$SETUP_TEGRA_PACKAGE" --docker --access-token "$ACCESS_TOKEN" --tag "$TAG" --jetpack "$BASE_JETPACK" --skip-kernel-build --skip-chroot-build
 else
-    echo "Base and target Jetpack versions are the same, skipping second setup_tegra_package_docker.sh call."
+    echo "Base and target Jetpack versions are the same, skipping second setup_tegra_package.sh --docker call."
 fi
 
 echo "Running create_ota_payload_docker.sh with base BSP: $BASE_JETPACK and target BSP: $TARGET_JETPACK"

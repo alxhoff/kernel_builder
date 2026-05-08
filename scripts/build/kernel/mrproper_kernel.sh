@@ -94,7 +94,7 @@ fi
 
 # Set up script and kernel builder path
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
+KERNEL_BUILDER_PATH="$SCRIPT_DIR/../python/kernel_builder.py"
 
 # Construct the command to run
 COMMAND="python3 \"$KERNEL_BUILDER_PATH\" compile --kernel-name $KERNEL_NAME --arch $ARCH --toolchain-name $TOOLCHAIN_NAME --toolchain-version $TOOLCHAIN_VERSION --build-target mrproper"

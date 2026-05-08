@@ -5,7 +5,7 @@
 # Example: ./generate_ctags.sh -k jetson
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KERNELS_DIR="$REPO_ROOT/kernels"
+KERNELS_DIR="$REPO_ROOT/storage/kernels"
 KERNEL_VERSION=""
 KERNEL_DIR=""
 KERNEL_SOURCE=""

@@ -1,2 +1,0 @@
-apt update
-apt install -y libglib2.0-0 apt-utils

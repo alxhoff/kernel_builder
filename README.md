@@ -3,30 +3,57 @@
 Cross-compile, deploy, and debug Linux kernels for x86 host machines, NVIDIA
 Jetson boards, and Raspberry Pi.
 
-The repository is organised around three top-level Python entry points and a
-hierarchy of wrapper shell scripts under `scripts/`.
+The repository is organised around a small Python engine in `python/` and a
+hierarchy of wrapper shell scripts under `scripts/`. The `bin/` directory
+ships short aliases for the most common workflows; install them onto your
+`$PATH` with `make install` (see below).
 
-- `kernel_builder.py` — build kernels, modules, and `.deb` packages (host or
-  Docker).
-- `kernel_deployer.py` — deploy compiled kernels, modules, and Debian packages
-  to x86, Jetson, or Raspberry Pi targets.
-- `kernel_debugger.py` — drive remote tracing, ftrace / trace-cmd, persistent
-  logging, and module inspection on Jetson devices.
+- `python/kernel_builder.py` — build kernels, modules, and `.deb` packages
+  (host or Docker).
+- `python/kernel_deployer.py` — deploy compiled kernels, modules, and Debian
+  packages to x86, Jetson, or Raspberry Pi targets.
+- `python/kernel_debugger.py` — drive remote tracing, ftrace / trace-cmd,
+  persistent logging, and module inspection on Jetson devices.
 
 ## Setup
 
-See [.docs/SETUP.md](./.docs/SETUP.md) for installing dependencies, cloning the
-repository, and preparing toolchains.
+See [.docs/SETUP.md](./.docs/SETUP.md) for installing dependencies, cloning
+the repository, and preparing toolchains.
+
+## Quick install (`make install`)
+
+The wrappers in `bin/` and the fish completions in `completions/` can be
+installed onto your `$PATH` and your fish completions path so that the
+short commands (`kb-menu`, `compile`, `build`, `tags`, `tegra-pkg`, …)
+work from anywhere.
+
+```bash
+make install                 # default PREFIX=$HOME/.local
+make install PREFIX=/usr/local  # system-wide (run with sudo)
+make uninstall               # remove what install would have placed
+make list                    # show what install will do
+make help
+```
+
+`make install` writes standalone copies — the `REPO_ROOT` line in each
+`bin/*` script is rewritten to point back at the repository on disk, so
+moving or renaming the repo later means re-running `make install`.
+
+If you'd rather invoke the wrappers directly without installing, just call
+them with `./bin/<name>` from the repo root.
 
 ## Directory layout
 
 ```
-kernel_builder.py      # build orchestrator (entry point)
-kernel_deployer.py     # deploy orchestrator (entry point)
-kernel_debugger.py     # debug/trace orchestrator (entry point)
+python/                # Python engine (build / deploy / debug entry points)
+  kernel_builder.py
+  kernel_deployer.py
+  kernel_debugger.py
+  utils/               # shared helpers (clone, docker)
+
 bin/                   # short aliases for the most-used scripts
-kernels/               # cloned kernel source trees (one per --kernel-name)
-toolchains/            # cloned cross-compile toolchains
+completions/           # shell completion files (kb.fish)
+
 scripts/
   release/             # tagged-release workflow (build_and_tag,
                        #   kernel_tags, compile_and_package)
@@ -42,34 +69,65 @@ scripts/
   ctags/               # generate/list/delete ctags source-index files
   usb_disk/            # ISO creation and USB flashing helpers
   utils/               # chroot, dtb, docker, and misc utilities
+  menu/                # kb-menu TUI (interactive workflow runner)
   config/              # device_ip / device_username defaults (gitignored)
+
+sources/               # tracked build inputs (curated per-JetPack)
+  configs/             # defconfigs and overlay snippets
+  patches/             # kernel patch series (one dir per BSP / overlay)
+  pinmux/              # NVIDIA pinmux .conf files
+
+storage/               # build outputs and runtime data (mostly gitignored)
+  kernels/             # cloned kernel source trees (one per --kernel-name)
+  toolchains/          # cloned cross-compile toolchains
+  kernel_debs/         # newly built .deb packages
+  kernel_archive/      # archived .debs / configs / patches per release tag
+  production_kernels/  # git submodule: production .deb repository
+  kernel_tags.json     # release-tag manifest
+
+Makefile               # `make install` / `make uninstall`
+README.md, LICENSE, Dockerfile, .docs/
 ```
 
 ## Short aliases (`bin/`)
 
-The most-used entry points are exposed as short wrapper scripts in `bin/` so
-you don't have to remember deep paths. For example:
+The most-used entry points are exposed as short wrapper scripts in `bin/`
+so you don't have to remember deep paths. For example:
 
 ```bash
+./bin/kb-menu                           # interactive menuconfig-style TUI
 ./bin/tags list                         # scripts/release/kernel_tags.sh
 ./bin/build cartken_5_1_5_realsense     # scripts/release/build_and_tag.sh
 ./bin/package cartken_6_2 --localversion cartken6.2
 ./bin/menuconfig cartken_6_2
 ./bin/chroot 5.1.5
 ./bin/dtb extract /path/to/something.dtb
+./bin/tegra-pkg --target-bsp 5.1.5      # download + extract Linux_for_Tegra
 ```
 
-See [bin/README.md](./bin/README.md) for the full list. Add `bin/` to your
-`$PATH` to drop the `./bin/` prefix entirely.
+See [bin/README.md](./bin/README.md) for the full list. Run `make install`
+(or add `bin/` to your `$PATH` manually) to drop the `./bin/` prefix.
 
 Every shell script reads the target device's IP and username from
 `scripts/config/device_ip` and `scripts/config/device_username` when those
 files are present. Templates with the `.template` suffix ship in the repo.
 
+## Interactive workflow (`kb-menu`)
+
+For a guided walkthrough — pick a JetPack version, build a BSP, flash a
+robot, run an OTA update, etc. — start the TUI:
+
+```bash
+./bin/kb-menu
+```
+
+Settings persist between runs in `scripts/menu/.kb-menu.config` (chmod 600,
+gitignored). See [scripts/menu/README.md](./scripts/menu/README.md).
+
 ## 1. Build the Docker image
 
 ```bash
-python3 kernel_builder.py build [--rebuild]
+python3 python/kernel_builder.py build [--rebuild]
 ```
 
 Use `--rebuild` to rebuild without the cache.
@@ -79,32 +137,36 @@ Use `--rebuild` to rebuild without the cache.
 ### Kernel source
 
 ```bash
-python3 kernel_builder.py clone-kernel \
+python3 python/kernel_builder.py clone-kernel \
   --kernel-source-url <git-url> \
   --kernel-name <name> \
   [--git-tag <tag>]
 ```
 
+Cloned into `storage/kernels/<name>/`.
+
 ### Toolchain
 
 ```bash
-python3 kernel_builder.py clone-toolchain \
+python3 python/kernel_builder.py clone-toolchain \
   --toolchain-url <git-url> \
   --toolchain-name <name> \
   [--git-tag <tag>]
 ```
 
+Cloned into `storage/toolchains/<name>/`.
+
 ### Overlays / device tree
 
 ```bash
-python3 kernel_builder.py clone-overlays     --overlays-url <url>     --kernel-name <name> [--git-tag <tag>]
-python3 kernel_builder.py clone-device-tree  --device-tree-url <url>  --kernel-name <name> [--git-tag <tag>]
+python3 python/kernel_builder.py clone-overlays     --overlays-url <url>     --kernel-name <name> [--git-tag <tag>]
+python3 python/kernel_builder.py clone-device-tree  --device-tree-url <url>  --kernel-name <name> [--git-tag <tag>]
 ```
 
 ## 3. Compile
 
 ```bash
-python3 kernel_builder.py compile \
+python3 python/kernel_builder.py compile \
   --kernel-name <name> \
   --arch <arm64|x86_64> \
   [--toolchain-name <name>] [--toolchain-version <ver>] \
@@ -128,31 +190,21 @@ Key flags:
 - `--use-current-config` — seed from the running system's `/proc/config.gz`.
 - `--dry-run` — print the full command without executing.
 
-Modules are installed to `kernels/<kernel-name>/modules/` via
+Modules are installed to `storage/kernels/<kernel-name>/modules/` via
 `INSTALL_MOD_PATH` so deployment stays predictable.
-
-### Compile a single out-of-tree module
-
-```bash
-python3 kernel_builder.py compile-target-modules \
-  --kernel-name <name> \
-  --arch <arm64|x86_64> \
-  --modules <path1,path2,...> \
-  [--toolchain-name <name>] [--host-build] [--dry-run]
-```
 
 ## 4. Deploy
 
 ### x86 host
 
 ```bash
-python3 kernel_deployer.py deploy-x86 [--localversion <str>] [--dry-run]
+python3 python/kernel_deployer.py deploy-x86 [--localversion <str>] [--dry-run]
 ```
 
 ### Jetson
 
 ```bash
-python3 kernel_deployer.py deploy-jetson \
+python3 python/kernel_deployer.py deploy-jetson \
   --kernel-name <name> \
   --ip <device-ip> --user <user> \
   [--localversion <str>] [--dtb] [--kernel-only] [--dry-run]
@@ -164,7 +216,7 @@ python3 kernel_deployer.py deploy-jetson \
 ### Generic device (Jetson or Raspberry Pi)
 
 ```bash
-python3 kernel_deployer.py deploy-device \
+python3 python/kernel_deployer.py deploy-device \
   --ip <device-ip> --user <user> \
   [--localversion <str>] [--kernel-only] [--dry-run]
 ```
@@ -172,24 +224,17 @@ python3 kernel_deployer.py deploy-device \
 ### Debian package
 
 ```bash
-python3 kernel_deployer.py deploy-debian \
+python3 python/kernel_deployer.py deploy-debian \
   --kernel-name <name> \
   [--localversion <str>] [--dtb-name <prefix>]
 ```
 
-### Targeted out-of-tree modules only
-
-```bash
-python3 kernel_deployer.py deploy-targeted-modules \
-  --kernel-name <name> --ip <device-ip> --user <user> [--dry-run]
-```
-
 ## 5. Debug and trace (Jetson)
 
-`kernel_debugger.py` wraps common on-device debugging chores over SSH:
+`python/kernel_debugger.py` wraps common on-device debugging chores over SSH:
 
 ```bash
-python3 kernel_debugger.py <command> --ip <device-ip> --user <user> [...]
+python3 python/kernel_debugger.py <command> --ip <device-ip> --user <user> [...]
 ```
 
 Commands include:
@@ -209,10 +254,12 @@ Most commands accept `--dry-run` to preview the exact remote commands.
 
 ## Tag-based kernel snapshots
 
-Tagged kernel artifacts (kernel + modules + `.deb`) can be captured, promoted,
-deployed, and compared with `scripts/release/kernel_tags.sh` (short alias:
-`./bin/tags`). The one-shot interactive **build → package → tag → publish**
-flow is `scripts/release/build_and_tag.sh` (short alias: `./bin/build`). See
+Tagged kernel artifacts (kernel + modules + `.deb`) can be captured,
+promoted, deployed, and compared with `scripts/release/kernel_tags.sh`
+(short alias: `./bin/tags`). The one-shot interactive **build → package →
+tag → publish** flow is `scripts/release/build_and_tag.sh` (short alias:
+`./bin/build`). The release-tag manifest lives at
+`storage/kernel_tags.json`. See
 [scripts/release/README.md](./scripts/release/README.md) for the full
 workflow, including fleet deployment and the manifest schema.
 

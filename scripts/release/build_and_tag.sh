@@ -13,11 +13,11 @@ set -e
 
 SCRIPTS_DIR="$(realpath "$(dirname "$0")/..")"
 REPO_ROOT="$(realpath "$SCRIPTS_DIR/..")"
-KERNELS_DIR="$REPO_ROOT/kernels"
-CONFIGS_DIR="$REPO_ROOT/configs"
+KERNELS_DIR="$REPO_ROOT/storage/kernels"
+CONFIGS_DIR="$REPO_ROOT/sources/configs"
 COMPILE_SCRIPT="$SCRIPTS_DIR/release/compile_and_package.sh"
 TAGS_SCRIPT="$SCRIPTS_DIR/release/kernel_tags.sh"
-TAGS_FILE="$REPO_ROOT/kernel_tags.json"
+TAGS_FILE="$REPO_ROOT/storage/kernel_tags.json"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -218,7 +218,7 @@ if [ -z "$KERNEL_NAME" ]; then
 
   local_kernels=($(get_kernel_names))
   if [ ${#local_kernels[@]} -eq 0 ]; then
-    echo "Error: No kernel sources found under kernels/"
+    echo "Error: No kernel sources found under storage/kernels/"
     exit 1
   fi
 
@@ -233,7 +233,7 @@ if [ -z "$KERNEL_NAME" ]; then
 fi
 
 if [ ! -d "$KERNELS_DIR/$KERNEL_NAME" ]; then
-  echo "Error: Kernel source '$KERNEL_NAME' not found under kernels/"
+  echo "Error: Kernel source '$KERNEL_NAME' not found under storage/kernels/"
   exit 1
 fi
 
@@ -242,7 +242,7 @@ echo "  Kernel: $KERNEL_NAME"
 # Step 2: SOC type
 if [ -z "$SOC" ] && [ "$NO_TAG" = false ] && [ "$NO_PUBLISH" = false ]; then
   echo ""
-  echo "  SOC type (determines production_kernels/<soc>/ path):"
+  echo "  SOC type (determines storage/production_kernels/<soc>/ path):"
   echo "    1) orin"
   echo "    2) xavier"
   echo ""
@@ -323,7 +323,7 @@ if [ "$NO_TAG" = false ]; then
   fi
 fi
 [ -n "$SOC" ] && echo "│ SOC:           $SOC (Jetpack $JETPACK_VERSION)"
-[ -n "$SOC" ] && echo "│ Publish to:    production_kernels/$SOC/$JETPACK_VERSION/"
+[ -n "$SOC" ] && echo "│ Publish to:    storage/production_kernels/$SOC/$JETPACK_VERSION/"
 if [ -f "$CONFIGS_DIR/$JETPACK_VERSION/$CONFIG" ]; then
   echo "│ Curated config:configs/$JETPACK_VERSION/$CONFIG (will be synced)"
 else
@@ -407,7 +407,7 @@ if [ "$NO_TAG" = false ]; then
   echo "  Kernel:       $KERNEL_NAME"
   echo "  Localversion: $LOCALVERSION"
   echo "  Tag:          $TAG_NAME"
-  [ -n "$SOC" ] && echo "  Published:    production_kernels/$SOC/$JETPACK_VERSION/"
+  [ -n "$SOC" ] && echo "  Published:    storage/production_kernels/$SOC/$JETPACK_VERSION/"
   echo ""
   echo "  To deploy:"
   echo "    $TAGS_SCRIPT deploy $TAG_NAME --ip <address>"

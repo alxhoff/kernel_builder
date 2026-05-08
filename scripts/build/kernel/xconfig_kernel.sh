@@ -78,7 +78,7 @@ done
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_BUILDER_PATH="$SCRIPT_DIR/../kernel_builder.py"
+KERNEL_BUILDER_PATH="$SCRIPT_DIR/../python/kernel_builder.py"
 
 # Compile the kernel with the xconfig target
 echo "Running xconfig for kernel: $KERNEL_NAME"

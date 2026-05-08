@@ -8,7 +8,7 @@
 #   [<username>]        The username for accessing the Jetson device (optional if device_username file exists, default: "cartken")
 
 SCRIPT_DIR="$(realpath "$(dirname "$0")/../..")"
-KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../kernel_debugger.py"
+KERNEL_DEBUGGER_PATH="$SCRIPT_DIR/../python/kernel_debugger.py"
 
 DESTINATION_PATH=$1
 

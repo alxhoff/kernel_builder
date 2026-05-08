@@ -7,8 +7,7 @@ This folder holds the full tagged-release pipeline:
 - `compile_and_package.sh` — low-level: compile a kernel and produce a `.deb`.
   Used both standalone and under the hood by `build_and_tag.sh`.
 - `kernel_tags.sh` — CLI for tracking, listing, promoting, deploying, and
-  verifying tagged builds. Maintains `kernel_tags.json` at the repository
-  root.
+  verifying tagged builds. Maintains `storage/kernel_tags.json`.
 - `kernel_tags_completion.bash` — bash/zsh tab completion for
   `kernel_tags.sh`.
 
@@ -21,8 +20,8 @@ For convenience, the most-used entry points have short aliases under
 ./bin/package  # -> scripts/release/compile_and_package.sh
 ```
 
-All scripts in this folder work against the repo-root `kernel_tags.json`,
-`kernel_archive/`, and the `production_kernels/` submodule.
+All scripts in this folder work against `storage/kernel_tags.json`,
+`storage/kernel_archive/`, and the `storage/production_kernels/` submodule.
 
 ## Quick Start — One-Shot Build & Tag
 
@@ -42,8 +41,8 @@ It will:
 6. Confirm, then **build → package → tag → publish** automatically.
 
 When a SOC type is selected, the built `.deb` is published to the
-`production_kernels` submodule under `<soc>/<jetpack_version>/`, committed, and
-pushed to the remote.
+`storage/production_kernels` submodule under `<soc>/<jetpack_version>/`,
+committed, and pushed to the remote.
 
 Pre-fill values to skip prompts:
 
@@ -77,18 +76,18 @@ After building, deploy and verify:
 
 When `kernel_tags.sh tag` runs it performs up to five actions:
 
-1. **Records metadata** in `kernel_tags.json` (tag name, kernel, localversion,
-   SOC, jetpack version, builder, git commit, timestamps, …).
+1. **Records metadata** in `storage/kernel_tags.json` (tag name, kernel,
+   localversion, SOC, jetpack version, builder, git commit, timestamps, …).
 2. **Tags source repositories** — creates annotated git tags in all repos
-   under `kernels/<kernel>/` so the exact source for any build can be
-   recovered.
+   under `storage/kernels/<kernel>/` so the exact source for any build can
+   be recovered.
 3. **Archives the `.deb`** — copies the compiled Debian package to
-   `kernel_archive/<tag>/` for easy redeployment.
+   `storage/kernel_archive/<tag>/` for easy redeployment.
 4. **Archives the kernel `.config`** — saves the build configuration to
-   `kernel_archive/<tag>/kernel.config` for reproducibility.
-5. **Publishes to `production_kernels`** (if `--soc` is given) — copies the
-   `.deb` to `production_kernels/<soc>/<jetpack>/`, updates
-   `build_log.yaml`, and auto-commits + pushes.
+   `storage/kernel_archive/<tag>/kernel.config` for reproducibility.
+5. **Publishes to `storage/production_kernels`** (if `--soc` is given) —
+   copies the `.deb` to `storage/production_kernels/<soc>/<jetpack>/`,
+   updates `build_log.yaml`, and auto-commits + pushes.
 
 ## Command Reference
 
@@ -236,20 +235,21 @@ flags, and is wired up for both `kernel_tags.sh` and the `./bin/tags` alias.
 
 ```
 kernel_builder/
-├── kernel_tags.json              # manifest of all tagged builds
-├── kernel_archive/               # archived .deb packages and configs (gitignored)
-│   └── 170426/
-│       ├── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
-│       └── kernel.config
-├── production_kernels/           # git submodule: production .deb repository
-│   ├── build_log.yaml            # YAML log of all published builds
-│   ├── orin/
-│   │   └── 5.1.5/
-│   │       └── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
-│   └── xavier/
-│       └── ...
-├── kernels/                      # kernel source directories
-│   └── cartken_5_1_5_realsense/
+├── storage/
+│   ├── kernel_tags.json          # manifest of all tagged builds
+│   ├── kernel_archive/           # archived .deb packages and configs (gitignored)
+│   │   └── 170426/
+│   │       ├── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
+│   │       └── kernel.config
+│   ├── production_kernels/       # git submodule: production .deb repository
+│   │   ├── build_log.yaml        # YAML log of all published builds
+│   │   ├── orin/
+│   │   │   └── 5.1.5/
+│   │   │       └── linux-custom-5.10.216-cartken5.1.5realsense.170426.deb
+│   │   └── xavier/
+│   │       └── ...
+│   └── kernels/                  # kernel source directories
+│       └── cartken_5_1_5_realsense/
 ├── bin/                          # short aliases (build, tags, package, …)
 └── scripts/
     └── release/
@@ -261,25 +261,25 @@ kernel_builder/
 
 ## Production Kernels Repository
 
-The `production_kernels/` directory is a git submodule pointing to
+The `storage/production_kernels/` directory is a git submodule pointing to
 `git@gitlab.com:cartken/kernel-os/production_kernels.git`. It is the single
 source of truth for built kernel packages organised by SOC and Jetpack
 version.
 
 When a build is tagged with `--soc`, the tool automatically:
-1. Copies the `.deb` to `production_kernels/<soc>/<jetpack_version>/`.
-2. Appends the build metadata to `production_kernels/build_log.yaml`.
+1. Copies the `.deb` to `storage/production_kernels/<soc>/<jetpack_version>/`.
+2. Appends the build metadata to `storage/production_kernels/build_log.yaml`.
 3. Commits and pushes the changes.
 
 To initialise the submodule after cloning the repo:
 
 ```bash
-git submodule update --init production_kernels
+git submodule update --init storage/production_kernels
 ```
 
 ## Manifest Schema
 
-Each entry in `kernel_tags.json` contains:
+Each entry in `storage/kernel_tags.json` contains:
 
 ```json
 {
@@ -295,10 +295,10 @@ Each entry in `kernel_tags.json` contains:
   "status": "testing",
   "soc": "orin",
   "jetpack_version": "5.1.5",
-  "deb_package": "kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
-  "config_archived": "kernel_archive/170426/kernel.config",
-  "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
-  "source_repos_tagged": ["kernels/cartken_5_1_5_realsense"],
+  "deb_package": "storage/kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
+  "config_archived": "storage/kernel_archive/170426/kernel.config",
+  "production_deb": "storage/production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5realsense.170426.deb",
+  "source_repos_tagged": ["storage/kernels/cartken_5_1_5_realsense"],
   "notes": [
     { "text": "Stable after soak test", "date": "...", "by": "..." }
   ],

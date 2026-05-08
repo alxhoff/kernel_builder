@@ -70,7 +70,7 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
     if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" ]]; then
         echo "Building the Docker image '$DOCKER_TAG'..."
         docker pull "$IMAGE"
-        # This Dockerfile is based on the one in setup_tegra_package_docker.sh
+        # This Dockerfile mirrors the one used by setup_tegra_package.sh --docker.
         docker build --dns=8.8.8.8 --dns=8.8.4.4 -t "$DOCKER_TAG" - <<EOF
         FROM $IMAGE
         RUN apt-get update && apt-get install -y \
@@ -195,7 +195,7 @@ fi
 #   1. We pre-populate /etc/ssh/cartken_sshd/{ssh_host_cartken_ed25519_key,
 #      ssh_host_cartken_ed25519_key.pub, ssh_host_cartken_ed25519_key-cert.pub,
 #      ssh_user_ca.pub, authorized_principals[, _local]} in the rootfs.
-#   2. The chroot step (see chroot_configured_commands.txt) installs the
+#   2. The chroot step (see chroot_install_cartken.txt) installs the
 #      cartken-jetson-sshd-v2 deb so the unit is enabled before flash.
 # The provisioning therefore has to run BEFORE the chroot runs, otherwise the
 # v2 deb's postinst would land on an empty config dir.
@@ -247,6 +247,16 @@ Options:
                          touching the rootfs further.
   --access-token <tok>   GitLab access token used by get_packages.sh when --tag
                          is set. Ignored otherwise.
+  --clean-rootfs         Wipe the existing rootfs and re-run setup_tegra_package.sh
+                         from scratch (BSP extract + apply_binaries + base chroot)
+                         before continuing with the per-robot flow. Use when the
+                         existing rootfs has accumulated stale artefacts (e.g.
+                         cartken packages dropped from the repo, files written by
+                         older versions of these scripts) and you want a clean
+                         baseline without manually rebuilding kernel/drivers.
+                         Requires --tag and --access-token. Skips kernel/display
+                         driver/pinmux rebuilds for speed; if you also need those,
+                         re-run setup_tegra_package.sh manually instead.
   -h, --help             Show this help message and exit.
 
 Examples:
@@ -278,6 +288,7 @@ SKIP_SSH_CA=0
 HOST_CERT_VALIDITY="48h"
 TAG=""
 ACCESS_TOKEN=""
+CLEAN_ROOTFS=0
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -353,6 +364,10 @@ while [[ $# -gt 0 ]]; do
       ACCESS_TOKEN="$2"
       shift 2
       ;;
+    --clean-rootfs)
+      CLEAN_ROOTFS=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"; exit 1
       ;;
@@ -361,6 +376,11 @@ done
 
 if [[ -n "$TAG" && -z "$ACCESS_TOKEN" ]]; then
   echo "Error: --tag '$TAG' requires --access-token <gitlab token>." >&2
+  exit 1
+fi
+
+if [[ "$CLEAN_ROOTFS" -eq 1 && ( -z "$TAG" || -z "$ACCESS_TOKEN" ) ]]; then
+  echo "Error: --clean-rootfs requires --tag and --access-token (passed through to setup_tegra_package.sh)." >&2
   exit 1
 fi
 
@@ -399,17 +419,56 @@ SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -n "$L4T_DIR_ARG" ]]; then
   L4T_DIR="$L4T_DIR_ARG"
 else
-  L4T_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+  # New canonical location is bsp/<version>/Linux_for_Tegra/. Fall back to
+  # the legacy <version>/Linux_for_Tegra/ if a user still has a BSP from
+  # before the bsp/ relocation, so we don't strand them.
+  L4T_DIR="$SCRIPT_DIRECTORY/bsp/$TARGET_BSP/Linux_for_Tegra"
+  if [[ ! -d "$L4T_DIR" && -d "$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra" ]]; then
+    L4T_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+  fi
 fi
 ROOTFS_PATH="$L4T_DIR/rootfs"
 FLASH_SCRIPT="$L4T_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
-CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_configured_commands.txt"
+CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken.txt"
 
 # --- Check for L4T directory ---
 if [[ ! -d "$L4T_DIR" ]]; then
   echo "Error: Tegra directory '$L4T_DIR' not found." >&2
   echo "Please ensure the BSP for $TARGET_BSP is correctly located." >&2
   exit 1
+fi
+
+# --- Optional: wipe the rootfs and re-run setup_tegra_package.sh ---
+# Use case: long-lived rootfs has accumulated stale artefacts (debs dropped
+# from the repo, files written by older versions of our scripts, etc.) and
+# we want to converge on a known state without hand-debugging dpkg's
+# database. setup_tegra_package.sh re-extracts the BSP rootfs tarball,
+# re-applies NVIDIA binaries, and re-runs the base chroot (which now does a
+# full cartken-* purge before installing). Kernel/display/pinmux rebuilds
+# are skipped for speed; pass them up to setup_tegra_package.sh manually if
+# you actually need to rebuild those.
+if [[ "$CLEAN_ROOTFS" -eq 1 ]]; then
+  TEGRA_PKG_SH="$SCRIPT_DIRECTORY/setup_tegra_package.sh"
+  if [[ ! -x "$TEGRA_PKG_SH" ]]; then
+    echo "Error: $TEGRA_PKG_SH not found or not executable." >&2
+    exit 1
+  fi
+  echo "--clean-rootfs: wiping $ROOTFS_PATH and re-running setup_tegra_package.sh (tag=$TAG, jetpack=$TARGET_BSP)..."
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] rm -rf $ROOTFS_PATH"
+    echo "[dry-run] $TEGRA_PKG_SH --jetpack $TARGET_BSP --access-token <redacted> --tag $TAG --soc $SOC --skip-kernel-build --skip-display-driver-build --skip-pinmux"
+  else
+    rm -rf "$ROOTFS_PATH"
+    "$TEGRA_PKG_SH" \
+      --jetpack "$TARGET_BSP" \
+      --access-token "$ACCESS_TOKEN" \
+      --tag "$TAG" \
+      --soc "$SOC" \
+      --skip-kernel-build \
+      --skip-display-driver-build \
+      --skip-pinmux
+    echo "--clean-rootfs: rootfs rebuilt; continuing with per-robot setup."
+  fi
 fi
 
 # --- Install dependencies ---
@@ -572,7 +631,7 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   # Done before SSH CA provisioning so a missing/incomplete tag aborts before
   # we burn a backend host-cert request.
   if [[ -n "$TAG" ]]; then
-    GET_PACKAGES_SH="$SCRIPT_DIRECTORY/get_packages.sh"
+    GET_PACKAGES_SH="$SCRIPT_DIRECTORY/helpers/get_packages.sh"
     if [[ ! -x "$GET_PACKAGES_SH" ]]; then
       echo "Error: $GET_PACKAGES_SH not found or not executable." >&2
       exit 1
@@ -623,7 +682,7 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
       exit 1
     fi
 
-    USER_CA_HELPER="$SCRIPT_DIRECTORY/fetch_user_ca_pubkey.py"
+    USER_CA_HELPER="$SCRIPT_DIRECTORY/helpers/fetch_user_ca_pubkey.py"
     if [[ ! -f "$USER_CA_HELPER" ]]; then
       echo "Error: helper '$USER_CA_HELPER' is missing." >&2
       exit 1
@@ -773,22 +832,17 @@ if [ -f "$L4T_DIR/tools/l4t_flash_prerequisites.sh" ]; then
 fi
 
 # --- Flash ---
-echo "Running flash script: $FLASH_SCRIPT"
-curl -fsSL \
-https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/flash_jetson_ALL_sdmmc_partition_qspi.sh \
--o "$FLASH_SCRIPT"
-
-# Add a check to ensure curl succeeded
-if [ ! -f "$FLASH_SCRIPT" ]; then
-    echo "Error: Failed to download flash script." >&2
-    echo "Attempted to download from: https://raw.githubusercontent.com/alxhoff/kernel_builder/refs/heads/master/scripts/flash/rootfs_prep/flash_jetson_ALL_sdmmc_partition_qspi.sh" >&2
-    exit 1
+# Stage the flash script from the local checkout rather than pulling it
+# from GitHub master. Same reasoning as setup_tegra_package.sh's local-cp
+# refactor: works offline, doesn't silently overwrite feature-branch
+# edits, no curl/network failure mode mid-flash.
+FLASH_SCRIPT_SRC="$SCRIPT_DIRECTORY/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+if [[ ! -f "$FLASH_SCRIPT_SRC" ]]; then
+  echo "Error: $FLASH_SCRIPT_SRC not found." >&2
+  exit 1
 fi
-
-# For debugging, show that the file exists and has the right permissions
-echo "Flash script downloaded. Listing directory contents:"
-ls -la "$(dirname "$FLASH_SCRIPT")"
-
+echo "Staging flash script $FLASH_SCRIPT_SRC -> $FLASH_SCRIPT"
+cp "$FLASH_SCRIPT_SRC" "$FLASH_SCRIPT"
 chmod +x "$FLASH_SCRIPT"
 
 MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)

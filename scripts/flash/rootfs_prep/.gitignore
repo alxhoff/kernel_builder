@@ -9,12 +9,16 @@ cartken_flash
 *.iso
 ubuntu_iso_work
 *.txt
-!chroot_setup_commands_jp5.txt
-!chroot_setup_commands_jp6.txt
-!chroot_configured_commands.txt
-!essential_chroot_setup_commands.txt
+!chroot_install_os_jp5.txt
+!chroot_install_os_jp6.txt
+!chroot_install_cartken.txt
 *.ko
-5.1.*
-6*
 *.log
 .wget-hsts
+__pycache__/
+# Extracted L4T BSPs land here (see TEGRA_BASE_DIR in setup_tegra_package.sh).
+bsp/
+# Multi-GB BSP / kernel-source / rootfs tarballs land here (see DOWNLOADS_DIR
+# in setup_tegra_package.sh). Already covered by *.tbz2 / *.tar.gz above
+# but listed explicitly for clarity.
+downloads/

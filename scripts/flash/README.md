@@ -4,11 +4,10 @@ Device flashing, rootfs preparation, and live-USB helpers.
 
 - `jetson/` — board-level Jetson flashing: bootloader, boot-order overlays,
   kernel-only flashing, rootdisk switching.
-- `rootfs_prep/` — prepare an L4T rootfs (`setup_rootfs.sh`,
-  `setup_tegra_package.sh`), build the kernel into it (`build_kernel.sh`),
-  pack / update bootloader and UEFI, and the `flash_jetson_*` full-flash
-  scripts. Also includes the Docker-based flash helper
-  `docker_flash_orin.sh`.
+- `rootfs_prep/` — prepare an L4T rootfs (`setup_tegra_package.sh`), build
+  the kernel into it (`build_kernel.sh`), apply per-robot config and flash
+  (`setup_rootfs_as_robot_for_flashing.sh`,
+  `flash_jetson_ALL_sdmmc_partition_qspi.sh`).
 - `live_usb/` — create bootable Ubuntu live USBs used to flash robots
   (`create_ubuntu_iso.sh`, `create_ubuntu_live_w_second_partition.sh`).
 

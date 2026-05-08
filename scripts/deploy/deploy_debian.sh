@@ -7,7 +7,7 @@ set -ex
 
 # Set the script directory to be one level up from the current script's directory
 SCRIPT_DIR="$(realpath "$(dirname "$0")/..")"
-KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../kernel_deployer.py"
+KERNEL_DEPLOYER_PATH="$SCRIPT_DIR/../python/kernel_deployer.py"
 
 # Ensure kernel name is provided
 if [ -z "$1" ]; then
