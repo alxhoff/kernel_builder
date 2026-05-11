@@ -1,6 +1,7 @@
 # Build outputs and runtime data, all under storage/
 it-management
 repo
+kernels
 storage/kernels/*
 !storage/kernels/.gitkeep
 storage/toolchains/*
