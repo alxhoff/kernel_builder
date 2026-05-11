@@ -40,6 +40,31 @@ def locate_dtb_file(kernel_name, dtb_name):
     print(f"Warning: DTB file {dtb_name} not found in any of the search paths.")
     return None
 
+
+def _host_kernel_path_to_docker(host_path: str, kernels_dir_abs: str) -> str:
+    """Map host path under storage/kernels to /builder/kernels/... (docker -v mount)."""
+    if not host_path:
+        return host_path
+    k_abs = os.path.normpath(os.path.abspath(kernels_dir_abs))
+    try:
+        p_abs = os.path.normpath(os.path.abspath(host_path))
+        if p_abs == k_abs:
+            return "/builder/kernels"
+        sep = os.sep
+        if p_abs.startswith(k_abs + sep):
+            rel = p_abs[len(k_abs) + len(sep) :]
+            return "/builder/kernels/" + rel.replace("\\", "/")
+    except (OSError, ValueError):
+        pass
+    s = host_path.replace("\\", "/")
+    prefix = "storage/kernels/"
+    if s.startswith(prefix):
+        return "/builder/kernels/" + s[len(prefix) :]
+    if s == "storage/kernels":
+        return "/builder/kernels"
+    return s
+
+
 def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("storage", "kernels")
@@ -324,7 +349,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
             print(f"Error: Base DTB file {dtb_name} not found.")
             return 1
 
-        base_dtb_path_docker = base_dtb_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
+        base_dtb_path_docker = _host_kernel_path_to_docker(base_dtb_path_host, kernels_dir_abs)
 
         # Find the overlay files paths inside the container
         overlay_files = overlays.split(',')
@@ -336,7 +361,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
                 find_output = subprocess.check_output(find_command, shell=True, universal_newlines=True).strip()
                 if find_output:
                     overlay_path_host = find_output.splitlines()[0]
-                    overlay_path_docker = overlay_path_host.replace(os.path.abspath("kernels"), "/builder/kernels")
+                    overlay_path_docker = _host_kernel_path_to_docker(overlay_path_host, kernels_dir_abs)
                     overlay_paths_docker.append(overlay_path_docker)
                 else:
                     print(f"Error: Overlay file {overlay_file} not found.")
@@ -378,7 +403,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
     if dtb_name:
         dtb_path = locate_dtb_file(kernel_name, dtb_name)
         if dtb_path:
-            dtb_path_docker = dtb_path.replace(os.path.abspath("kernels"), "/builder/kernels")
+            dtb_path_docker = _host_kernel_path_to_docker(dtb_path, kernels_dir_abs)
             new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{localversion}.dtb"
             commands_phase_2.append(f"cp {dtb_path_docker} /builder/kernels/{kernel_name}/modules/boot/{new_dtb_name}")
         else:
