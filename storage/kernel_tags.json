@@ -12,12 +12,12 @@
     "status": "development",
     "soc": "orin",
     "jetpack_version": "5.1.5",
-    "deb_package": "kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5.170426.deb",
-    "config_archived": "kernel_archive/170426/kernel.config",
-    "patches_archived": "kernel_archive/170426/patches.tar.gz",
-    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.170426.deb",
+    "deb_package": "storage/kernel_archive/170426/linux-custom-5.10.216-cartken5.1.5.170426.deb",
+    "config_archived": "storage/kernel_archive/170426/kernel.config",
+    "patches_archived": "storage/kernel_archive/170426/patches.tar.gz",
+    "production_deb": "storage/production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.170426.deb",
     "source_repos_tagged": [
-      "kernels/cartken_5_1_5"
+      "storage/kernels/cartken_5_1_5"
     ],
     "notes": [],
     "deployments": [
@@ -55,12 +55,12 @@
     "status": "development",
     "soc": "orin",
     "jetpack_version": "5.1.5",
-    "deb_package": "kernel_archive/230426/linux-custom-5.10.216-cartken5.1.5.230426.deb",
-    "config_archived": "kernel_archive/230426/kernel.config",
-    "patches_archived": "kernel_archive/230426/patches.tar.gz",
-    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.230426.deb",
+    "deb_package": "storage/kernel_archive/230426/linux-custom-5.10.216-cartken5.1.5.230426.deb",
+    "config_archived": "storage/kernel_archive/230426/kernel.config",
+    "patches_archived": "storage/kernel_archive/230426/patches.tar.gz",
+    "production_deb": "storage/production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.230426.deb",
     "source_repos_tagged": [
-      "kernels/cartken_5_1_5"
+      "storage/kernels/cartken_5_1_5"
     ],
     "notes": [],
     "deployments": [
@@ -98,12 +98,12 @@
     "status": "development",
     "soc": "orin",
     "jetpack_version": "5.1.5",
-    "deb_package": "kernel_archive/240426/linux-custom-5.10.216-cartken5.1.5.240426.deb",
-    "config_archived": "kernel_archive/240426/kernel.config",
-    "patches_archived": "kernel_archive/240426/patches.tar.gz",
-    "production_deb": "production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.240426.deb",
+    "deb_package": "storage/kernel_archive/240426/linux-custom-5.10.216-cartken5.1.5.240426.deb",
+    "config_archived": "storage/kernel_archive/240426/kernel.config",
+    "patches_archived": "storage/kernel_archive/240426/patches.tar.gz",
+    "production_deb": "storage/production_kernels/orin/5.1.5/linux-custom-5.10.216-cartken5.1.5.240426.deb",
     "source_repos_tagged": [
-      "kernels/cartken_5_1_5"
+      "storage/kernels/cartken_5_1_5"
     ],
     "notes": [],
     "deployments": [

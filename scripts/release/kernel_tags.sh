@@ -21,6 +21,37 @@ DEVICE_IP_FILE="$SCRIPT_DIR/config/device_ip"
 DEVICE_USER_FILE="$SCRIPT_DIR/config/device_username"
 DEFAULT_DEPLOY_USER="cartken"
 
+# Resolve a manifest path (repo-relative) to an absolute path on disk.
+# Handles current storage/* layout and legacy paths from before storage/ was introduced.
+_resolve_manifest_path() {
+  local rel="$1"
+  if [ -z "$rel" ] || [ "$rel" = "null" ]; then
+    return 1
+  fi
+  if [[ "$rel" == /* ]]; then
+    if [ -e "$rel" ]; then
+      echo "$rel"
+      return 0
+    fi
+    return 1
+  fi
+  local candidate="$REPO_ROOT/$rel"
+  if [ -e "$candidate" ]; then
+    echo "$candidate"
+    return 0
+  fi
+  case "$rel" in
+    kernel_archive/*|kernel_debs/*|kernels/*|production_kernels/*)
+      candidate="$REPO_ROOT/storage/$rel"
+      if [ -e "$candidate" ]; then
+        echo "$candidate"
+        return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
 # Read the first non-empty, non-comment line from a config file.
 # Prints nothing if the file is missing or empty.
 _read_config_value() {
@@ -222,10 +253,14 @@ find_deb_package() {
     return
   fi
 
-  # If explicit path is relative, try from repo root
-  if [ -n "$deb_path" ] && [ -f "$REPO_ROOT/$deb_path" ]; then
-    echo "$REPO_ROOT/$deb_path"
-    return
+  # If explicit path is relative, resolve (storage/ and legacy kernel_archive/, etc.)
+  if [ -n "$deb_path" ]; then
+    local resolved
+    resolved=$(_resolve_manifest_path "$deb_path") || true
+    if [ -n "$resolved" ] && [ -f "$resolved" ]; then
+      echo "$resolved"
+      return
+    fi
   fi
 
   # Auto-detect from storage/kernel_debs/ by localversion
@@ -833,7 +868,7 @@ EOF
     echo "$archive_output" | head -n -1
 
     # If last line looks like an archive path, use it
-    if [[ "$last_line" == storage/kernel_archive/* ]]; then
+    if [[ "$last_line" == storage/kernel_archive/* ]] || [[ "$last_line" == kernel_archive/* ]]; then
       archived_deb="$last_line"
     fi
     echo ""
@@ -850,7 +885,7 @@ EOF
     local config_last_line
     config_last_line=$(echo "$config_output" | tail -1)
     echo "$config_output" | head -n -1
-    if [[ "$config_last_line" == storage/kernel_archive/* ]]; then
+    if [[ "$config_last_line" == storage/kernel_archive/* ]] || [[ "$config_last_line" == kernel_archive/* ]]; then
       archived_config="$config_last_line"
     fi
     echo ""
@@ -865,7 +900,7 @@ EOF
     local patches_last_line
     patches_last_line=$(echo "$patches_output" | tail -1)
     echo "$patches_output" | head -n -1
-    if [[ "$patches_last_line" == storage/kernel_archive/* ]]; then
+    if [[ "$patches_last_line" == storage/kernel_archive/* ]] || [[ "$patches_last_line" == kernel_archive/* ]]; then
       archived_patches="$patches_last_line"
     fi
     echo ""
@@ -878,15 +913,18 @@ EOF
   local published_path=""
   if [ -n "$soc" ] && [ "$skip_publish" = false ]; then
     echo "Publishing to production_kernels..."
-    local deb_to_publish="${archived_deb:+$REPO_ROOT/$archived_deb}"
+    local deb_to_publish=""
+    if [ -n "$archived_deb" ]; then
+      deb_to_publish=$(_resolve_manifest_path "$archived_deb") || true
+    fi
     if [ -z "$deb_to_publish" ] || [ ! -f "$deb_to_publish" ]; then
       deb_to_publish=$(find_deb_package "$localversion" "$deb_package") || true
     fi
 
     local publish_output
     local patches_path=""
-    if [ -n "$archived_patches" ] && [ -f "$REPO_ROOT/$archived_patches" ]; then
-      patches_path="$REPO_ROOT/$archived_patches"
+    if [ -n "$archived_patches" ]; then
+      patches_path=$(_resolve_manifest_path "$archived_patches") || true
     fi
 
     publish_output=$(publish_to_production "$tag_name" "$soc" "$kernel_name" "$localversion" \
@@ -1853,17 +1891,17 @@ EOF
     exit 1
   fi
 
-  # Resolve to absolute path
-  if [[ "$deb_path" != /* ]]; then
-    deb_path="$REPO_ROOT/$deb_path"
-  fi
-
-  if [ ! -f "$deb_path" ]; then
-    echo "Error: Archived .deb not found at: $deb_path" >&2
+  local resolved
+  resolved=$(_resolve_manifest_path "$deb_path") || true
+  if [ -z "$resolved" ] || [ ! -f "$resolved" ]; then
+    echo "Error: Archived .deb not found at: $REPO_ROOT/$deb_path" >&2
+    if [[ "$deb_path" == kernel_archive/* ]]; then
+      echo "  (also tried: $REPO_ROOT/storage/$deb_path)" >&2
+    fi
     exit 1
   fi
 
-  echo "$deb_path"
+  echo "$resolved"
 }
 
 # ── deploy helpers ────────────────────────────────────────────────────────────
