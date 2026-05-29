@@ -181,6 +181,16 @@ fi
 
 
 echo "Running chroot..."
+CARTKEN_DEBS_MANIFEST="$SCRIPT_DIRECTORY/../flash/rootfs_prep/cartken_jetson_debs.txt"
+if [[ ! -f "$CARTKEN_DEBS_MANIFEST" ]]; then
+    echo "Error: cartken package manifest '$CARTKEN_DEBS_MANIFEST' is missing." >&2
+    exit 1
+fi
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] cp $CARTKEN_DEBS_MANIFEST $ROOTFS/root/cartken_jetson_debs.txt"
+else
+    cp "$CARTKEN_DEBS_MANIFEST" "$ROOTFS/root/cartken_jetson_debs.txt"
+fi
 run sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_FILE"
 
 echo "Setting hostname inside rootfs to: $NEW_HOSTNAME"

@@ -1,0 +1,19 @@
+# Cartken Jetson .deb packages installed during the cartken-layer chroot pass.
+# One package basename per line (without .deb). Lines starting with # are ignored.
+# Edit this file to add/remove packages; chroot_install_cartken.txt reads it from
+# /root/cartken_jetson_debs.txt inside the rootfs.
+cartken-jetson-can-setup
+cartken-jetson-can-interface
+cartken-jetson-wifi-kernel-modules
+cartken-jetson-wifi-access-point
+cartken-jetson-modem-kernel-modules
+cartken-wifi-tools
+cartken-jetson-wifi-manager
+cartken-networking-base
+cartken-vpn-common-credentials
+cartken-modem-tools
+cartken-jetson-modem-manager
+cartken-routing-tables
+cartken-modem-routing-table-manager
+cartken-vpn
+cartken-jetson-sshd-v2

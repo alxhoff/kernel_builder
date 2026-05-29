@@ -790,6 +790,16 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   fi
 
   echo "Running chroot (installs cartken-jetson-sshd-v2 among others)..."
+  CARTKEN_DEBS_MANIFEST="$SCRIPT_DIRECTORY/cartken_jetson_debs.txt"
+  if [[ ! -f "$CARTKEN_DEBS_MANIFEST" ]]; then
+    echo "Error: cartken package manifest '$CARTKEN_DEBS_MANIFEST' is missing." >&2
+    exit 1
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] cp $CARTKEN_DEBS_MANIFEST $ROOTFS_PATH/root/cartken_jetson_debs.txt"
+  else
+    cp "$CARTKEN_DEBS_MANIFEST" "$ROOTFS_PATH/root/cartken_jetson_debs.txt"
+  fi
   if [[ ! -s "$CHROOT_CMD_FILE" ]]; then
     echo "Error: chroot command file '$CHROOT_CMD_FILE' is missing or empty." >&2
     echo "Refusing to run chroot with no commands; this would silently leave" >&2

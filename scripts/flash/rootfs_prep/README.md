@@ -65,7 +65,8 @@ each with a single responsibility:
 |------|----------------|
 | `chroot_install_os_jp5.txt` | OS layer for JetPack 5.x: apt deps, nvidia-l4t holds, stock sshd config, base cleanup. |
 | `chroot_install_os_jp6.txt` | Same as above for JetPack 6.x (different NVIDIA package names, `nvidia-ctk` runtime config). |
-| `chroot_install_cartken.txt` | **Single source of truth for the cartken-* layer.** Purges every installed `cartken-*` package, installs viki, then installs the full cartken-* deb set in one transaction. |
+| `chroot_install_cartken.txt` | **Cartken-layer chroot driver.** Purges every installed `cartken-*` package, installs viki, then installs debs listed in `cartken_jetson_debs.txt`. |
+| `cartken_jetson_debs.txt` | **Single source of truth for which cartken-* debs to install.** One package basename per line; copied into the rootfs before chroot. |
 
 `setup_tegra_package.sh` runs the OS layer chroot then the cartken layer
 chroot back-to-back. The per-robot scripts
@@ -73,7 +74,7 @@ chroot back-to-back. The per-robot scripts
 `scripts/ota/setup_rootfs_as_robot_for_ota.sh`) re-run the cartken layer so
 a `--tag` swap rebuilds it without re-running the BSP setup.
 
-`chroot_install_cartken.txt` is intentionally self-cleaning: removing a
+`cartken_jetson_debs.txt` is intentionally self-cleaning: removing a
 deb from its install list **also removes it from the rootfs** the next
 time any flow runs, because the file purges every `cartken-*` before
 reinstalling. There is no separate "uninstall" step to maintain.
@@ -182,6 +183,7 @@ rootfs_prep/
 ├── flash_jetson_ALL_sdmmc_partition_qspi.sh # standalone-runnable flash driver
 ├── chroot_install_os_jp{5,6}.txt           # OS-layer chroot (Pass 1/2)
 ├── chroot_install_cartken.txt              # cartken-layer chroot (Pass 2/2)
+├── cartken_jetson_debs.txt                 # deb manifest (one basename per line)
 ├── helpers/                                # internal helpers, not user-callable
 │   ├── get_packages.sh
 │   ├── get_pinmux.sh

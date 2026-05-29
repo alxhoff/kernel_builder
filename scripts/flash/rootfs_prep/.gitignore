@@ -12,6 +12,7 @@ ubuntu_iso_work
 !chroot_install_os_jp5.txt
 !chroot_install_os_jp6.txt
 !chroot_install_cartken.txt
+!cartken_jetson_debs.txt
 *.ko
 *.log
 .wget-hsts

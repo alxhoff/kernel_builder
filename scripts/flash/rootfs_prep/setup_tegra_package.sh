@@ -581,6 +581,7 @@ $TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 # /root/packages/ inside the rootfs which then survive into the flashed image.
 sudo rm -rf "$TEGRA_DIR/rootfs/root/packages"
 sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
+sudo cp "$SCRIPT_DIRECTORY/cartken_jetson_debs.txt" "$TEGRA_DIR/rootfs/root/"
 
 prompt_user
 
