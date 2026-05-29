@@ -15,7 +15,7 @@ them from the repo root without typing long paths. Every wrapper simply
 | `mrproper` | `scripts/build/kernel/mrproper_kernel.sh` | `make mrproper` on a kernel source tree |
 | `clean-builds` | `scripts/cleanup/cleanup_jetson_kernel_builds.sh` | Clean Jetson kernel build artifacts |
 | `panic` | `scripts/utils/kernel/resolve_kernel_panic.sh` | Resolve kernel panic addresses against `vmlinux` |
-| `chroot` | `scripts/utils/chroot/jetson_chroot.sh` | Enter a chroot into a Jetson rootfs tree |
+| `chroot` | `scripts/flash/rootfs_prep/jetson_chroot.sh` | Enter a chroot into a Jetson rootfs tree |
 | `dtb` | `scripts/utils/dtb/dtb_dts_helper.sh` | DTB / DTS decompile / search / verify helper |
 | `logs` | `scripts/device/logs/retrieve_logs.sh` | Pull kernel / system logs from a device over SSH |
 | `tegra-pkg` | `scripts/flash/rootfs_prep/setup_tegra_package.sh --docker` | Download + extract Linux_for_Tegra (Docker) |

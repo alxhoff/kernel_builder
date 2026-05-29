@@ -481,25 +481,14 @@ fi
 
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
 
-# Stage helper scripts into $TEGRA_DIR. The chroot driver lives in
-# scripts/utils/chroot/ (one source of truth across the repo); everything
-# else is a sibling of this script. Copying from local checkout (rather
-# than fetching from GitHub master, which we used to do here via the
+# Stage helper scripts into $TEGRA_DIR. Everything lives alongside this script
+# in rootfs_prep/ (including jetson_chroot.sh). Copying from local checkout
+# (rather than fetching from GitHub master, which we used to do here via the
 # contents API + curl/wget) means:
 #   - no jq host dep, no GitHub API rate limits
 #   - feature-branch edits to these scripts actually run, instead of
 #     being silently overwritten by master
 #   - works fully offline once the BSP tarballs have been downloaded
-chroot_script_src="$SCRIPT_DIRECTORY/../../utils/chroot/jetson_chroot.sh"
-chroot_script="$TEGRA_DIR/jetson_chroot.sh"
-if [ ! -f "$chroot_script_src" ]; then
-	echo "Error: chroot driver not found at $chroot_script_src" >&2
-	exit 1
-fi
-echo "Copying chroot driver into $TEGRA_DIR..."
-cp "$chroot_script_src" "$chroot_script"
-chmod +x "$chroot_script"
-
 echo "Copying rootfs_prep helpers into $TEGRA_DIR..."
 shopt -s nullglob
 # Sources: top-level entry points + chroot .txts that live at the rootfs_prep
@@ -518,6 +507,11 @@ if [[ ${#helper_files[@]} -eq 0 ]]; then
 	exit 1
 fi
 cp "${helper_files[@]}" "$TEGRA_DIR/"
+chmod +x "$TEGRA_DIR/jetson_chroot.sh"
+if [[ ! -x "$TEGRA_DIR/jetson_chroot.sh" ]]; then
+	echo "Error: jetson_chroot.sh not found at $SCRIPT_DIRECTORY/jetson_chroot.sh" >&2
+	exit 1
+fi
 
 # Clean up any stale suffixed copies left over from previous runs that used
 # the old wget -P behaviour (e.g. chroot_setup_commands.txt.1).

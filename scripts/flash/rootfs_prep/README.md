@@ -117,6 +117,12 @@ Notable flags:
 The script reads the SSH CA / cartken-dev session from `$SUDO_USER`'s
 home; run `cartken account login <env>` in your normal shell first.
 
+### `jetson_chroot.sh`
+Chroot driver for the L4T rootfs: mounts `/proc`, `/sys`, `/dev`, sets up
+Orin fakeroot shims, and optionally runs a command file line-by-line.
+Copied into `Linux_for_Tegra/` by `setup_tegra_package.sh` alongside the
+other rootfs_prep scripts. Also reachable via `bin/chroot`.
+
 ### `flash_jetson_ALL_sdmmc_partition_qspi.sh`
 Full-flash of every sdmmc partition + QSPI bootloader. Invoked by
 `setup_rootfs_as_robot_for_flashing.sh` at the end; can also be run
@@ -164,6 +170,7 @@ homes:
 | `get_system_information.sh`, `compare_registers.sh` | `scripts/device/system_info/` |
 | `install_kernel_deps.sh` | `scripts/build/` |
 | `get_docker.sh` | `scripts/utils/docker/` |
+| `jetson_chroot.sh` | lives here in `rootfs_prep/` (was `scripts/utils/chroot/`) |
 | `stability_test/setup_stability_test.sh` | `scripts/device/load/` (alongside `docker_stability_test.sh`) |
 
 Removed entirely (deprecated): `docker_flash_orin.sh` (referenced a
@@ -180,6 +187,7 @@ Source layout (what's tracked in git):
 rootfs_prep/
 ├── setup_tegra_package.sh                  # entry point: build the BSP rootfs
 ├── setup_rootfs_as_robot_for_flashing.sh   # entry point: per-robot config + flash
+├── jetson_chroot.sh                        # chroot driver (also copied into Linux_for_Tegra/)
 ├── flash_jetson_ALL_sdmmc_partition_qspi.sh # standalone-runnable flash driver
 ├── chroot_install_os_jp{5,6}.txt           # OS-layer chroot (Pass 1/2)
 ├── chroot_install_cartken.txt              # cartken-layer chroot (Pass 2/2)
@@ -211,7 +219,7 @@ rootfs_prep/
             │   └── root/packages/          # cartken debs + wheels at the current --tag
             ├── kernel/                     # built kernel artefacts
             ├── packages/                   # raw download of cartken packages
-            ├── jetson_chroot.sh            # copied from scripts/utils/chroot/
+            ├── jetson_chroot.sh            # copied from rootfs_prep/
             ├── chroot_install_os_jp{5,6}.txt
             ├── chroot_install_cartken.txt
             ├── flash_jetson_ALL_sdmmc_partition_qspi.sh

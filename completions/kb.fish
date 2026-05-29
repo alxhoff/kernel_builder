@@ -20,7 +20,7 @@ complete -c menuconfig  -d "make menuconfig (scripts/build/kernel/menuconfig_ker
 complete -c mrproper    -d "make mrproper (scripts/build/kernel/mrproper_kernel.sh)"
 complete -c clean-builds -d "Clean Jetson kernel build artifacts"
 complete -c panic       -d "Resolve kernel panic addresses (scripts/utils/kernel/resolve_kernel_panic.sh)"
-complete -c chroot      -d "Enter a chroot into a Jetson rootfs (scripts/utils/chroot/jetson_chroot.sh)"
+complete -c chroot      -d "Enter a chroot into a Jetson rootfs (scripts/flash/rootfs_prep/jetson_chroot.sh)"
 complete -c dtb         -d "DTB/DTS decompile/search/verify helper"
 complete -c logs        -d "Retrieve kernel/system logs over SSH"
 complete -c tegra-pkg   -d "Download + extract Linux_for_Tegra (Docker)"

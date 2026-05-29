@@ -284,7 +284,7 @@ async def open_workspace_menu(app: Any) -> None:
                     "chroot",
                     "Enter rootfs with jetson_chroot.sh",
                     (
-                        "Runs scripts/utils/chroot/jetson_chroot.sh with a Linux_for_Tegra/rootfs "
+                        "Runs scripts/flash/rootfs_prep/jetson_chroot.sh with a Linux_for_Tegra/rootfs "
                         "path and SoC. Drops you into a shell inside the image for package tweaks, "
                         "inspection, or debugging. Requires sudo."
                     ),
@@ -1721,7 +1721,7 @@ async def util_chroot(app: Any) -> None:
     rootfs = ROOTFS(app) / "bsp" / target / "Linux_for_Tegra" / "rootfs"
     if await app.dlg_confirm("chroot", str(rootfs)):
         await app.run_cmd(
-            ["sudo", str(rp(app) / "scripts" / "utils" / "chroot" / "jetson_chroot.sh"), str(rootfs), soc]
+            ["sudo", str(rp(app) / "scripts" / "flash" / "rootfs_prep" / "jetson_chroot.sh"), str(rootfs), soc]
         )
 
 

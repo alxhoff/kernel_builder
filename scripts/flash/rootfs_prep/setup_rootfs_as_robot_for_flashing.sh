@@ -806,7 +806,15 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
     echo "cartken-jetson-sshd-v2 (and others) uninstalled." >&2
     exit 1
   fi
-  run sudo "$L4T_DIR/jetson_chroot.sh" "$ROOTFS_PATH" "$SOC" "$CHROOT_CMD_FILE"
+  JETSON_CHROOT_SH="$L4T_DIR/jetson_chroot.sh"
+  if [[ ! -x "$JETSON_CHROOT_SH" ]]; then
+    JETSON_CHROOT_SH="$SCRIPT_DIRECTORY/jetson_chroot.sh"
+  fi
+  if [[ ! -x "$JETSON_CHROOT_SH" ]]; then
+    echo "Error: jetson_chroot.sh not found under $L4T_DIR or $SCRIPT_DIRECTORY." >&2
+    exit 1
+  fi
+  run sudo "$JETSON_CHROOT_SH" "$ROOTFS_PATH" "$SOC" "$CHROOT_CMD_FILE"
 
   # --- Set hostname and env ---
   NEW_HOSTNAME="cart${ROBOT_NUMBER}jetson"

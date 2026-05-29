@@ -78,7 +78,15 @@ TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
 L4T_DIR="$TEGRA_DIR"
 OTA_DIR="$SCRIPT_DIRECTORY/ota_update"
 ROOTFS="$TEGRA_DIR/rootfs"
-CHROOT_CMD_FILE="chroot_install_cartken.txt"
+CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken.txt"
+JETSON_CHROOT_SH="$TEGRA_DIR/jetson_chroot.sh"
+if [[ ! -x "$JETSON_CHROOT_SH" ]]; then
+    JETSON_CHROOT_SH="$SCRIPT_DIRECTORY/../flash/rootfs_prep/jetson_chroot.sh"
+fi
+if [[ ! -x "$JETSON_CHROOT_SH" ]]; then
+    echo "Error: jetson_chroot.sh not found under $TEGRA_DIR or rootfs_prep/." >&2
+    exit 1
+fi
 
 ROBOT_SUFFIX=$(printf "cart%03d" "$ROBOT_NUMBER")
 NEW_HOSTNAME="${ROBOT_SUFFIX}jetson"
@@ -191,7 +199,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 else
     cp "$CARTKEN_DEBS_MANIFEST" "$ROOTFS/root/cartken_jetson_debs.txt"
 fi
-run sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_FILE"
+run sudo "$JETSON_CHROOT_SH" "$TEGRA_DIR/rootfs" "$SOC" "$CHROOT_CMD_FILE"
 
 echo "Setting hostname inside rootfs to: $NEW_HOSTNAME"
 if [[ "$DRY_RUN" -eq 1 ]]; then

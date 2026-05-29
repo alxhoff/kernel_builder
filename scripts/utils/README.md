@@ -2,8 +2,8 @@
 
 Miscellaneous developer helpers, grouped by concern.
 
-- `chroot/` — enter a Jetson / rootfs chroot (`jetson_chroot.sh`,
-  `chroot_rootfs_tarball.sh`).
+- `chroot/` — extract a rootfs tarball and enter it (`chroot_rootfs_tarball.sh`;
+  uses `scripts/flash/rootfs_prep/jetson_chroot.sh`).
 - `configs/` — `.config` diff helper (`compare_configs.sh`).
 - `dtb/` — Device Tree helpers: decompile / verify / string search
   (`dtb_dts_helper.sh`, `verify_dtb.sh`, `search_for_dtb_strings.sh`).

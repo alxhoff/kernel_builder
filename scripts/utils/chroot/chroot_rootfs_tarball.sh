@@ -18,7 +18,7 @@ Description:
     - Calls 'jetson_chroot.sh rootfs' to access the rootfs.
 
 Requirements:
-  - Ensure 'jetson_chroot.sh' is available in the same directory as this script.
+  - Ensure scripts/flash/rootfs_prep/jetson_chroot.sh exists.
   - The script must be run as root.
 
 Examples:
@@ -76,13 +76,13 @@ echo "Extraction completed."
 
 # Call jetson_chroot.sh rootfs
 echo "Calling jetson_chroot.sh to access rootfs..."
-JETSON_CHROOT_PATH="$SCRIPT_DIR/jetson_chroot.sh"
+JETSON_CHROOT_PATH="$(dirname "$(realpath "$0")")/../../flash/rootfs_prep/jetson_chroot.sh"
 if [ ! -f "$JETSON_CHROOT_PATH" ]; then
-  echo "Error: jetson_chroot.sh not found in the script directory."
+  echo "Error: jetson_chroot.sh not found at $JETSON_CHROOT_PATH"
   exit 1
 fi
 
-bash "$JETSON_CHROOT_PATH" "$ROOTFS_DIR" || {
+bash "$JETSON_CHROOT_PATH" "$ROOTFS_DIR" orin || {
   echo "Error: jetson_chroot.sh failed."
   exit 1
 }

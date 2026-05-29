@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Script: jetson_chroot.sh
+# Location: scripts/flash/rootfs_prep/jetson_chroot.sh
 # Description: Script to chroot into a Jetson root filesystem with optional command execution.
 # Author: Alex Hoffman
 

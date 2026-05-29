@@ -1418,7 +1418,7 @@ menu_util_chroot() {
 	soc=$(prompt_soc) || return
 	local rootfs="$ROOTFS_PREP/bsp/$target_bsp/Linux_for_Tegra/rootfs"
 	confirm_run "jetson_chroot" "About to drop into a chroot at:\n  $rootfs\n  soc=$soc" || return
-	run_cmd sudo "$KB_REPO_ROOT/scripts/utils/chroot/jetson_chroot.sh" "$rootfs" "$soc" || true
+	run_cmd sudo "$KB_REPO_ROOT/scripts/flash/rootfs_prep/jetson_chroot.sh" "$rootfs" "$soc" || true
 }
 
 menu_util_view_log() {
