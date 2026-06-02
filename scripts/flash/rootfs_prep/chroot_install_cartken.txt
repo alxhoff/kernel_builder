@@ -13,6 +13,9 @@
 # The deb set itself lives in cartken_jetson_debs.txt (one basename per line);
 # removing a package there will actually remove it from the rootfs the next
 # time this file runs - no separate "uninstall" step needed.
+echo "Installing chroot stubs for packages not yet chroot-safe in this repo (cartken-jetson-sshd-v2, cartken-jetson-sshd-disable). jetson_chroot.sh prepends /usr/local/sbin to PATH."
+mkdir -p /usr/local/sbin
+for _stub in systemctl systemd-sysv-install deb-systemd-helper invoke-rc.d; do printf '#!/bin/sh\nexit 0\n' > "/usr/local/sbin/$_stub"; chmod +x "/usr/local/sbin/$_stub"; done
 echo "Recovering from any half-configured packages from previous runs"
 dpkg --configure -a || true
 apt-get update
