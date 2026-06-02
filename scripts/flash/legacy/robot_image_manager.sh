@@ -174,10 +174,16 @@ generate_and_save_images() {
     *) boot_xml="$l4t_dir/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml" ;;
   esac
 
-  ( cd "$l4t_dir" && sudo ./flash.sh --no-flash -c "$boot_xml" \
+  # Allow image generation without a Jetson connected by providing the module
+  # identifiers explicitly (legacy behavior from the pre-v2 workflow).
+  (
+    cd "$l4t_dir" && \
+    sudo BOARDID=3701 BOARDSKU=0000 FAB=TS4 \
+      ./flash.sh --no-flash -c "$boot_xml" \
       -K "$l4t_dir/kernel/Image" \
       -d "$l4t_dir/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" \
-      jetson-agx-orin-devkit mmcblk0p1 ) || true
+      jetson-agx-orin-devkit mmcblk0p1
+  ) || true
 
   local out="$images_dir/$robot"
   sudo mkdir -p "$out"
