@@ -32,6 +32,8 @@ GENERAL:
 PREPARE:
   --robots R1,R2,...          Comma-separated robots.
   --robot-range START END     Inclusive robot range.
+  --flash                     After prepare, run flash flow in same invocation.
+  --flash-user USER           SSH user for watchdog step during --flash (default: cartken).
   --credentials-zip ZIP       Zip containing per-robot cert/key directories.
   --credentials-dir DIR       Directory with per-robot cert/key directories.
   --crt FILE --key FILE       Reuse one cert/key pair for all selected robots.
@@ -208,11 +210,14 @@ prepare_mode() {
   local l4t_dir="$DEFAULT_L4T_DIR" images_dir="$DEFAULT_IMAGES_DIR"
   local rootfs_gid="$DEFAULT_ROOTFS_GID" ssh_key="$DEFAULT_SSH_KEY"
   local cred_zip="" cred_dir="" fetch_creds=false password="" tar_file="" crt_file="" key_file=""
+  local auto_flash=false flash_user="$DEFAULT_FLASH_USER"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --robots) robots="$2"; shift 2 ;;
       --robot-range) range_start="$2"; range_end="$3"; shift 3 ;;
+      --flash) auto_flash=true; shift ;;
+      --flash-user) flash_user="$2"; shift 2 ;;
       --credentials-zip) cred_zip="$2"; shift 2 ;;
       --credentials-dir) cred_dir="$2"; shift 2 ;;
       --crt) crt_file="$2"; shift 2 ;;
@@ -232,6 +237,10 @@ prepare_mode() {
   [[ -n "$robots" || -n "$range_start" ]] || { echo "Missing robot selection." >&2; exit 1; }
   if [[ -n "$range_start" ]]; then
     robots="$(seq "$range_start" "$range_end" | paste -sd, -)"
+  fi
+  if [[ "$auto_flash" == true && -z "$password" ]]; then
+    echo "--flash requires --password (used by the watchdog/SSH step)." >&2
+    exit 1
   fi
 
   l4t_dir="$(to_abs "$l4t_dir")"
@@ -283,8 +292,16 @@ prepare_mode() {
     echo "Preparing legacy image bundle for robot: $r"
     setup_rootfs_for_robot "$r" "$l4t_dir/rootfs" "$working_creds" "$ssh_key"
     generate_and_save_images "$r" "$l4t_dir" "$images_dir"
+    if [[ "$auto_flash" == true ]]; then
+      echo "[robot $r] --flash enabled: launching flash step now..."
+      flash_mode --robot "$r" --password "$password" --l4t-dir "$l4t_dir" --images-dir "$images_dir" --user "$flash_user"
+    fi
   done
-  echo "Legacy prepare complete for robot(s): $robots"
+  if [[ "$auto_flash" == true ]]; then
+    echo "Legacy prepare+flash complete for robot(s): $robots"
+  else
+    echo "Legacy prepare complete for robot(s): $robots"
+  fi
 }
 
 flash_mode() {

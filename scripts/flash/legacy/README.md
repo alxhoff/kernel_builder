@@ -33,6 +33,16 @@ sudo ./robot_image_manager.sh prepare \
   --credentials-zip /path/to/carts-batch-credentials.zip
 ```
 
+Prepare and immediately flash in one invocation:
+
+```bash
+sudo ./robot_image_manager.sh prepare \
+  --robots 395 \
+  --credentials-dir ./robot_credentials \
+  --flash \
+  --password cartken
+```
+
 or, pull the certs from live robots:
 
 ```bash
@@ -58,4 +68,5 @@ sudo ./robot_image_manager.sh flash \
 - Default local credentials path is `./robot_credentials`.
 - `./robot_credentials` has been seeded from `scripts/flash/rootfs_prep/certs`
   for convenience.
+- `--flash` lets you do prepare + flash in one run.
 - Generated artifacts in this directory are intentionally ignored by git.
