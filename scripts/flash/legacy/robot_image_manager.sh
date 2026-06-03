@@ -130,6 +130,8 @@ setup_rootfs_for_robot() {
   local robot="$1" rootfs="$2" creds_dir="$3" ssh_key="$4"
   local host="cart${robot}jetson"
 
+  echo "[robot $robot] Applying rootfs customization..."
+  echo "[robot $robot] - hostname: $host"
   echo "$host" | sudo tee "$rootfs/etc/hostname" >/dev/null
   if grep -q '^127\.0\.1\.1' "$rootfs/etc/hosts"; then
     sudo sed -i "s/^127\.0\.1\.1.*/127.0.1.1    $host/" "$rootfs/etc/hosts"
@@ -137,12 +139,14 @@ setup_rootfs_for_robot() {
     echo "127.0.1.1    $host" | sudo tee -a "$rootfs/etc/hosts" >/dev/null
   fi
 
+  echo "[robot $robot] - environment: CARTKEN_CART_NUMBER=$robot"
   if grep -q '^CARTKEN_CART_NUMBER=' "$rootfs/etc/environment"; then
     sudo sed -i "s/^CARTKEN_CART_NUMBER=.*/CARTKEN_CART_NUMBER=$robot/" "$rootfs/etc/environment"
   else
     echo "CARTKEN_CART_NUMBER=$robot" | sudo tee -a "$rootfs/etc/environment" >/dev/null
   fi
 
+  echo "[robot $robot] - injecting legacy SSH key into cartken authorized_keys"
   local auth_dir="$rootfs/home/cartken/.ssh"
   sudo mkdir -p "$auth_dir"
   sudo chmod 700 "$auth_dir"
@@ -160,9 +164,11 @@ setup_rootfs_for_robot() {
   [[ -n "$cert" && -n "$key" ]] || { echo "Missing cert/key under $robot_creds" >&2; exit 1; }
 
   local vpn_dest="$rootfs$REMOTE_CRT_PATH"
+  echo "[robot $robot] - VPN cert/key source: $robot_creds"
   sudo mkdir -p "$vpn_dest"
   sudo cp "$cert" "$vpn_dest/robot.crt"
   sudo cp "$key" "$vpn_dest/robot.key"
+  echo "[robot $robot] Rootfs customization complete."
 }
 
 generate_and_save_images() {
@@ -176,6 +182,7 @@ generate_and_save_images() {
 
   # Allow image generation without a Jetson connected by providing the module
   # identifiers explicitly (legacy behavior from the pre-v2 workflow).
+  echo "[robot $robot] Generating partition images (--no-flash)..."
   (
     cd "$l4t_dir" && \
     sudo BOARDID=3701 BOARDSKU=0000 FAB=TS4 \
@@ -186,12 +193,14 @@ generate_and_save_images() {
   ) || true
 
   local out="$images_dir/$robot"
+  echo "[robot $robot] Saving generated .img files to: $out"
   sudo mkdir -p "$out"
   sudo find "$l4t_dir/bootloader" -xdev -type f -name '*.img' -print0 | while IFS= read -r -d '' img; do
     local rel="${img#${l4t_dir}/}"
     sudo mkdir -p "$out/$(dirname "$rel")"
     sudo cp "$img" "$out/$rel"
   done
+  echo "[robot $robot] Image bundle ready."
 }
 
 prepare_mode() {
@@ -270,9 +279,12 @@ prepare_mode() {
 
   IFS=',' read -ra robot_arr <<<"$robots"
   for r in "${robot_arr[@]}"; do
+    echo "============================================================"
+    echo "Preparing legacy image bundle for robot: $r"
     setup_rootfs_for_robot "$r" "$l4t_dir/rootfs" "$working_creds" "$ssh_key"
     generate_and_save_images "$r" "$l4t_dir" "$images_dir"
   done
+  echo "Legacy prepare complete for robot(s): $robots"
 }
 
 flash_mode() {
