@@ -128,6 +128,21 @@ resolve_robot_ip() {
   return 1
 }
 
+wait_for_recovery_device() {
+  echo "Put the Jetson in recovery mode and connect via USB-C."
+  while true; do
+    if lsusb | grep -qi '0955:'; then
+      echo "Recovery device detected (NVIDIA USB vendor 0955)."
+      return 0
+    fi
+    read -rp "No recovery device detected yet. Press [Enter] to re-check (or type 'q' to abort): " ans
+    if [[ "${ans,,}" == "q" ]]; then
+      echo "Aborting flash: no recovery-mode device detected." >&2
+      return 1
+    fi
+  done
+}
+
 setup_rootfs_for_robot() {
   local robot="$1" rootfs="$2" creds_dir="$3" ssh_key="$4"
   local host="cart${robot}jetson"
@@ -193,6 +208,7 @@ generate_and_save_images() {
       -d "$l4t_dir/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" \
       jetson-agx-orin-devkit mmcblk0p1
   ) || true
+  echo "[robot $robot] Note: '*** no-flash flag enabled. Exiting now... ***' is expected in this step."
 
   local out="$images_dir/$robot"
   echo "[robot $robot] Saving generated .img files to: $out"
@@ -347,7 +363,7 @@ flash_mode() {
     *) boot_xml="$l4t_dir/bootloader/t186ref/cfg/flash_t234_qspi_sdmmc.xml" ;;
   esac
 
-  read -rp "Put the robot in recovery mode and press Enter..."
+  wait_for_recovery_device
   ( cd "$l4t_dir" && sudo ./flash.sh -r -c "$boot_xml" \
       -K "$l4t_dir/kernel/Image" \
       -d "$l4t_dir/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" \
