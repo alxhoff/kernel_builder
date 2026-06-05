@@ -303,6 +303,21 @@ run() {
     fi
 }
 
+# cartken robot ssh-cert expects Go-style duration units (h/m/s), not "d".
+# Accept a convenient "<N>d" shorthand and normalize it to hours.
+normalize_host_cert_validity() {
+  local raw="$1"
+  if [[ "$raw" =~ ^([0-9]+)d$ ]]; then
+    echo "$(( BASH_REMATCH[1] * 24 ))h"
+    return 0
+  fi
+  if [[ "$raw" =~ ^[0-9]+[hms]$ ]]; then
+    echo "$raw"
+    return 0
+  fi
+  return 1
+}
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --target-bsp)
@@ -392,6 +407,12 @@ if [[ "$CLEAN_ROOTFS" -eq 1 && ( -z "$TAG" || -z "$ACCESS_TOKEN" ) ]]; then
   echo "Error: --clean-rootfs requires --tag and --access-token (passed through to setup_tegra_package.sh)." >&2
   exit 1
 fi
+
+if ! HOST_CERT_VALIDITY_NORMALIZED="$(normalize_host_cert_validity "$HOST_CERT_VALIDITY")"; then
+  echo "Error: --host-cert-validity must be like 24h, 90m, 3600s, or Nd (e.g. 7d)." >&2
+  exit 1
+fi
+HOST_CERT_VALIDITY="$HOST_CERT_VALIDITY_NORMALIZED"
 
 if [[ "$REFRESH_SSH_CA_ONLY" -eq 1 && "$SKIP_SSH_CA" -eq 1 ]]; then
   echo "Error: --refresh-ssh-ca-only cannot be combined with --skip-ssh-ca." >&2
