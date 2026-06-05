@@ -43,6 +43,20 @@ sudo ./setup_rootfs_as_robot_for_flashing.sh \
     --tag v7.5.0-sshca9 --access-token glpat-...
 ```
 
+### Refresh only stale SSH CA material in an existing rootfs
+
+If the rootfs is already configured for the correct robot and you only need
+fresh host cert / user CA material, run:
+
+```bash
+sudo ./setup_rootfs_as_robot_for_flashing.sh \
+    --target-bsp 5.1.5 --soc orin --robot-number 915 --env production \
+    --refresh-ssh-ca-only
+```
+
+This regenerates `/etc/ssh/cartken_sshd/` material only and exits. It skips
+VPN copy, package/tag refresh, chroot, hostname updates, and flashing.
+
 ### Throw away the rootfs and start clean
 
 When the rootfs has accumulated stale artefacts from older tooling, this
@@ -108,8 +122,9 @@ above for typical invocations; `--help` lists every flag.
 
 Notable flags:
 - `--env <production|staging|sandbox>` — backend env for SSH CA signing. Default `production`.
-- `--host-cert-validity <duration>` — host cert lifetime baked into the rootfs. Default `48h`. AWX renews it on first connect, so this only needs to cover flash → first AWX run.
+- `--host-cert-validity <duration>` — host cert lifetime baked into the rootfs. Default `7d`. AWX renews it on first connect.
 - `--skip-ssh-ca` — skip provisioning `/etc/ssh/cartken_sshd/`. cartken-sshd will fail to start until AWX writes the missing files.
+- `--refresh-ssh-ca-only` — refresh only `/etc/ssh/cartken_sshd/` material and exit (no VPN/tag/chroot/hostname/flash changes).
 - `--tag <gitlab tag>` + `--access-token <tok>` — re-pull cartken packages from a gitlab release and re-run the cartken-layer chroot.
 - `--clean-rootfs` — wipe and rebuild the rootfs (kernel/drivers/pinmux rebuilds skipped). Requires `--tag` and `--access-token`.
 - `--skip-vpn` — skip the OpenVPN cert pull. Useful when flashing without network access to the old robot.

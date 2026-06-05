@@ -234,10 +234,14 @@ Options:
                          boot until AWX update-jetson writes the missing
                          files. Use only when the SSH CA backend is
                          unreachable.
+  --refresh-ssh-ca-only  Refresh only /etc/ssh/cartken_sshd/ material
+                         (host key, host cert, user CA, principals) and exit.
+                         Skips VPN copy, package/tag refresh, chroot, hostname
+                         updates, and flashing.
   --host-cert-validity <duration>
                          Validity for the signed host certificate (e.g. 24h, 48h, 7d).
-                         Keep it short: AWX update-jetson re-signs the cert with a
-                         fresh validity on its first connect. Default: 48h.
+                         AWX update-jetson re-signs the cert on first connect.
+                         Default: 7d.
   --tag <tag>            Refresh the cartken packages baked into the rootfs from
                          the named gitlab tag (e.g. v7.5.0-sshca8) before the
                          chroot runs. Lets you re-flash an existing rootfs at a
@@ -285,7 +289,8 @@ ZIP_PATH=""
 L4T_DIR_ARG=""
 BACKEND_ENV="production"
 SKIP_SSH_CA=0
-HOST_CERT_VALIDITY="48h"
+REFRESH_SSH_CA_ONLY=0
+HOST_CERT_VALIDITY="7d"
 TAG=""
 ACCESS_TOKEN=""
 CLEAN_ROOTFS=0
@@ -352,6 +357,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_SSH_CA=1
       shift
       ;;
+    --refresh-ssh-ca-only)
+      REFRESH_SSH_CA_ONLY=1
+      shift
+      ;;
     --host-cert-validity)
       HOST_CERT_VALIDITY="$2"
       shift 2
@@ -384,6 +393,16 @@ if [[ "$CLEAN_ROOTFS" -eq 1 && ( -z "$TAG" || -z "$ACCESS_TOKEN" ) ]]; then
   exit 1
 fi
 
+if [[ "$REFRESH_SSH_CA_ONLY" -eq 1 && "$SKIP_SSH_CA" -eq 1 ]]; then
+  echo "Error: --refresh-ssh-ca-only cannot be combined with --skip-ssh-ca." >&2
+  exit 1
+fi
+
+if [[ "$REFRESH_SSH_CA_ONLY" -eq 1 && -z "${ROBOT_NUMBER-}" ]]; then
+  echo "Error: --refresh-ssh-ca-only requires --robot-number." >&2
+  exit 1
+fi
+
 case "$BACKEND_ENV" in
   production|staging|sandbox|prod|localhost) ;;
   *)
@@ -404,10 +423,12 @@ esac
 
 
 # --- Validate required args ---
-if [[ -z "${ROBOT_NUMBER-}" && -z "${CERT_PATH-}" && -z "${KEY_PATH-}" && -z "${ZIP_PATH-}" && "$SKIP_VPN" -eq 0 ]]; then
-    echo "Error: Either --robot-number, --crt/--key, --zip or --skip-vpn must be provided if not skipping VPN." >&2
-    show_help
-    exit 1
+if [[ "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
+  if [[ -z "${ROBOT_NUMBER-}" && -z "${CERT_PATH-}" && -z "${KEY_PATH-}" && -z "${ZIP_PATH-}" && "$SKIP_VPN" -eq 0 ]]; then
+      echo "Error: Either --robot-number, --crt/--key, --zip or --skip-vpn must be provided if not skipping VPN." >&2
+      show_help
+      exit 1
+  fi
 fi
 if [[ "$EUID" -ne 0 ]]; then
     echo "This script must be run as root." >&2
@@ -519,9 +540,11 @@ resolve_cartken_bin() {
 # --- Pull certs and maybe chroot ---
 if [[ -n "$ROBOT_NUMBER" ]]; then
   LOCAL_DEST="$ROOTFS_PATH/etc/openvpn/cartken/2.0/crt"
-  run mkdir -p "$LOCAL_DEST"
+  if [[ "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
+    run mkdir -p "$LOCAL_DEST"
+  fi
 
-  if [[ -n "$ZIP_PATH" ]]; then
+  if [[ -n "$ZIP_PATH" && "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
     TEMP_DIR=$(mktemp -d)
     if [ -d "$TEMP_DIR" ]; then
         trap 'rm -rf "$TEMP_DIR"' EXIT
@@ -547,21 +570,23 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   NEED_CERT=0
   NEED_KEY=0
 
-  if [[ -n "$CERT_PATH" ]]; then
+  if [[ -n "$CERT_PATH" && "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
       echo "Copying local cert from $CERT_PATH..."
       run cp "$CERT_PATH" "$LOCAL_DEST/robot.crt"
   else
       NEED_CERT=1
   fi
 
-  if [[ -n "$KEY_PATH" ]]; then
+  if [[ -n "$KEY_PATH" && "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
       echo "Copying local key from $KEY_PATH..."
       run cp "$KEY_PATH" "$LOCAL_DEST/robot.key"
   else
       NEED_KEY=1
   fi
 
-  if [[ "$SKIP_VPN" -eq 1 ]]; then
+  if [[ "$REFRESH_SSH_CA_ONLY" -eq 1 ]]; then
+    echo "--refresh-ssh-ca-only: skipping VPN cert handling."
+  elif [[ "$SKIP_VPN" -eq 1 ]]; then
     if [[ "$NEED_CERT" -eq 1 && "$NEED_KEY" -eq 0 ]] || [[ "$NEED_CERT" -eq 0 && "$NEED_KEY" -eq 1 ]]; then
       echo "Error: only one of --crt / --key was provided alongside --skip-vpn." >&2
       echo "Either pass both, or drop --crt/--key entirely to skip VPN setup." >&2
@@ -630,7 +655,7 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
   #
   # Done before SSH CA provisioning so a missing/incomplete tag aborts before
   # we burn a backend host-cert request.
-  if [[ -n "$TAG" ]]; then
+  if [[ -n "$TAG" && "$REFRESH_SSH_CA_ONLY" -eq 0 ]]; then
     GET_PACKAGES_SH="$SCRIPT_DIRECTORY/helpers/get_packages.sh"
     if [[ ! -x "$GET_PACKAGES_SH" ]]; then
       echo "Error: $GET_PACKAGES_SH not found or not executable." >&2
@@ -787,6 +812,11 @@ if [[ -n "$ROBOT_NUMBER" ]]; then
       chown -R 0:0 "$CARTKEN_SSHD_DIR"
       echo "Provisioned $CARTKEN_SSHD_DIR for cart$ROBOT_NUMBER."
     fi
+  fi
+
+  if [[ "$REFRESH_SSH_CA_ONLY" -eq 1 ]]; then
+    echo "--refresh-ssh-ca-only complete: refreshed /etc/ssh/cartken_sshd/ in rootfs."
+    exit 0
   fi
 
   echo "Running chroot (installs cartken-jetson-sshd-v2 among others)..."
