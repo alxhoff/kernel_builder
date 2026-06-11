@@ -251,7 +251,7 @@ class KbMenuApp(App[None]):
 
     # --- shared picks -------------------------------------------------
     async def pick_jetpack(self) -> str | None:
-        keys = ["5.1.2", "5.1.3", "5.1.4", "5.1.5", "6.0DP", "6.1", "6.2"]
+        keys = ["5.1.2", "5.1.3", "5.1.4", "5.1.5", "6.0DP", "6.1", "6.2", "7.2"]
         return await self.dlg_radio("JetPack version", keys, self.cfg.get("JETPACK", "5.1.5"))
 
     async def pick_soc(self) -> str | None:

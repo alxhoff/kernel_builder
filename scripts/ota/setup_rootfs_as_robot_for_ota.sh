@@ -74,11 +74,17 @@ fi
 
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+TEGRA_DIR="$SCRIPT_DIRECTORY/../flash/rootfs_prep/bsp/$TARGET_BSP/Linux_for_Tegra"
+if [[ ! -d "$TEGRA_DIR" && -d "$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra" ]]; then
+    TEGRA_DIR="$SCRIPT_DIRECTORY/$TARGET_BSP/Linux_for_Tegra"
+fi
 L4T_DIR="$TEGRA_DIR"
 OTA_DIR="$SCRIPT_DIRECTORY/ota_update"
 ROOTFS="$TEGRA_DIR/rootfs"
 CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken.txt"
+if [[ "$TARGET_BSP" == 7.* ]]; then
+    CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/../flash/rootfs_prep/chroot_install_cartken_jp7.txt"
+fi
 JETSON_CHROOT_SH="$TEGRA_DIR/jetson_chroot.sh"
 if [[ ! -x "$JETSON_CHROOT_SH" ]]; then
     JETSON_CHROOT_SH="$SCRIPT_DIRECTORY/../flash/rootfs_prep/jetson_chroot.sh"
@@ -99,7 +105,14 @@ fi
 echo "Guarenteeing that DTBs are available"
 ROOTFS_BOOT_DIR="$ROOTFS/boot"
 ROOTFS_BOOT_DTB_DIR="$ROOTFS_BOOT_DIR/dtb"
-DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb" "tegra234-p3701-0005-p3737-0000.dtb")
+case "$TARGET_BSP" in
+    6.*|7.*)
+        DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb" "tegra234-p3737-0000+p3701-0005.dtb")
+        ;;
+    *)
+        DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb" "tegra234-p3701-0005-p3737-0000.dtb")
+        ;;
+esac
 L4T_KERNEL_DTB_DIR="$L4T_DIR/kernel/dtb"
 
 for DTB_NAME in "${DTB_NAMES[@]}"; do

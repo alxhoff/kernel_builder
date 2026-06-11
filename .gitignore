@@ -20,3 +20,5 @@ __pycache__
 .cache/
 .venv-kbmenu/
 scripts/rootfs/
+# Local symlink to downloaded JetPack 7 BSP assets (not part of the repo).
+jetpack7

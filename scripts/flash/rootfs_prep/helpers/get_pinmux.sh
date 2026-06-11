@@ -54,6 +54,8 @@ if [[ "$major_version" -eq 5 ]]; then
   PINMUX_SRC_DIR="sources/pinmux/5.X"
 elif [[ "$major_version" -eq 6 ]]; then
   PINMUX_SRC_DIR="sources/pinmux/6.X"
+elif [[ "$major_version" -eq 7 ]]; then
+  PINMUX_SRC_DIR="sources/pinmux/7.X"
 else
   echo "Error: Unsupported JetPack major version: $major_version"
   exit 1

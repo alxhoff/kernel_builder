@@ -51,8 +51,8 @@ done
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OTA_DIR="$WORKDIR/ota_update"
-BASE_BSP_ROOT="$WORKDIR/$BASE_JETPACK"
-TARGET_BSP_ROOT="$WORKDIR/$TARGET_JETPACK"
+BASE_BSP_ROOT="$WORKDIR/../flash/rootfs_prep/bsp/$BASE_JETPACK"
+TARGET_BSP_ROOT="$WORKDIR/../flash/rootfs_prep/bsp/$TARGET_JETPACK"
 L4T_DIR="$TARGET_BSP_ROOT/Linux_for_Tegra"
 
 # setup_tegra_package.sh lives in scripts/flash/rootfs_prep/. The Docker

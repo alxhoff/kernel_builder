@@ -18,6 +18,7 @@ declare -A JETPACK_L4T_MAP=(
 	[5.1.5]=35.6.1
     [6.0DP]=36.2
     [6.2]=36.4.3
+    [7.2]=39.2.0
 )
 
 # Kernel source URLs
@@ -28,6 +29,7 @@ declare -A KERNEL_URLS=(
 	[5.1.5]="https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v6.1/sources/public_sources.tbz2"
     [6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
+    [7.2]="https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/sources/public_sources.tbz2"
 )
 
 show_help() {
@@ -96,7 +98,12 @@ if [[ ! -d "$KERNEL_SRC_ROOT/kernel" ]]; then
     echo "Extracting public sources..."
     tar -xjf "$KERNEL_TARBALL_PATH" -C "$TMP_DIR"
     mkdir -p "$KERNEL_SRC_ROOT"
-    tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$KERNEL_SRC_ROOT"
+    JP_MAJOR="${PATCH%%.*}"
+    if [[ "$JP_MAJOR" == "5"* ]]; then
+        tar -xjf "$TMP_DIR/Linux_for_Tegra/source/public/kernel_src.tbz2" -C "$KERNEL_SRC_ROOT"
+    else
+        tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$KERNEL_SRC_ROOT"
+    fi
 
 	# Rename kernel directory to 'kernel'
 	KERNEL_PARENT="$KERNEL_SRC_ROOT/kernel"
@@ -160,7 +167,13 @@ mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/boot/dtb" "$PKG_DIR/lib/modules"
 mv "$DEB_TMP_DIR/root/lib/modules/$KERNEL_VERSION" "$PKG_DIR/lib/modules/"
 
 cp "$KERNEL_SRC/arch/arm64/boot/Image" "$PKG_DIR/boot/Image-$KERNEL_VERSION"
-cp "$KERNEL_SRC/arch/arm64/boot/dts/nvidia/tegra234-p3701-0000-p3737-0000.dtb" "$PKG_DIR/boot/dtb/tegra234-p3701-0000-p3737-0000-$KERNEL_VERSION.dtb"
+DTB_SRC_BASE="$KERNEL_SRC/arch/arm64/boot/dts/nvidia"
+if [[ "$PATCH" == 6.* || "$PATCH" == 7.* ]]; then
+    DTB_SRC_NAME="tegra234-p3737-0000+p3701-0000.dtb"
+else
+    DTB_SRC_NAME="tegra234-p3701-0000-p3737-0000.dtb"
+fi
+cp "$DTB_SRC_BASE/$DTB_SRC_NAME" "$PKG_DIR/boot/dtb/${DTB_SRC_NAME%.dtb}-$KERNEL_VERSION.dtb"
 
 cat <<EOF > "$PKG_DIR/DEBIAN/control"
 Package: $PKG_NAME
@@ -185,7 +198,7 @@ EXTLINUX_CONF="/boot/extlinux/extlinux.conf"
 sed -i "/^LABEL primary/,/^$/ {
     s|^\\s*LINUX .*|    LINUX /boot/Image-$KERNEL_VERSION|
     s|^\\s*INITRD .*|    INITRD /boot/initrd.img-$KERNEL_VERSION|
-    s|^\\s*FDT .*|    FDT /boot/dtb/tegra234-p3701-0000-p3737-0000-$KERNEL_VERSION.dtb|
+    s|^\\s*FDT .*|    FDT /boot/dtb/${DTB_SRC_NAME%.dtb}-$KERNEL_VERSION.dtb|
 }" "\$EXTLINUX_CONF"
 
 depmod "$KERNEL_VERSION"
@@ -220,20 +233,23 @@ for KO_FILE in "$DRIVER_SCRIPTS_DIR"/*.ko; do
     fi
 done
 
-echo "Building display driver"
-DISPLAY_DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/extra/opensrc-disp"
-DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
-"$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --target-bsp "$PATCH"
-echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --reuse"
+if [[ "$PATCH" == 5.* ]]; then
+    echo "Building display driver"
+    DISPLAY_DRIVER_OUTPUT_DIR="$PKG_DIR/lib/modules/$KERNEL_VERSION/extra/opensrc-disp"
+    DISPLAY_SCRIPT="$DRIVER_SCRIPTS_DIR/build_display_driver.sh"
+    "$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --target-bsp "$PATCH"
+    echo ""$DISPLAY_SCRIPT" --kernel-sources "$KERNEL_SRC_ROOT" --toolchain "$TOOLCHAIN_ROOT_DIR" --reuse"
 
-# Copy all built .ko files once
-mkdir -p "$DISPLAY_DRIVER_OUTPUT_DIR"
-for KO_FILE in "$TMP_DIR/jetson_display_driver/Linux_for_Tegra/source/public/nvdisplay/kernel-open"/*.ko; do
-    if [[ -f "$KO_FILE" ]]; then
-        echo "Copying $(basename "$KO_FILE") into module tree"
-        cp "$KO_FILE" "$DISPLAY_DRIVER_OUTPUT_DIR/"
-    fi
-done
+    mkdir -p "$DISPLAY_DRIVER_OUTPUT_DIR"
+    for KO_FILE in "$TMP_DIR/jetson_display_driver/Linux_for_Tegra/source/public/nvdisplay/kernel-open"/*.ko; do
+        if [[ -f "$KO_FILE" ]]; then
+            echo "Copying $(basename "$KO_FILE") into module tree"
+            cp "$KO_FILE" "$DISPLAY_DRIVER_OUTPUT_DIR/"
+        fi
+    done
+else
+    echo "Skipping standalone display driver build for JetPack $PATCH"
+fi
 
 depmod -b "$PKG_DIR" "$KERNEL_VERSION"
 

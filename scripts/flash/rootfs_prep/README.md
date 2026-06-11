@@ -79,7 +79,9 @@ each with a single responsibility:
 |------|----------------|
 | `chroot_install_os_jp5.txt` | OS layer for JetPack 5.x: apt deps, nvidia-l4t holds, stock sshd config, base cleanup. |
 | `chroot_install_os_jp6.txt` | Same as above for JetPack 6.x (different NVIDIA package names, `nvidia-ctk` runtime config). |
-| `chroot_install_cartken.txt` | **Cartken-layer chroot driver.** Purges every installed `cartken-*` package, installs viki, then installs debs listed in `cartken_jetson_debs.txt`. |
+| `chroot_install_os_jp7.txt` | JetPack 7.x OS layer baseline (currently aligned with JP6 until JP7-specific package deltas are finalized). |
+| `chroot_install_cartken.txt` | **Cartken-layer chroot driver for JP5/JP6.** Purges every installed `cartken-*` package, installs viki, then installs debs listed in `cartken_jetson_debs.txt`. |
+| `chroot_install_cartken_jp7.txt` | Same cartken-layer flow for JP7.x, with `pip --break-system-packages` for PEP 668 environments. |
 | `cartken_jetson_debs.txt` | **Single source of truth for which cartken-* debs to install.** One package basename per line; copied into the rootfs before chroot. |
 
 `setup_tegra_package.sh` runs the OS layer chroot then the cartken layer
@@ -94,7 +96,7 @@ time any flow runs, because the file purges every `cartken-*` before
 reinstalling. There is no separate "uninstall" step to maintain.
 
 There's also a tiny pre-`apply_binaries.sh` pass that just runs
-`apt update` + `apt install -y libglib2.0-0 apt-utils` so the
+`apt update` + `apt install -y libglib2.0-0 <apt meta package>` so the
 freshly-extracted L4T rootfs's package manager works. It used to be a
 fourth `.txt` file (`essential_chroot_setup_commands.txt`); now it's
 inlined as a heredoc inside `setup_tegra_package.sh`.
@@ -204,9 +206,14 @@ rootfs_prep/
 ├── setup_rootfs_as_robot_for_flashing.sh   # entry point: per-robot config + flash
 ├── jetson_chroot.sh                        # chroot driver (also copied into Linux_for_Tegra/)
 ├── flash_jetson_ALL_sdmmc_partition_qspi.sh # standalone-runnable flash driver
-├── chroot_install_os_jp{5,6}.txt           # OS-layer chroot (Pass 1/2)
-├── chroot_install_cartken.txt              # cartken-layer chroot (Pass 2/2)
+├── chroot_install_os_jp{5,6,7}.txt         # OS-layer chroot (Pass 1/2)
+├── chroot_install_cartken.txt              # cartken-layer chroot (Pass 2/2, JP5/JP6)
+├── chroot_install_cartken_jp7.txt          # cartken-layer chroot (Pass 2/2, JP7)
 ├── cartken_jetson_debs.txt                 # deb manifest (one basename per line)
+├── flash_scripts/                          # explicit per-major flash drivers
+│   ├── 5.X/flash_jetson_ALL_sdmmc_partition_qspi.sh
+│   ├── 6.X/flash_jetson_ALL_sdmmc_partition_qspi.sh
+│   └── 7.X/flash_jetson_ALL_sdmmc_partition_qspi.sh
 ├── helpers/                                # internal helpers, not user-callable
 │   ├── get_packages.sh
 │   ├── get_pinmux.sh
@@ -235,8 +242,9 @@ rootfs_prep/
             ├── kernel/                     # built kernel artefacts
             ├── packages/                   # raw download of cartken packages
             ├── jetson_chroot.sh            # copied from rootfs_prep/
-            ├── chroot_install_os_jp{5,6}.txt
+            ├── chroot_install_os_jp{5,6,7}.txt
             ├── chroot_install_cartken.txt
+            ├── chroot_install_cartken_jp7.txt
             ├── flash_jetson_ALL_sdmmc_partition_qspi.sh
             └── <flat copy of every helpers/ script>
 ```

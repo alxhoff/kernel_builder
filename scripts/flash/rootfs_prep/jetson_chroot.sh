@@ -282,8 +282,51 @@ done
 # Ensure /tmp has correct permissions inside chroot
 chmod 1777 "$ROOTFS_DIR/tmp"
 
-# Copy DNS resolver configuration for internet access
-cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+# Build a deterministic resolver file for the chroot.
+# Some rootfs images ship /etc/resolv.conf as a symlink to a runtime-managed
+# file; that can break under chroot. Always replace it with a concrete file.
+tmp_resolv="$(mktemp)"
+# Prefer host/container non-loopback DNS servers first.
+grep -E '^[[:space:]]*nameserver[[:space:]]+' /etc/resolv.conf \
+    | awk '!/127\./ {print $0}' > "$tmp_resolv" || true
+# Ensure we always have working fallback resolvers.
+grep -Eq '^[[:space:]]*nameserver[[:space:]]+1\.1\.1\.1' "$tmp_resolv" || echo "nameserver 1.1.1.1" >> "$tmp_resolv"
+grep -Eq '^[[:space:]]*nameserver[[:space:]]+8\.8\.8\.8' "$tmp_resolv" || echo "nameserver 8.8.8.8" >> "$tmp_resolv"
+rm -f "$ROOTFS_DIR/etc/resolv.conf"
+cp "$tmp_resolv" "$ROOTFS_DIR/etc/resolv.conf"
+chmod 0644 "$ROOTFS_DIR/etc/resolv.conf"
+rm -f "$tmp_resolv"
+
+# Probe DNS from inside the chroot and, if needed, fall back to resolvers that
+# actually resolve external hosts in this runtime.
+probe_dns_in_chroot() {
+    timeout 8 chroot "$ROOTFS_DIR" /bin/bash -lc \
+        "getent hosts ports.ubuntu.com >/dev/null 2>&1 && getent hosts repo.download.nvidia.com >/dev/null 2>&1"
+}
+
+if ! probe_dns_in_chroot; then
+    echo "Initial chroot DNS probe failed; trying fallback resolvers..."
+    candidate_resolvers="$(grep -E '^[[:space:]]*nameserver[[:space:]]+' /etc/resolv.conf | awk '{print $2}' || true)"
+    candidate_resolvers="$candidate_resolvers 1.1.1.1 8.8.8.8 9.9.9.9"
+    selected_resolver=""
+    for ns in $candidate_resolvers; do
+        [[ -n "$ns" ]] || continue
+        cat > "$ROOTFS_DIR/etc/resolv.conf" <<EOF
+options timeout:1 attempts:2
+nameserver $ns
+EOF
+        chmod 0644 "$ROOTFS_DIR/etc/resolv.conf"
+        if probe_dns_in_chroot; then
+            selected_resolver="$ns"
+            break
+        fi
+    done
+    if [[ -n "$selected_resolver" ]]; then
+        echo "Using resolver $selected_resolver for chroot apt operations."
+    else
+        echo "Warning: DNS probe still failing in chroot; apt operations may fail." >&2
+    fi
+fi
 
 # Ensure /dev/ptmx and /dev/tty exist
 for dev in ptmx tty console null; do
@@ -321,12 +364,41 @@ if [ -n "$COMMAND_FILE" ]; then
 
     echo "Executing commands from $COMMAND_FILE inside chroot..."
 
+    # Broken cartken debs from older registry builds can leave a half-removed
+    # package behind and make unrelated apt operations fail in early chroot passes.
+    echo "Preparing chroot dpkg state (noop broken cartken maintainer scripts if needed)..."
+    chroot "$ROOTFS_DIR" /bin/bash -c 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH
+for pkg in $(dpkg-query -W -f='"'"'${Package}\n'"'"' '"'"'cartken-*'"'"' 2>/dev/null); do
+    for script in postrm prerm postinst preinst; do
+        f="/var/lib/dpkg/info/${pkg}.${script}"
+        if [ -f "$f" ]; then
+            printf '"'"'#!/bin/sh\nexit 0\n'"'"' > "$f"
+            chmod +x "$f"
+        fi
+    done
+    status=$(dpkg-query -W -f='"'"'${Status}'"'"' "$pkg" 2>/dev/null || echo "")
+    case "$status" in
+        *" installed") ;;
+        *) dpkg --remove --force-remove-reinstreq --force-depends "$pkg" 2>/dev/null || dpkg --purge --force-all "$pkg" 2>/dev/null || true ;;
+    esac
+done
+dpkg --configure -a 2>/dev/null || true'
+
     while IFS= read -r line || [ -n "$line" ]; do
         # Ignore empty lines and comments
         [[ -z "$line" || "$line" =~ ^# ]] && continue
 
         echo "Running: $line"
-		chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; export $LD_PRELOAD_VAR; $line"
+        PRELOAD_EXPORT=""
+        if [[ -n "$LD_PRELOAD_VAR" ]]; then
+            PRELOAD_EXPORT="export $LD_PRELOAD_VAR;"
+        fi
+        # Networking/package-manager commands are sensitive to LD_PRELOAD on
+        # newer rootfses (JP7/Noble). Run those without fakeroot preload.
+        if [[ "$line" =~ ^(apt|apt-get|apt-mark|dpkg|getent|curl|wget)([[:space:]]|$) ]]; then
+            PRELOAD_EXPORT=""
+        fi
+		chroot "$ROOTFS_DIR" /bin/bash -c "export PATH=/usr/local/sbin:/usr/sbin:/sbin:\$PATH; $PRELOAD_EXPORT $line"
 
         if [ $? -ne 0 ]; then
             echo "Error executing: $line"

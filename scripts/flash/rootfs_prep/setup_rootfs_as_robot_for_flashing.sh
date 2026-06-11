@@ -6,14 +6,29 @@ set -euo pipefail
 # pre-configured Docker container.
 
 DOCKER_FLAG_PRESENT=0
+WRAPPER_TARGET_BSP=""
 # We do a quick pre-scan for the --docker flag.
 # This is because the script consumes arguments in the main parsing loop,
 # and we need to act on --docker before that happens.
-for arg in "$@"; do
-    if [[ "$arg" == "--docker" ]]; then
-        DOCKER_FLAG_PRESENT=1
-        break
-    fi
+ARGS=("$@")
+idx=0
+while [[ $idx -lt ${#ARGS[@]} ]]; do
+    arg="${ARGS[$idx]}"
+    case "$arg" in
+        --docker)
+            DOCKER_FLAG_PRESENT=1
+            ;;
+        --target-bsp)
+            if [[ $((idx + 1)) -lt ${#ARGS[@]} ]]; then
+                WRAPPER_TARGET_BSP="${ARGS[$((idx + 1))]}"
+                idx=$((idx + 1))
+            fi
+            ;;
+        --target-bsp=*)
+            WRAPPER_TARGET_BSP="${arg#*=}"
+            ;;
+    esac
+    idx=$((idx + 1))
 done
 
 # If --docker is present, set up the environment and re-launch.
@@ -21,6 +36,30 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
     # Ensure the script is run with sudo for docker commands and host setup.
     if [[ "$EUID" -ne 0 ]]; then
         echo "This script must be run with sudo when using the --docker flag." >&2
+        exit 1
+    fi
+
+    resolve_docker_bin() {
+        local candidate=""
+        for candidate in "${DOCKER_BIN:-}" docker /usr/bin/docker /usr/local/bin/docker /bin/docker; do
+            [[ -n "$candidate" ]] || continue
+            if command -v "$candidate" >/dev/null 2>&1; then
+                command -v "$candidate"
+                return 0
+            fi
+            if [[ -x "$candidate" ]]; then
+                echo "$candidate"
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    DOCKER_BIN="$(resolve_docker_bin || true)"
+    if [[ -z "$DOCKER_BIN" ]]; then
+        echo "Error: docker binary not found in PATH under sudo." >&2
+        echo "       PATH=$PATH" >&2
+        echo "       Checked: docker, /usr/bin/docker, /usr/local/bin/docker, /bin/docker" >&2
         exit 1
     fi
 
@@ -44,7 +83,7 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
         else
             echo "QEMU and binfmt support are already installed."
         fi
-    elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" ]]; then
+    elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" || "$OS" == "EndeavourOS" ]]; then
         if ! pacman -Q | grep -q "qemu-user-static" || ! pacman -Q | grep -q "binfmt-support"; then
             echo "Installing QEMU and binfmt support for Arch Linux..."
             pacman -Syu --noconfirm qemu-user-static qemu-user-static-binfmt
@@ -58,20 +97,64 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
 
     # Register QEMU handlers with the kernel for ARM64 emulation.
     echo "Registering QEMU handlers with the kernel..."
-    docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
+    "$DOCKER_BIN" run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
 
     # --- Docker Image and Container Setup ---
     SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
-    IMAGE="ubuntu:22.04"
+    WRAPPER_BSP_MAJOR="${WRAPPER_TARGET_BSP%%.*}"
+    if [[ "$WRAPPER_BSP_MAJOR" == "7"* ]]; then
+        IMAGE="ubuntu:24.04"
+        DOCKER_TAG="jetson_builder:jp7-ubuntu2404"
+    else
+        IMAGE="ubuntu:22.04"
+        DOCKER_TAG="jetson_builder:jp56-ubuntu2204"
+    fi
     CONTAINER_NAME="rootfs_flasher_setup"
-    DOCKER_TAG="jetson_builder:latest"
+    echo "Docker base image selected from --target-bsp '${WRAPPER_TARGET_BSP:-default}': $IMAGE"
 
     # Build the 'jetson_builder' Docker image if it doesn't already exist.
-    if [[ "$(docker images -q "$DOCKER_TAG" 2> /dev/null)" == "" ]]; then
+    if [[ "$("$DOCKER_BIN" images -q "$DOCKER_TAG" 2> /dev/null)" == "" ]]; then
         echo "Building the Docker image '$DOCKER_TAG'..."
-        docker pull "$IMAGE"
+        "$DOCKER_BIN" pull "$IMAGE"
         # This Dockerfile mirrors the one used by setup_tegra_package.sh --docker.
-        docker build --dns=8.8.8.8 --dns=8.8.4.4 -t "$DOCKER_TAG" - <<EOF
+        if [[ "$WRAPPER_BSP_MAJOR" == "7"* ]]; then
+        "$DOCKER_BIN" build -t "$DOCKER_TAG" - <<EOF
+        FROM $IMAGE
+        RUN apt-get update && apt-get install -y \
+            sudo \
+            tar \
+            bzip2 \
+            git \
+            wget \
+            curl \
+            openssh-client \
+            iputils-ping \
+            docker.io \
+            jq \
+            qemu-user-static \
+            binfmt-support \
+            unzip \
+            build-essential \
+            kmod \
+            flex \
+            bison \
+            libelf-dev \
+            bc \
+            dwarves \
+            ccache \
+            libncurses5-dev \
+            vim-common \
+            rsync \
+            zlib1g \
+            libssl-dev \
+            && mkdir -p /opt/nvidia-l4t-toolchain \
+            && wget -q -O /tmp/x-tools.tbz2 https://developer.download.nvidia.com/embedded/L4T/r38_Release_v2.0/release/x-tools.tbz2 \
+            && tar -xjf /tmp/x-tools.tbz2 -C /opt/nvidia-l4t-toolchain \
+            && rm -f /tmp/x-tools.tbz2 \
+            && test -x /opt/nvidia-l4t-toolchain/x-tools/aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-gcc
+EOF
+        else
+        "$DOCKER_BIN" build -t "$DOCKER_TAG" - <<EOF
         FROM $IMAGE
         RUN apt-get update && apt-get install -y \
             sudo \
@@ -101,14 +184,15 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
             zlib1g \
             libssl-dev
 EOF
+        fi
     else
         echo "Using existing Docker image: $DOCKER_TAG"
     fi
 
     # Clean up any previous container with the same name.
-    if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
+    if "$DOCKER_BIN" ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
         echo "Removing existing container: $CONTAINER_NAME"
-        docker rm -f "$CONTAINER_NAME"
+        "$DOCKER_BIN" rm -f "$CONTAINER_NAME"
     fi
 
     # Reconstruct arguments, filtering out --docker and handling local file paths.
@@ -169,7 +253,7 @@ EOF
     # --privileged is crucial for USB device access needed for flashing.
     # --network=host allows scp/ping to other devices on the local network.
     # -it provides an interactive tty for prompts.
-    docker run --rm -it \
+    "$DOCKER_BIN" run --rm -it \
         --name "$CONTAINER_NAME" \
         --privileged \
         --network=host \
@@ -471,7 +555,11 @@ else
 fi
 ROOTFS_PATH="$L4T_DIR/rootfs"
 FLASH_SCRIPT="$L4T_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
-CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken.txt"
+if [[ "$TARGET_BSP" == 7.* ]]; then
+  CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken_jp7.txt"
+else
+  CHROOT_CMD_FILE="$SCRIPT_DIRECTORY/chroot_install_cartken.txt"
+fi
 
 # --- Check for L4T directory ---
 if [[ ! -d "$L4T_DIR" ]]; then

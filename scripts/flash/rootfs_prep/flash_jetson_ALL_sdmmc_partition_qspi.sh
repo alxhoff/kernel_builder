@@ -89,7 +89,7 @@ L4T_DIR=$(to_absolute_path "$L4T_DIR")
 L4T_VERSION=$(basename "$(dirname "$L4T_DIR")")
 
 case "$L4T_VERSION" in
-    6*)
+    6*|7*)
         BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
         ;;
     *)
@@ -146,7 +146,11 @@ if [[ "$MODE" == "copy-kernel" ]]; then
 else
     KERNEL_IMAGE="$L4T_DIR/kernel/Image"
     if [ -z "$DTB_FILE" ]; then
-        DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+        if [[ "$L4T_VERSION" == 6* || "$L4T_VERSION" == 7* ]]; then
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+        else
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+        fi
     fi
     KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
     DTB_FILE=$(to_absolute_path "$DTB_FILE")
