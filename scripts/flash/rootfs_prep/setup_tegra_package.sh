@@ -1077,7 +1077,11 @@ if [[ "$SKIP_KERNEL_BUILD" == false || ( "$JETPACK_VERSION" != 6.* && "$JETPACK_
 		echo "Building kernel"
 		case "$JETPACK_VERSION" in
 			5.1.2|5.1.3|5.1.4|5.1.5|6.0DP|6.1|6.2|7.2)
-				sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+				KERNEL_BUILD_ARGS=(--patch "$JETPACK_VERSION" --localversion "-cartken$JETPACK_VERSION")
+				if [[ "$JETPACK_VERSION" == 7.* ]]; then
+					KERNEL_BUILD_ARGS+=(--skip-patches)
+				fi
+				sudo "$TEGRA_DIR/build_kernel.sh" "${KERNEL_BUILD_ARGS[@]}"
 				;;
 			*)
 				echo "Error: Unsupported JetPack version for kernel build."

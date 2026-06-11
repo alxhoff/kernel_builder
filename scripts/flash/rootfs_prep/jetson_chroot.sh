@@ -364,6 +364,15 @@ if [ -n "$COMMAND_FILE" ]; then
 
     echo "Executing commands from $COMMAND_FILE inside chroot..."
 
+    # Maintainer scripts for systemd/init packages (fail2ban, docker, etc.) call
+    # systemctl/invoke-rc.d, which fail in chroot unless stubbed.
+    echo "Installing chroot service stubs (systemctl, invoke-rc.d, ...)"
+    chroot "$ROOTFS_DIR" /bin/bash -c 'mkdir -p /usr/local/sbin
+for _stub in systemctl systemd-sysv-install deb-systemd-helper invoke-rc.d; do
+    printf '"'"'#!/bin/sh\nexit 0\n'"'"' > "/usr/local/sbin/$_stub"
+    chmod +x "/usr/local/sbin/$_stub"
+done'
+
     # Broken cartken debs from older registry builds can leave a half-removed
     # package behind and make unrelated apt operations fail in early chroot passes.
     echo "Preparing chroot dpkg state (noop broken cartken maintainer scripts if needed)..."

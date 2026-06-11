@@ -571,14 +571,26 @@ elif [ "$BUILD_FLOW" = "jp5" ]; then
         --tegra-dir "$TEGRA_DIR" \
         --patch "$PATCH"
 else
-    echo "Reading actual LOCALVERSION from .config"
+    ACTUAL_LOCALVERSION=""
     CONFIG_FILE="$KERNEL_BUILD_DIR/.config"
-    if [ -f "$CONFIG_FILE" ]; then
-        ACTUAL_LOCALVERSION=$(grep CONFIG_LOCALVERSION= "$CONFIG_FILE" | cut -d '"' -f 2)
-        echo "Actual LOCALVERSION is: $ACTUAL_LOCALVERSION"
-    else
-        echo "Warning: .config file not found. Using the provided LOCALVERSION."
+    if [[ -f "$CONFIG_FILE" ]]; then
+        ACTUAL_LOCALVERSION="$(grep '^CONFIG_LOCALVERSION=' "$CONFIG_FILE" | sed -n 's/^CONFIG_LOCALVERSION="\(.*\)"$/\1/p' || true)"
+        echo "CONFIG_LOCALVERSION from .config is: '${ACTUAL_LOCALVERSION}'"
+    fi
+    if [[ -z "$ACTUAL_LOCALVERSION" && -n "$LOCALVERSION" ]]; then
         ACTUAL_LOCALVERSION="$LOCALVERSION"
+        echo "Using LOCALVERSION from build args: $ACTUAL_LOCALVERSION"
+    fi
+    if [[ -z "$ACTUAL_LOCALVERSION" && -f "$KERNEL_BUILD_DIR/arch/arm64/boot/Image" ]]; then
+        KERNEL_RELEASE="$(strings "$KERNEL_BUILD_DIR/arch/arm64/boot/Image" | grep -m1 'Linux version ' | awk '{print $3}' || true)"
+        if [[ "$KERNEL_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(.*)$ ]]; then
+            ACTUAL_LOCALVERSION="-${BASH_REMATCH[1]}"
+            echo "Derived LOCALVERSION from built Image: $ACTUAL_LOCALVERSION"
+        fi
+    fi
+    if [[ -z "$ACTUAL_LOCALVERSION" ]]; then
+        ACTUAL_LOCALVERSION="-cartken${PATCH}"
+        echo "Falling back to default LOCALVERSION: $ACTUAL_LOCALVERSION"
     fi
 
     sudo "$TEGRA_DIR/build_third_party_drivers_jp6.sh" \

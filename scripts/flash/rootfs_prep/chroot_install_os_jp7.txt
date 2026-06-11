@@ -1,6 +1,6 @@
 # OS-layer chroot for JetPack 7.x rootfs (Pass 1/2; run by setup_tegra_package.sh).
 # Ubuntu 24.04 (Noble): fail2ban needs python3-pyasyncore from updates (LP: #2055114).
-# Install that stack separately before the bulk apt transaction.
+# jetson_chroot.sh installs systemctl/invoke-rc.d stubs before this file runs.
 apt-get update -o Acquire::Retries=5 -o APT::Update::Error-Mode=any
 apt-mark hold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
 DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || true
@@ -10,13 +10,24 @@ apt-get autoremove -y
 echo "Recovering dpkg state before OS package install"
 dpkg --configure -a || true
 DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
-echo "Purging broken Noble fail2ban stack from previous partial installs (if any)"
-DEBIAN_FRONTEND=noninteractive apt-get purge -y fail2ban python3-pyinotify python3-pyasyncore 2>/dev/null || true
-dpkg --configure -a || true
-DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
-echo "Installing Noble fail2ban dependencies before bulk OS packages"
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pyasyncore python3-setuptools python3-pyinotify
-DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban
+if dpkg-query -W -f='${Status}' fail2ban 2>/dev/null | grep -q 'install ok installed'; then
+	echo "fail2ban already installed; skipping fail2ban stack reinstall"
+else
+	echo "Installing Noble fail2ban stack (python3-pyasyncore + fail2ban)"
+	for pkg in fail2ban python3-pyinotify python3-pyasyncore; do
+		status=$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || echo "")
+		case "$status" in
+			*"install ok installed"*) ;;
+			*)
+				dpkg --remove --force-remove-reinstreq --force-depends "$pkg" 2>/dev/null || dpkg --purge --force-all "$pkg" 2>/dev/null || true
+				;;
+		esac
+	done
+	dpkg --configure -a || true
+	DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
+	DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pyasyncore python3-setuptools python3-pyinotify
+	DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban
+fi
 echo "Installing apt packages (single transaction)"
 DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ifupdown v4l-utils apt tree tmux vim screen htop can-utils iptraf libqt5core5a cmake libssl-dev libc6-dev build-essential libudev-dev libqmi-utils uhubctl ffmpeg libqt5widgets5 uuid-runtime nvme-cli docker.io nvidia-container-toolkit nvidia-jetpack-runtime chrony nano git python3-libnvinfer-dev
 echo "Configuring NVIDIA container runtime for docker"
