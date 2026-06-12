@@ -152,14 +152,18 @@ ensure_jp7_uefi_cpubl() {
     local tbc="$bl/uefi_jetson.bin"
     [[ -f "$tbc" ]] && return 0
     local candidate
-    for candidate in uefi_jetson_with_dtb.bin uefi_t23x_general.bin; do
-        if [[ -f "$bl/$candidate" ]]; then
-            ln -sf "$candidate" "$tbc"
-            echo "JP7 flash: linked $tbc -> $candidate (--cpubl for tegraflash.py)"
+    for candidate in \
+        "$bl/uefi_jetson_with_dtb.bin" \
+        "$bl/uefi_t23x_general.bin" \
+        "$bl/uefi_bins/uefi_t23x_general.bin" \
+        "$bl/uefi_bins/uefi_t23x_minimal.bin"; do
+        if [[ -f "$candidate" ]]; then
+            ln -sf "$(realpath --relative-to="$bl" "$candidate")" "$tbc"
+            echo "JP7 flash: linked $tbc -> $(realpath --relative-to="$bl" "$candidate") (--cpubl for tegraflash.py)"
             return 0
         fi
     done
-    echo "Error: missing $tbc (and no UEFI fallback in $bl)."
+    echo "Error: missing $tbc (no UEFI payload under $bl or $bl/uefi_bins/)."
     echo "  tegraflash.py misparses --bins when --cpubl is empty, causing bpmp_fw_dtb errors."
     exit 1
 }
