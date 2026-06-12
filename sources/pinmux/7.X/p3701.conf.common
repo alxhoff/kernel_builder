@@ -169,7 +169,8 @@ CHIPID=0x23;
 ITS_FILE=;
 OVERLAY_DTB_FILE="L4TConfiguration.dtbo,tegra234-p3701-overlay.dtbo";
 CMDLINE_ADD="mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 console=tty0 firmware_class.path=/etc/firmware fbcon=map:0 net.ifnames=0 nospectre_bhb"
-target_board="t186ref";
+# JP7/R39 flash.sh reports mach_dir=generic; t186ref triggers a board-family mismatch.
+target_board="generic";
 ROOTFSSIZE=55GiB;
 ROOT_DEV="mmcblk0p1 ------------ internal eMMC.
         sda1 ----------------- external USB devices. (USB memory stick, HDD)
