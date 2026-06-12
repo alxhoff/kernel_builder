@@ -78,3 +78,14 @@ git pull origin master
 echo "Merging $PINMUX_SRC_DIR directory into $L4T_DIR"
 cp -rT "$TMP_DIR/$PINMUX_SRC_DIR" "$L4T_DIR"
 
+# JP7 flash.sh uses TARGET_DIR=bootloader/generic; ensure cartken pinmux is there.
+if [[ "$major_version" -eq 7 ]]; then
+  generic_bct="$L4T_DIR/bootloader/generic/BCT"
+  t186ref_pinmux="$L4T_DIR/bootloader/t186ref/BCT/Orin-jetson_agx_orin-pinmux.dtsi"
+  generic_pinmux="$generic_bct/Orin-jetson_agx_orin-pinmux.dtsi"
+  if [[ -f "$t186ref_pinmux" && ! -f "$generic_pinmux" ]]; then
+    mkdir -p "$generic_bct"
+    cp "$t186ref_pinmux" "$generic_pinmux"
+  fi
+fi
+

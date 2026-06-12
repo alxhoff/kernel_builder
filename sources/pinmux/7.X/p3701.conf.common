@@ -93,11 +93,11 @@ process_board_version()
 	# SKU0, SKU2, SKU4 modules uses the default.  Override for other SKUs.
 	if [ "${board_sku}" = "0005" ]; then
 		# p3701-0005 (64GB)
-		EMMC_BCT="tegra234-p3701-0005-sdram-l4t.dts";
+		EMC_BCT="tegra234-p3701-0005-sdram-l4t.dts";
 		WB0SDRAM_BCT="tegra234-p3701-0005-wb0sdram-l4t.dts";
 	elif [ "${board_sku}" = "0008" ]; then
 		# p3701-0008 (64GB)
-		EMMC_BCT="tegra234-p3701-0008-sdram-l4t.dts";
+		EMC_BCT="tegra234-p3701-0008-sdram-l4t.dts";
 		WB0SDRAM_BCT="tegra234-p3701-0008-wb0sdram-l4t.dts";
 	fi
 	if [ "${kdump_enable}" -eq 1 ]; then
@@ -214,7 +214,7 @@ EMMCSIZE=63652757504;
 #
 BCT="--sdram_config";
 BINSARGS="--bins \"";
-EMMC_BCT="tegra234-p3701-0000-sdram-l4t.dts";
+EMC_BCT="tegra234-p3701-0000-sdram-l4t.dts";
 WB0SDRAM_BCT="tegra234-p3701-0000-wb0sdram-l4t.dts";
 MISC_CONFIG="tegra234-mb1-bct-misc-p3701-0000.dts";
 DEV_PARAMS="tegra234-br-bct-p3701-0000.dts";
