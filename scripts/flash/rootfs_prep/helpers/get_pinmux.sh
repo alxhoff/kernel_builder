@@ -64,6 +64,9 @@ apply_jp7_cartken_pinmux_overlay() {
   # JP7/R39: keep NVIDIA board confs intact; only point flash at cartken pinmux.
   if [[ -f "$p3701_conf" ]]; then
     sed -i 's/^PINMUX_CONFIG=.*/PINMUX_CONFIG="Orin-jetson_agx_orin-pinmux.dtsi";/' "$p3701_conf"
+    # Repair BSPs previously overwritten by the JP5-derived 7.X pinmux tree.
+    sed -i 's/^target_board="t186ref";/target_board="generic";/' "$p3701_conf"
+    sed -i 's/EMMC_BCT=/EMC_BCT=/g' "$p3701_conf"
   fi
 
   echo "Applied JP7 cartken pinmux overlay to $l4t_dir"
