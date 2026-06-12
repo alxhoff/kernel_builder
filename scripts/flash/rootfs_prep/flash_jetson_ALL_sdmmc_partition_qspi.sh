@@ -147,6 +147,23 @@ resolve_jp7_bpmp_dtb() {
     esac
 }
 
+ensure_jp7_uefi_cpubl() {
+    local bl="$L4T_DIR/bootloader"
+    local tbc="$bl/uefi_jetson.bin"
+    [[ -f "$tbc" ]] && return 0
+    local candidate
+    for candidate in uefi_jetson_with_dtb.bin uefi_t23x_general.bin; do
+        if [[ -f "$bl/$candidate" ]]; then
+            ln -sf "$candidate" "$tbc"
+            echo "JP7 flash: linked $tbc -> $candidate (--cpubl for tegraflash.py)"
+            return 0
+        fi
+    done
+    echo "Error: missing $tbc (and no UEFI fallback in $bl)."
+    echo "  tegraflash.py misparses --bins when --cpubl is empty, causing bpmp_fw_dtb errors."
+    exit 1
+}
+
 jp7_flash_extra_args() {
     if [[ "$L4T_VERSION" != 7* ]]; then
         return
@@ -158,6 +175,7 @@ jp7_flash_extra_args() {
 
 if [[ "$L4T_VERSION" == 7* && "$DRY_RUN" == false ]]; then
     validate_jp7_flash_prereqs
+    ensure_jp7_uefi_cpubl
 fi
 
 if [[ "$MODE" == "copy-kernel" ]]; then
