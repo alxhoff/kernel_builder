@@ -1,0 +1,27 @@
+# OS-layer chroot for JetPack 7.x rootfs (Pass 1/2; run by setup_tegra_package.sh).
+# Ubuntu 24.04 (Noble): fail2ban needs python3-pyasyncore from updates (LP: #2055114).
+# jetson_chroot.sh installs systemctl/invoke-rc.d stubs before this file runs.
+# NOTE: jetson_chroot.sh runs each non-comment line as its own bash -c; keep
+# conditionals/for-loops on a single line (see chroot_install_cartken_jp7.txt).
+apt-get update -o Acquire::Retries=5 -o APT::Update::Error-Mode=any
+apt-mark hold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
+DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || true
+apt-mark unhold $(dpkg -l | grep 'nvidia-l4t-' | awk '{print $2}')
+dpkg -l | awk '/^ii/ {print $2}' | grep -E '^nvidia-l4t-(kernel|kernel-headers|kernel-dtbs|firmware|xusb-firmware)$' | xargs -r apt-mark hold
+apt-get autoremove -y
+echo "Recovering dpkg state before OS package install"
+dpkg --configure -a || true
+DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
+dpkg-query -W -f='${Status}' fail2ban 2>/dev/null | grep -q 'install ok installed' && echo "fail2ban already installed; skipping fail2ban stack reinstall" || { echo "Installing Noble fail2ban stack (python3-pyasyncore + fail2ban)"; for pkg in fail2ban python3-pyinotify python3-pyasyncore; do status=$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || echo ""); case "$status" in *"install ok installed"*) ;; *) dpkg --remove --force-remove-reinstreq --force-depends "$pkg" 2>/dev/null || dpkg --purge --force-all "$pkg" 2>/dev/null || true ;; esac; done; dpkg --configure -a || true; DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true; DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pyasyncore python3-setuptools python3-pyinotify; DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban; }
+echo "Installing apt packages (single transaction)"
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ifupdown v4l-utils apt tree tmux vim screen htop can-utils iptraf libqt5core5a cmake libssl-dev libc6-dev build-essential libudev-dev libqmi-utils uhubctl ffmpeg libqt5widgets5 uuid-runtime nvme-cli docker.io nvidia-container-toolkit nvidia-jetpack-runtime chrony nano git python3-libnvinfer-dev
+echo "Configuring NVIDIA container runtime for docker"
+mkdir -p /etc/docker
+nvidia-ctk runtime configure --runtime=docker --set-as-default
+pip install -U sphinx python-can --break-system-packages
+sed -i 's/^#\?\(PermitRootLogin\).*/\1 yes/' /etc/ssh/sshd_config
+echo "root:$(openssl passwd -6 cartken)" | chpasswd -e
+echo "Cleaning up unused dependencies + apt cache + dangling systemd symlinks"
+DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge || true
+apt-get clean || true
+find /etc/systemd/system -xtype l -delete 2>/dev/null || true

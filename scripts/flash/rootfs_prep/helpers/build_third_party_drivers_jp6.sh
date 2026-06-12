@@ -60,8 +60,9 @@ done
 
 # Validate arguments
 if [[ -z "$KERNEL_SRC" || -z "$KERNEL_OUT_DIR" || -z "$CROSS_COMPILE" || -z "$ROOTFS_ROOT_DIR" || -z "$TEGRA_DIR" || -z "$PATCH" || -z "$LOCALVERSION" ]]; then
-    echo "Error: Missing required arguments."
+    echo "Error: Missing required arguments." >&2
     show_help
+    exit 1
 fi
 
 cd "$ROOTFS_ROOT_DIR"

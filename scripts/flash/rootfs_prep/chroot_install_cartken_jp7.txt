@@ -1,0 +1,26 @@
+# Cartken-layer chroot driver for JetPack 7.x (Noble / PEP 668 aware).
+#
+# Same logic as chroot_install_cartken.txt, but pip installs use
+# --break-system-packages to comply with Ubuntu 24 externally-managed Python.
+echo "Installing chroot stubs for packages not yet chroot-safe in this repo (cartken-jetson-sshd-v2, cartken-jetson-sshd-disable). jetson_chroot.sh prepends /usr/local/sbin to PATH."
+mkdir -p /usr/local/sbin
+for _stub in systemctl systemd-sysv-install deb-systemd-helper invoke-rc.d; do printf '#!/bin/sh\nexit 0\n' > "/usr/local/sbin/$_stub"; chmod +x "/usr/local/sbin/$_stub"; done
+echo "Recovering from any half-configured packages from previous runs"
+dpkg --configure -a || true
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
+echo "Make /root/packages readable by apt sandbox user _apt"
+[ -d /root/packages ] && chmod -R a+rX /root/packages
+echo "Purging every cartken-* package so reinstall is from a clean slate"
+if INSTALLED=$(dpkg-query -W -f='${Package}\n' 'cartken-*' 2>/dev/null) && [ -n "$INSTALLED" ]; then DEBIAN_FRONTEND=noninteractive apt-get -y purge $INSTALLED || { echo "Warning: cartken package purge failed (likely maintainer script issue). Continuing with in-place reinstall."; dpkg --configure -a || true; DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true; }; fi
+echo "Defensive: ensure python3-pip + ifupdown exist (jp7 OS layer normally installs these, but this file is also re-runnable on rootfs that have not seen the OS layer recently)"
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ifupdown
+echo "Installing viki (cartken python wheel)"
+python3 -m pip install --break-system-packages /root/packages/cartken-wheels/viki-*.whl
+echo "Installing the full cartken-* set from /root/cartken_jetson_debs.txt via dpkg + apt fix-broken"
+[[ -f /root/cartken_jetson_debs.txt ]] || { echo "Missing /root/cartken_jetson_debs.txt (should be copied into rootfs before chroot)"; exit 1; }
+_debs="$(sed -e 's/[[:space:]]*#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' /root/cartken_jetson_debs.txt | awk 'NF {print "/root/packages/cartken-jetson-debians/" $0 ".deb"}')"; [[ -n "$_debs" ]] || { echo "No packages listed in /root/cartken_jetson_debs.txt"; exit 1; }; for deb in $_debs; do [[ -f "$deb" ]] || { echo "Missing deb: $deb"; exit 1; }; done; dpkg -i $_debs || true; DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install
+echo "Cleaning up unused dependencies + apt cache + dangling systemd symlinks"
+DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge || true
+apt-get clean || true
+find /etc/systemd/system -xtype l -delete 2>/dev/null || true

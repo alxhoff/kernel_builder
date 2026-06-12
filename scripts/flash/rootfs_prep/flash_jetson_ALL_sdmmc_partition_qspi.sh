@@ -89,7 +89,7 @@ L4T_DIR=$(to_absolute_path "$L4T_DIR")
 L4T_VERSION=$(basename "$(dirname "$L4T_DIR")")
 
 case "$L4T_VERSION" in
-    6*)
+    6*|7*)
         BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
         ;;
     *)
@@ -97,6 +97,103 @@ case "$L4T_VERSION" in
         ;;
 esac
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
+
+validate_jp7_flash_prereqs() {
+    local conf="$L4T_DIR/p3701.conf.common"
+    [[ -f "$conf" ]] || { echo "Error: missing $conf"; exit 1; }
+
+    # shellcheck disable=SC1090
+    source "$conf"
+    if [[ "${target_board}" != "generic" ]]; then
+        echo "Error: p3701.conf.common has target_board=\"${target_board}\" but JP7 requires \"generic\"."
+        echo "  Fix: sed -i 's/^target_board=\"t186ref\";/target_board=\"generic\";/' \"$conf\""
+        exit 1
+    fi
+    if [[ -z "${EMC_BCT:-}" ]]; then
+        echo "Error: EMC_BCT is unset in $conf (JP7 flash.sh does not read EMMC_BCT)."
+        echo "  Fix: sed -i 's/EMMC_BCT=/EMC_BCT=/g' \"$conf\""
+        exit 1
+    fi
+    local bct_dir="$L4T_DIR/bootloader/${target_board}/BCT"
+    if [[ ! -f "$bct_dir/${EMC_BCT}" ]]; then
+        echo "Error: missing SDRAM BCT $bct_dir/${EMC_BCT}"
+        exit 1
+    fi
+    local bpmp_dtb
+    bpmp_dtb="$(resolve_jp7_bpmp_dtb "$L4T_DIR")"
+    if [[ ! -f "$bpmp_dtb" ]]; then
+        echo "Error: missing BPMP DTB $bpmp_dtb"
+        echo "  JP7 stores BPMP DTBs only under bootloader/generic/, not bootloader/t186ref/."
+        exit 1
+    fi
+    if [[ "$(python3 -c 'import sys; print(sys.version_info[:2] >= (3, 13))' 2>/dev/null)" == "True" ]]; then
+        echo "Warning: Python $(python3 --version 2>&1) exposes tegraflash bugs when bpmp_fw_dtb is missing from flashcmd.txt."
+        echo "  Use Ubuntu 22.04/24.04 host or python3.12 if flash fails inside tegraflash.py."
+    fi
+}
+
+resolve_jp7_bpmp_dtb() {
+    local l4t_dir="$1"
+    local sku="0000"
+    if [[ -f "$l4t_dir/bootloader/ecid.bin" ]]; then
+        # shellcheck disable=SC1090
+        source "$l4t_dir/bootloader/ecid.bin" 2>/dev/null || true
+        sku="${BOARDSKU:-0000}"
+    fi
+    case "$sku" in
+        0004) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0004-3737-0000.dtb" ;;
+        0005) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0005-3737-0000.dtb" ;;
+        *)    echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0000-3737-0000.dtb" ;;
+    esac
+}
+
+ensure_jp7_uefi_cpubl() {
+    local bl="$L4T_DIR/bootloader"
+    local tbc="$bl/uefi_jetson.bin"
+    local candidate src=""
+
+    # flash.sh mkfilesoft() resolves TBCFILE with readlink -f and uses basename as
+    # --cpubl. A symlink uefi_jetson.bin -> uefi_t23x_general.bin yields
+    # --cpubl uefi_t23x_general.bin, so tegraflash creates uefi_t23x_general_with_dtb.bin
+    # while flash.xml still references uefi_jetson_with_dtb.bin (UEFIBL).
+    if [[ -f "$tbc" && ! -L "$tbc" ]]; then
+        return 0
+    fi
+
+    for candidate in \
+        "$bl/uefi_bins/uefi_t23x_general.bin" \
+        "$bl/uefi_t23x_general.bin" \
+        "$bl/uefi_bins/uefi_t23x_minimal.bin"; do
+        if [[ -f "$candidate" ]]; then
+            src="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$src" ]]; then
+        echo "Error: missing $tbc (no UEFI payload under $bl or $bl/uefi_bins/)."
+        echo "  tegraflash.py misparses --bins when --cpubl is empty, causing bpmp_fw_dtb errors."
+        exit 1
+    fi
+
+    rm -f "$tbc"
+    cp -f "$src" "$tbc"
+    echo "JP7 flash: installed $tbc from $(basename "$src") (real file; --cpubl must be uefi_jetson.bin)"
+}
+
+jp7_flash_extra_args() {
+    if [[ "$L4T_VERSION" != 7* ]]; then
+        return
+    fi
+    local bpmp_dtb
+    bpmp_dtb="$(to_absolute_path "$(resolve_jp7_bpmp_dtb "$L4T_DIR")")"
+    echo "-g $bpmp_dtb"
+}
+
+if [[ "$L4T_VERSION" == 7* && "$DRY_RUN" == false ]]; then
+    validate_jp7_flash_prereqs
+    ensure_jp7_uefi_cpubl
+fi
 
 if [[ "$MODE" == "copy-kernel" ]]; then
     FLASH_KERNEL_DIR=$(to_absolute_path "$FLASH_KERNEL_DIR")
@@ -142,16 +239,20 @@ if [[ "$MODE" == "copy-kernel" ]]; then
     echo "Copy kernel modules: cp -r $MODULES_DIR -> $L4T_DIR/rootfs/lib/modules"
     [[ "$DRY_RUN" == false ]] && cp -r "$MODULES_DIR" "$L4T_DIR/rootfs/lib/modules"
 
-    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit mmcblk0p1"
+    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) jetson-agx-orin-devkit mmcblk0p1"
 else
     KERNEL_IMAGE="$L4T_DIR/kernel/Image"
     if [ -z "$DTB_FILE" ]; then
-        DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+        if [[ "$L4T_VERSION" == 6* || "$L4T_VERSION" == 7* ]]; then
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+        else
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+        fi
     fi
     KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
     DTB_FILE=$(to_absolute_path "$DTB_FILE")
 
-    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
+    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
 fi
 
 echo "Disabling USB autosuspend"

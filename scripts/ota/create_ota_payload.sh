@@ -27,6 +27,7 @@ declare -A BSP_VERSION_MAP=(
     [6.0DP]="R36-3"
     [6.1]="R36-4"
     [6.2]="R36-4"
+    [7.2]="R39-2"
 )
 
 declare -A OTA_TOOL_URLS=(
@@ -37,6 +38,7 @@ declare -A OTA_TOOL_URLS=(
     [6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/ota_tools_R36.3.0_aarch64.tbz2"
     [6.1]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/ota_tools_r36.4.0_aarch64.tbz2"
     [6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/ota_tools_r36.4.3_aarch64.tbz2"
+    [7.2]="https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/release/ota_tools_r39.2.0_aarch64.tbz2"
 )
 
 show_help() {
@@ -131,7 +133,7 @@ BASE_BSP_VERSION="${BSP_VERSION_MAP[$BASE_VERSION]}"
 # Set default cfgfile for JP5/6+ if not provided
 if [[ -z "$CFG_FILE" ]]; then
     case "$TARGET_VERSION" in
-        6*)
+        6*|7*)
             CFG_FILE="$TARGET_L4T/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
             ;;
         5*)
@@ -186,7 +188,7 @@ run_cmd "tar xpf \"$OTA_TOOL_FILE\" -C \"$(dirname "$TARGET_L4T")\""
 # Replace partition XML if provided
 if [[ -n "$PARTITION_XML" ]]; then
 	case "$TARGET_VERSION" in
-        6*)
+        6*|7*)
             TARGET_PARTITION_XML="$TARGET_L4T/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
             ;;
         *)
@@ -227,7 +229,7 @@ case "$TARGET_VERSION" in
     5.1.2|5.1.3|5.1.4|5.1.5)
         DTB_NAME="tegra234-p3701-0000-p3737-0000.dtb"
         ;;
-    6.0DP|6.1|6.2)
+    6.0DP|6.1|6.2|7.2)
         DTB_NAME="tegra234-p3737-0000+p3701-0000.dtb"
         ;;
     *)

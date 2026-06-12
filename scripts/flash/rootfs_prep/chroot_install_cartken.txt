@@ -23,7 +23,7 @@ DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true
 echo "Make /root/packages readable by apt sandbox user _apt"
 [ -d /root/packages ] && chmod -R a+rX /root/packages
 echo "Purging every cartken-* package so reinstall is from a clean slate"
-if INSTALLED=$(dpkg-query -W -f='${Package}\n' 'cartken-*' 2>/dev/null) && [ -n "$INSTALLED" ]; then DEBIAN_FRONTEND=noninteractive apt-get -y purge $INSTALLED; fi
+if INSTALLED=$(dpkg-query -W -f='${Package}\n' 'cartken-*' 2>/dev/null) && [ -n "$INSTALLED" ]; then DEBIAN_FRONTEND=noninteractive apt-get -y purge $INSTALLED || { echo "Warning: cartken package purge failed (likely maintainer script issue). Continuing with in-place reinstall."; dpkg --configure -a || true; DEBIAN_FRONTEND=noninteractive apt-get -y --fix-broken install || true; }; fi
 echo "Defensive: ensure python3-pip + ifupdown exist (jp{5,6}.txt normally installs these, but this file is also re-runnable on rootfs that have not seen the OS layer recently)"
 DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ifupdown
 echo "Installing viki (cartken python wheel)"

@@ -11,7 +11,9 @@ ubuntu_iso_work
 *.txt
 !chroot_install_os_jp5.txt
 !chroot_install_os_jp6.txt
+!chroot_install_os_jp7.txt
 !chroot_install_cartken.txt
+!chroot_install_cartken_jp7.txt
 !cartken_jetson_debs.txt
 *.ko
 *.log
@@ -23,3 +25,4 @@ bsp/
 # in setup_tegra_package.sh). Already covered by *.tbz2 / *.tar.gz above
 # but listed explicitly for clarity.
 downloads/
+toolchains/

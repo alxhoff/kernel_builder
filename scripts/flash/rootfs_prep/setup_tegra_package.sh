@@ -4,7 +4,7 @@ set -ex
 
 # --- Optional Docker wrapper ----------------------------------------------
 # If --docker is given, re-launch this script inside a consistent
-# ubuntu:22.04 container that has all the host build-deps preinstalled
+# Ubuntu container that has all the host build-deps preinstalled
 # (qemu-user-static, build-essential, kmod, flex, bison, libelf-dev, ...).
 # Same pattern as setup_rootfs_as_robot_for_flashing.sh's --docker mode.
 #
@@ -21,12 +21,26 @@ set -ex
 DOCKER_FLAG_PRESENT=0
 INSPECT=0
 REBUILD=0
-for arg in "$@"; do
+WRAPPER_JETPACK=""
+ARGS=("$@")
+idx=0
+	while [[ $idx -lt ${#ARGS[@]} ]]; do
+	arg="${ARGS[$idx]}"
 	case "$arg" in
 		--docker)  DOCKER_FLAG_PRESENT=1 ;;
 		--inspect) INSPECT=1 ;;
 		--rebuild) REBUILD=1 ;;
+		-j|--jetpack)
+			if [[ $((idx + 1)) -lt ${#ARGS[@]} ]]; then
+				WRAPPER_JETPACK="${ARGS[$((idx + 1))]}"
+				idx=$((idx + 1))
+			fi
+			;;
+		--jetpack=*)
+			WRAPPER_JETPACK="${arg#*=}"
+			;;
 	esac
+	idx=$((idx + 1))
 done
 
 if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
@@ -39,10 +53,42 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
 	# wrapper steps are self-documenting via their echo'd messages.
 	set +x
 
+	resolve_docker_bin() {
+		local candidate=""
+		for candidate in "${DOCKER_BIN:-}" docker /usr/bin/docker /usr/local/bin/docker /bin/docker; do
+			[[ -n "$candidate" ]] || continue
+			if command -v "$candidate" >/dev/null 2>&1; then
+				command -v "$candidate"
+				return 0
+			fi
+			if [[ -x "$candidate" ]]; then
+				echo "$candidate"
+				return 0
+			fi
+		done
+		return 1
+	}
+
+	DOCKER_BIN="$(resolve_docker_bin || true)"
+	if [[ -z "$DOCKER_BIN" ]]; then
+		echo "Error: docker binary not found in PATH under sudo." >&2
+		echo "       PATH=$PATH" >&2
+		echo "       Checked: docker, /usr/bin/docker, /usr/local/bin/docker, /bin/docker" >&2
+		exit 1
+	fi
+
 	SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
-	IMAGE="ubuntu:22.04"
+	WRAPPER_JP_MAJOR="${WRAPPER_JETPACK%%.*}"
+	if [[ "$WRAPPER_JP_MAJOR" == "7"* ]]; then
+		IMAGE="ubuntu:24.04"
+		DOCKER_TAG="jetson_builder:jp7-ubuntu2404"
+	else
+		IMAGE="ubuntu:22.04"
+		DOCKER_TAG="jetson_builder:jp56-ubuntu2204"
+	fi
 	CONTAINER_NAME="tegra_setup"
-	DOCKER_TAG="jetson_builder:latest"
+
+	echo "Docker base image selected from --jetpack '${WRAPPER_JETPACK:-default}': $IMAGE"
 
 	echo "Checking host dependencies for cross-architecture container support..."
 	if [ -f /etc/os-release ]; then
@@ -60,7 +106,7 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
 			apt-get update
 			apt-get install -y qemu-user-static binfmt-support
 		fi
-	elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" ]]; then
+	elif [[ "$OS" == "Arch Linux" || "$OS" == "Manjaro Linux" || "$OS" == "EndeavourOS" ]]; then
 		if ! pacman -Q | grep -q "qemu-user-static" || ! pacman -Q | grep -q "binfmt-support"; then
 			echo "Installing QEMU and binfmt support for Arch Linux..."
 			pacman -Syu --noconfirm qemu-user-static qemu-user-static-binfmt
@@ -71,12 +117,27 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
 	fi
 
 	echo "Registering QEMU handlers with the kernel for ARM64 emulation..."
-	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
+	"$DOCKER_BIN" run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null
 
-	if [[ "$REBUILD" -eq 1 || "$(docker images -q "$DOCKER_TAG" 2>/dev/null)" == "" ]]; then
+	if [[ "$REBUILD" -eq 1 || "$("$DOCKER_BIN" images -q "$DOCKER_TAG" 2>/dev/null)" == "" ]]; then
 		echo "Building Docker image '$DOCKER_TAG'..."
-		docker pull "$IMAGE"
-		docker build --dns=8.8.8.8 --dns=8.8.4.4 -t "$DOCKER_TAG" - <<EOF
+		"$DOCKER_BIN" pull "$IMAGE"
+		if [[ "$WRAPPER_JP_MAJOR" == "7"* ]]; then
+			"$DOCKER_BIN" build -t "$DOCKER_TAG" - <<EOF
+FROM $IMAGE
+RUN apt-get update && apt-get install -y \
+	sudo tar bzip2 git wget curl openssh-client iputils-ping \
+	docker.io jq qemu-user-static binfmt-support unzip \
+	build-essential kmod flex bison libelf-dev bc dwarves \
+	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev \
+	&& mkdir -p /opt/nvidia-l4t-toolchain \
+	&& wget -q -O /tmp/x-tools.tbz2 https://developer.download.nvidia.com/embedded/L4T/r38_Release_v2.0/release/x-tools.tbz2 \
+	&& tar -xjf /tmp/x-tools.tbz2 -C /opt/nvidia-l4t-toolchain \
+	&& rm -f /tmp/x-tools.tbz2 \
+	&& test -x /opt/nvidia-l4t-toolchain/x-tools/aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-gcc
+EOF
+		else
+			"$DOCKER_BIN" build -t "$DOCKER_TAG" - <<EOF
 FROM $IMAGE
 RUN apt-get update && apt-get install -y \
 	sudo tar bzip2 git wget curl openssh-client iputils-ping \
@@ -84,14 +145,15 @@ RUN apt-get update && apt-get install -y \
 	build-essential kmod flex bison libelf-dev bc dwarves \
 	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev
 EOF
+		fi
 	else
 		echo "Using existing Docker image: $DOCKER_TAG"
 	fi
 
 	# Stop any previous run that crashed and left a container behind.
-	if docker ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
+	if "$DOCKER_BIN" ps -a --format '{{.Names}}' | grep -qw "$CONTAINER_NAME"; then
 		echo "Removing existing container: $CONTAINER_NAME"
-		docker rm -f "$CONTAINER_NAME"
+		"$DOCKER_BIN" rm -f "$CONTAINER_NAME"
 	fi
 
 	# Forward every arg except the wrapper-only flags. printf %q quotes
@@ -121,7 +183,7 @@ EOF
 
 	echo "Re-launching inside Docker (image=$DOCKER_TAG, container=$CONTAINER_NAME)."
 	echo "All subsequent output is from the container."
-	docker run --rm "${DOCKER_INTERACTIVE_FLAGS[@]}" \
+	"$DOCKER_BIN" run --rm "${DOCKER_INTERACTIVE_FLAGS[@]}" \
 		--name "$CONTAINER_NAME" \
 		--privileged \
 		--network=host \
@@ -130,6 +192,7 @@ EOF
 		-w "/workspace" \
 		-e HOME="/workspace" \
 		-e SUDO_USER="${SUDO_USER-}" \
+		-e KB_IN_DOCKER_WRAPPER="1" \
 		"$DOCKER_TAG" \
 		/bin/bash -c "$CONTAINER_CMD"
 
@@ -154,6 +217,72 @@ prompt_user() {
     fi
 }
 
+resolve_cartken_manifest_for_packages() {
+	local src_manifest="$1"
+	local package_dir="$2"
+	local out_manifest="$3"
+	local line pkg chosen alt optional_missing
+	local -a missing=()
+	declare -A seen=()
+
+	if [[ ! -f "$src_manifest" ]]; then
+		echo "Error: cartken manifest not found: $src_manifest" >&2
+		return 1
+	fi
+	if [[ ! -d "$package_dir" ]]; then
+		echo "Error: package directory not found: $package_dir" >&2
+		return 1
+	fi
+
+	: > "$out_manifest"
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		[[ "$line" =~ ^[[:space:]]*# ]] && continue
+		pkg="${line%%#*}"
+		pkg="${pkg// /}"
+		[[ -z "$pkg" ]] && continue
+
+		chosen="$pkg"
+		optional_missing=0
+		if [[ ! -f "$package_dir/$chosen.deb" ]]; then
+			alt=""
+			case "$pkg" in
+				cartken-jetson-sshd-v2) alt="cartken-jetson-sshd" ;;
+				cartken-jetson-sshd) alt="cartken-jetson-sshd-v2" ;;
+				cartken-jetson-sshd-disable) optional_missing=1 ;;
+			esac
+			if [[ -n "$alt" && -f "$package_dir/$alt.deb" ]]; then
+				echo "Info: using fallback package '$alt' for '$pkg'." >&2
+				chosen="$alt"
+			elif [[ "$optional_missing" -eq 1 ]]; then
+				echo "Info: optional package '$pkg' not present; skipping." >&2
+				continue
+			else
+				missing+=("$pkg")
+				continue
+			fi
+		fi
+
+		if [[ -z "${seen[$chosen]:-}" ]]; then
+			echo "$chosen" >> "$out_manifest"
+			seen["$chosen"]=1
+		fi
+	done < "$src_manifest"
+
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		echo "Error: missing required Cartken debs after get_packages.sh:" >&2
+		printf '  - %s\n' "${missing[@]}" >&2
+		echo "Checked under: $package_dir" >&2
+		return 1
+	fi
+
+	if [[ ! -s "$out_manifest" ]]; then
+		echo "Error: resolved Cartken manifest is empty: $out_manifest" >&2
+		return 1
+	fi
+
+	return 0
+}
+
 # Define JetPack versions and corresponding L4T versions
 declare -A JETPACK_L4T_MAP=(
     [5.1.2]=35.4.1
@@ -163,6 +292,7 @@ declare -A JETPACK_L4T_MAP=(
 	[6.0DP]=36.2
 	[6.1]=36.4
 	[6.2]=36.4.3
+	[7.2]=39.2.0
 )
 
 # Define URLs for the sources
@@ -174,6 +304,7 @@ declare -A ROOTFS_URLS=(
 	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/release/tegra_linux_sample-root-filesystem_r36.2.0_aarch64.tbz2"
 	[6.1]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Tegra_Linux_Sample-Root-Filesystem_R36.4.0_aarch64.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Tegra_Linux_Sample-Root-Filesystem_r36.4.3_aarch64.tbz2"
+	[7.2]="https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/release/Tegra_Linux_Sample-Root-Filesystem_R39.2.0_aarch64.tbz2"
 )
 
 declare -A KERNEL_URLS=(
@@ -184,6 +315,7 @@ declare -A KERNEL_URLS=(
 	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2"
 	[6.1]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/sources/public_sources.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
+	[7.2]="https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/sources/public_sources.tbz2"
 )
 
 declare -A DRIVER_URLS=(
@@ -194,6 +326,7 @@ declare -A DRIVER_URLS=(
 	[6.0DP]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/release/jetson_linux_r36.2.0_aarch64.tbz2"
 	[6.1]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Jetson_Linux_R36.4.0_aarch64.tbz2"
 	[6.2]="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Jetson_Linux_r36.4.3_aarch64.tbz2"
+	[7.2]="https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/release/Jetson_Linux_R39.2.0_aarch64.tbz2"
 )
 
 # Default values
@@ -206,7 +339,15 @@ SKIP_KERNEL_BUILD=false
 SKIP_DISPLAY_DRIVER_BUILD=false
 SKIP_CHROOT_BUILD=false
 SKIP_PINMUX=false
+SKIP_PREP=false
+ONLY_CARTKEN_CHROOT=false
+ONLY_KERNEL_BUILD=false
+ONLY_OOT_MODULES_BUILD=false
+ONLY_INSTALL_KERNEL_ARTIFACTS=false
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=helpers/ensure_jp7_kernel_src.sh
+source "$SCRIPT_DIRECTORY/helpers/ensure_jp7_kernel_src.sh"
 
 # Function to show help
 show_help() {
@@ -220,12 +361,17 @@ show_help() {
 	echo "  --skip-display-driver-build		Skips building the display driver"
 	echo "  --skip-chroot-build		Skips updating and settup up the rootfs in a chroot"
 	echo "  --skip-pinmux		    Skips overriding the pinmux"
+	echo "  --skip-prep                     Reuse existing BSP/rootfs and skip download/extract/apply_binaries/default-user setup"
+	echo "  --only-cartken-chroot          Fast loop: run only cartken chroot pass on existing BSP/rootfs"
+	echo "  --only-kernel-build            Fast loop: build/install kernel on existing BSP/rootfs only"
+	echo "  --only-oot-modules-build       Fast loop: build/install NVIDIA OOT/display modules only (reuse kernel_out)"
+	echo "  --only-install-kernel-artifacts Fast loop: copy existing kernel Image/DTB from kernel_out only"
     echo "  --no-download           Use existing .tbz2 files instead of downloading"
 	echo "  --just-clone		    Only pulls the sources, nothing more"
     echo "  --prompt                Prompt user to press Enter at each major step"
-    echo "  --docker                Re-launch inside a pre-configured ubuntu:22.04 container"
-    echo "                          for a consistent build environment. All subsequent"
-    echo "                          options are forwarded into the container."
+    echo "  --docker                Re-launch inside a pre-configured container"
+    echo "                          (JP5/6 -> ubuntu:22.04, JP7 -> ubuntu:24.04)."
+    echo "                          All subsequent options are forwarded into the container."
     echo "  --inspect               (with --docker) Drop into /bin/bash inside the container"
     echo "                          instead of running the script. Useful for debugging."
     echo "  --rebuild               (with --docker) Force-rebuild the jetson_builder image"
@@ -277,6 +423,26 @@ while [[ $# -gt 0 ]]; do
             SKIP_PINMUX=true
             shift
             ;;
+        --skip-prep)
+            SKIP_PREP=true
+            shift
+            ;;
+        --only-cartken-chroot)
+            ONLY_CARTKEN_CHROOT=true
+            shift
+            ;;
+        --only-kernel-build)
+            ONLY_KERNEL_BUILD=true
+            shift
+            ;;
+        --only-oot-modules-build)
+            ONLY_OOT_MODULES_BUILD=true
+            shift
+            ;;
+        --only-install-kernel-artifacts)
+            ONLY_INSTALL_KERNEL_ARTIFACTS=true
+            shift
+            ;;
         --prompt)
             PROMPT=true
             shift
@@ -301,8 +467,44 @@ if [[ -z "${JETPACK_L4T_MAP[$JETPACK_VERSION]}" ]]; then
 	exit 1
 fi
 
-if [[ -z "$ACCESS_TOKEN" ]]; then
+if [[ "$ONLY_CARTKEN_CHROOT" == true ]]; then
+	SKIP_PREP=true
+	SKIP_CHROOT_BUILD=true
+	SKIP_PINMUX=true
+	SKIP_KERNEL_BUILD=true
+	SKIP_DISPLAY_DRIVER_BUILD=true
+fi
+
+if [[ "$ONLY_KERNEL_BUILD" == true ]]; then
+	SKIP_PREP=true
+	SKIP_CHROOT_BUILD=true
+	SKIP_PINMUX=true
+	SKIP_DISPLAY_DRIVER_BUILD=true
+fi
+
+if [[ "$ONLY_OOT_MODULES_BUILD" == true ]]; then
+	SKIP_PREP=true
+	SKIP_CHROOT_BUILD=true
+	SKIP_PINMUX=true
+	SKIP_DISPLAY_DRIVER_BUILD=true
+fi
+
+if [[ "$ONLY_INSTALL_KERNEL_ARTIFACTS" == true ]]; then
+	SKIP_PREP=true
+	SKIP_CHROOT_BUILD=true
+	SKIP_PINMUX=true
+	SKIP_KERNEL_BUILD=true
+	SKIP_DISPLAY_DRIVER_BUILD=true
+fi
+
+if [[ "$ONLY_CARTKEN_CHROOT" == false && "$ONLY_KERNEL_BUILD" == false && "$ONLY_OOT_MODULES_BUILD" == false && "$ONLY_INSTALL_KERNEL_ARTIFACTS" == false && -z "$ACCESS_TOKEN" ]]; then
 	echo "Error: --access-token is required."
+	exit 1
+fi
+
+if [[ "$JETPACK_VERSION" == 7.* && "$DOCKER_FLAG_PRESENT" -ne 1 && "${KB_IN_DOCKER_WRAPPER:-0}" != "1" ]]; then
+	echo "Error: JetPack $JETPACK_VERSION must be run with --docker on non-Ubuntu hosts." >&2
+	echo "Use: $0 --docker --jetpack $JETPACK_VERSION [other options]" >&2
 	exit 1
 fi
 
@@ -344,9 +546,184 @@ fi
 TEGRA_BASE_DIR="$BSP_ROOT/$JETPACK_VERSION"
 TEGRA_DIR="$TEGRA_BASE_DIR/Linux_for_Tegra"
 
+if [[ "$ONLY_CARTKEN_CHROOT" == true ]]; then
+	if [[ ! -d "$TEGRA_DIR/rootfs" ]]; then
+		echo "Error: --only-cartken-chroot requires an existing rootfs at $TEGRA_DIR/rootfs" >&2
+		echo "Run a full setup once, then use this fast mode for reruns." >&2
+		exit 1
+	fi
+
+	echo "Fast loop enabled: syncing helper scripts into $TEGRA_DIR and running only cartken chroot pass."
+	shopt -s nullglob
+	helper_files=(
+		"$SCRIPT_DIRECTORY"/*.sh
+		"$SCRIPT_DIRECTORY"/*.txt
+		"$SCRIPT_DIRECTORY"/helpers/*.sh
+		"$SCRIPT_DIRECTORY"/helpers/*.py
+	)
+	shopt -u nullglob
+	if [[ ${#helper_files[@]} -eq 0 ]]; then
+		echo "Error: no helper scripts found at $SCRIPT_DIRECTORY" >&2
+		exit 1
+	fi
+	cp "${helper_files[@]}" "$TEGRA_DIR/"
+	chmod +x "$TEGRA_DIR/jetson_chroot.sh"
+
+	if [[ "$JETPACK_VERSION" == 7.* ]]; then
+		CARTKEN_CHROOT_FILE="chroot_install_cartken_jp7.txt"
+	else
+		CARTKEN_CHROOT_FILE="chroot_install_cartken.txt"
+	fi
+	if [[ ! -f "$TEGRA_DIR/$CARTKEN_CHROOT_FILE" ]]; then
+		echo "Error: missing $CARTKEN_CHROOT_FILE in $TEGRA_DIR" >&2
+		exit 1
+	fi
+
+	RESOLVED_CARTKEN_DEBS_HOST="$(mktemp -p "$TEGRA_DIR" cartken_jetson_debs.resolved.XXXXXX.txt)"
+	resolve_cartken_manifest_for_packages \
+		"$SCRIPT_DIRECTORY/cartken_jetson_debs.txt" \
+		"$TEGRA_DIR/packages/cartken-jetson-debians" \
+		"$RESOLVED_CARTKEN_DEBS_HOST"
+	sudo cp "$RESOLVED_CARTKEN_DEBS_HOST" "$TEGRA_DIR/rootfs/root/cartken_jetson_debs.txt"
+	rm -f "$RESOLVED_CARTKEN_DEBS_HOST"
+
+	(
+		cd "$TEGRA_DIR"
+		sudo ./jetson_chroot.sh rootfs "$SOC" "$CARTKEN_CHROOT_FILE"
+	)
+	echo "Fast cartken chroot pass completed."
+	exit 0
+fi
+
+if [[ "$ONLY_KERNEL_BUILD" == true ]]; then
+	if [[ ! -d "$TEGRA_DIR/kernel_src" || ! -d "$TEGRA_DIR/rootfs" ]]; then
+		echo "Error: --only-kernel-build requires existing kernel_src and rootfs under $TEGRA_DIR" >&2
+		exit 1
+	fi
+
+	echo "Kernel-only build: syncing helpers and building kernel for JetPack $JETPACK_VERSION..."
+	shopt -s nullglob
+	helper_files=(
+		"$SCRIPT_DIRECTORY"/*.sh
+		"$SCRIPT_DIRECTORY"/*.txt
+		"$SCRIPT_DIRECTORY"/helpers/*.sh
+		"$SCRIPT_DIRECTORY"/helpers/*.py
+	)
+	shopt -u nullglob
+	cp "${helper_files[@]}" "$TEGRA_DIR/"
+	chmod +x "$TEGRA_DIR/"*.sh
+
+	if [[ "$JETPACK_VERSION" != 7.* && ! -d "$TEGRA_DIR/toolchain" ]]; then
+		echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
+		sudo git clone --config core.symlinks=true --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+	fi
+
+	if [[ "$JETPACK_VERSION" == 7.* ]]; then
+		ensure_jp7_kernel_src_complete "$TEGRA_DIR/kernel_src" "$KERNEL_FILE"
+	fi
+
+	KERNEL_BUILD_ARGS=(--patch "$JETPACK_VERSION" --localversion "-cartken$JETPACK_VERSION" --skip-patches --public-sources "$KERNEL_FILE")
+	if [[ "$JETPACK_VERSION" == 7.* && ! -f "$SCRIPT_DIRECTORY/../../../sources/configs/$JETPACK_VERSION/defconfig" ]]; then
+		echo "No sources/configs/$JETPACK_VERSION/defconfig yet; using stock NVIDIA defconfig and skipping third-party drivers."
+		KERNEL_BUILD_ARGS+=(--skip-third-party-drivers)
+	fi
+	if [[ ! -d "$SCRIPT_DIRECTORY/../../../sources/patches/$JETPACK_VERSION" ]]; then
+		echo "No local sources/patches/$JETPACK_VERSION yet; skipping kernel patch fetch."
+	fi
+
+	(
+		cd "$TEGRA_DIR"
+		sudo ./build_kernel.sh "${KERNEL_BUILD_ARGS[@]}"
+	)
+	echo "Kernel-only build completed."
+	exit 0
+fi
+
+if [[ "$ONLY_OOT_MODULES_BUILD" == true ]]; then
+	if [[ "$JETPACK_VERSION" != 6.* && "$JETPACK_VERSION" != 7.* ]]; then
+		echo "Error: --only-oot-modules-build is supported for JetPack 6.x and 7.x only." >&2
+		exit 1
+	fi
+	if [[ ! -d "$TEGRA_DIR/kernel_src" || ! -d "$TEGRA_DIR/rootfs" ]]; then
+		echo "Error: --only-oot-modules-build requires existing kernel_src and rootfs under $TEGRA_DIR" >&2
+		exit 1
+	fi
+	if [[ ! -d "$TEGRA_DIR/kernel_src/kernel_out/kernel" ]]; then
+		echo "Error: --only-oot-modules-build requires an existing kernel_out build under $TEGRA_DIR/kernel_src" >&2
+		echo "Run --only-kernel-build first (or a full kernel build)." >&2
+		exit 1
+	fi
+
+	echo "OOT-only build: syncing helpers and building NVIDIA OOT/display modules for JetPack $JETPACK_VERSION..."
+	shopt -s nullglob
+	helper_files=(
+		"$SCRIPT_DIRECTORY"/*.sh
+		"$SCRIPT_DIRECTORY"/*.txt
+		"$SCRIPT_DIRECTORY"/helpers/*.sh
+		"$SCRIPT_DIRECTORY"/helpers/*.py
+	)
+	shopt -u nullglob
+	cp "${helper_files[@]}" "$TEGRA_DIR/"
+	chmod +x "$TEGRA_DIR/"*.sh
+
+	KERNEL_BUILD_ARGS=(
+		--patch "$JETPACK_VERSION"
+		--localversion "-cartken$JETPACK_VERSION"
+		--skip-patches
+		--only-oot-modules
+		--skip-third-party-drivers
+		--public-sources "$KERNEL_FILE"
+	)
+
+	(
+		cd "$TEGRA_DIR"
+		sudo ./build_kernel.sh "${KERNEL_BUILD_ARGS[@]}"
+	)
+	echo "OOT-only build completed."
+	exit 0
+fi
+
+if [[ "$ONLY_INSTALL_KERNEL_ARTIFACTS" == true ]]; then
+	if [[ "$JETPACK_VERSION" != 6.* && "$JETPACK_VERSION" != 7.* ]]; then
+		echo "Error: --only-install-kernel-artifacts is supported for JetPack 6.x and 7.x only." >&2
+		exit 1
+	fi
+	if [[ ! -d "$TEGRA_DIR/kernel_src/kernel_out/kernel" ]]; then
+		echo "Error: --only-install-kernel-artifacts requires kernel_out under $TEGRA_DIR/kernel_src" >&2
+		exit 1
+	fi
+
+	echo "Kernel artifact install: copying Image/DTB from kernel_out for JetPack $JETPACK_VERSION..."
+	shopt -s nullglob
+	helper_files=(
+		"$SCRIPT_DIRECTORY"/*.sh
+		"$SCRIPT_DIRECTORY"/*.txt
+		"$SCRIPT_DIRECTORY"/helpers/*.sh
+		"$SCRIPT_DIRECTORY"/helpers/*.py
+	)
+	shopt -u nullglob
+	cp "${helper_files[@]}" "$TEGRA_DIR/"
+	chmod +x "$TEGRA_DIR/"*.sh
+
+	KERNEL_BUILD_ARGS=(
+		--patch "$JETPACK_VERSION"
+		--localversion "-cartken$JETPACK_VERSION"
+		--skip-patches
+		--only-install-artifacts
+		--skip-third-party-drivers
+	)
+
+	(
+		cd "$TEGRA_DIR"
+		sudo ./build_kernel.sh "${KERNEL_BUILD_ARGS[@]}"
+	)
+	echo "Kernel artifact install completed."
+	exit 0
+fi
+
 prompt_user
 
-if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
+if [[ "$SKIP_PREP" == false ]] && { [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; }; then
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required BSP files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
 		wget -c "${DRIVER_URLS[$JETPACK_VERSION]}" -O "$DRIVER_FILE"
@@ -366,14 +743,14 @@ if [ ! -d "$TEGRA_DIR" ] || [ -z "$(ls -A "$TEGRA_DIR" 2>/dev/null)" ]; then
 	echo "Driver package extracted successfully."
 fi
 
-if [ -f "$TEGRA_DIR/tools/l4t_flash_prerequisites.sh" ]; then
+if [[ "$SKIP_PREP" == false ]] && [ -f "$TEGRA_DIR/tools/l4t_flash_prerequisites.sh" ]; then
   echo "Running l4t_flash_prerequisites.sh..."
   (cd "$TEGRA_DIR" && ./tools/l4t_flash_prerequisites.sh)
 fi
 
 prompt_user
 
-if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; then
+if [[ "$SKIP_PREP" == false ]] && { [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/dev/null)" ]; }; then
 
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required kernel source files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
@@ -449,8 +826,12 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 				echo "Warning: nvidia_kernel_display_driver_source.tbz2 not found!"
 			fi
 			;;
+		7.2)
+			sudo tar -xjf "$TMP_DIR/Linux_for_Tegra/source/kernel_src.tbz2" -C "$TEGRA_DIR/kernel_src"
+			extract_jp7_kernel_src_components "$TMP_DIR/Linux_for_Tegra/source" "$TEGRA_DIR/kernel_src"
+			;;
 		*)
-			echo "Error: Unsupported target BSP version. Supported versions are 5.1.2–5.1.5, 6.0DP, and 6.2."
+			echo "Error: Unsupported target BSP version. Supported versions are 5.1.2–5.1.5, 6.0DP/6.1/6.2, and 7.2."
 			exit 1
 			;;
 	esac
@@ -459,7 +840,7 @@ if [ ! -d "$TEGRA_DIR/kernel_src" ] || [ -z "$(ls -A "$TEGRA_DIR/kernel_src" 2>/
 	rm -rf "$TMP_DIR"
 fi
 
-if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); then
+if [[ "$SKIP_PREP" == false ]] && { [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'README.txt' | wc -l)" -eq 0 ] ); }; then
 	if [ "$DOWNLOAD" = true ]; then
 		echo "Downloading required rootfs files for JetPack $JETPACK_VERSION (L4T ${JETPACK_L4T_MAP[$JETPACK_VERSION]})..."
 		wget -c "${ROOTFS_URLS[$JETPACK_VERSION]}" -O "$ROOTFS_FILE"
@@ -477,6 +858,12 @@ if [ ! -d "$TEGRA_DIR/rootfs" ] || ( [ "$(ls -A "$TEGRA_DIR/rootfs" | grep -v 'R
 	echo "Extracting root filesystem: $ROOTFS_FILE into $TEGRA_DIR/rootfs..."
 	sudo tar -xjf "$ROOTFS_FILE" -C "$TEGRA_DIR/rootfs"
 	echo "Root filesystem extraction completed."
+fi
+
+if [[ "$SKIP_PREP" == true && ! -d "$TEGRA_DIR/rootfs" ]]; then
+	echo "Error: --skip-prep requested but rootfs is missing at $TEGRA_DIR/rootfs" >&2
+	echo "Run once without --skip-prep to initialize this BSP directory." >&2
+	exit 1
 fi
 
 echo 'export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH' | sudo tee $TEGRA_DIR/rootfs/root/.bashrc > /dev/null
@@ -513,6 +900,25 @@ if [[ ! -x "$TEGRA_DIR/jetson_chroot.sh" ]]; then
 	exit 1
 fi
 
+# Stage a JetPack-specific flash driver into Linux_for_Tegra so flashing behavior
+# is explicit per major release instead of being hidden in conditional branches.
+JP_MAJOR="${JETPACK_VERSION%%.*}"
+case "$JP_MAJOR" in
+	5) FLASH_VARIANT_DIR="5.X" ;;
+	6) FLASH_VARIANT_DIR="6.X" ;;
+	7) FLASH_VARIANT_DIR="7.X" ;;
+	*) FLASH_VARIANT_DIR="" ;;
+esac
+if [[ -n "$FLASH_VARIANT_DIR" ]]; then
+	FLASH_VARIANT_SRC="$SCRIPT_DIRECTORY/flash_scripts/$FLASH_VARIANT_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+	if [[ ! -f "$FLASH_VARIANT_SRC" ]]; then
+		echo "Error: Missing flash script variant: $FLASH_VARIANT_SRC" >&2
+		exit 1
+	fi
+	cp "$FLASH_VARIANT_SRC" "$TEGRA_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+	chmod +x "$TEGRA_DIR/flash_jetson_ALL_sdmmc_partition_qspi.sh"
+fi
+
 # Clean up any stale suffixed copies left over from previous runs that used
 # the old wget -P behaviour (e.g. chroot_setup_commands.txt.1).
 find "$TEGRA_DIR" -maxdepth 1 -regextype posix-extended \
@@ -520,21 +926,26 @@ find "$TEGRA_DIR" -maxdepth 1 -regextype posix-extended \
 
 prompt_user
 
-if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
+if [[ "$SKIP_CHROOT_BUILD" == false && "$SKIP_PREP" == false ]]; then
 	echo "Setting up chroot environment for SoC: $SOC..."
 	# Pre-apply_binaries pass: just bring the freshly-extracted L4T rootfs to
 	# the point where its package manager works. Used to live in
 	# essential_chroot_setup_commands.txt - inlined here to keep the chroot
 	# .txt set down to the two real things (OS layer + cartken layer).
+	ESSENTIAL_APT_META="apt-utils"
+	if [[ "$JETPACK_VERSION" == 7.* ]]; then
+		# Noble rootfs no longer ships apt-utils as a standalone package.
+		ESSENTIAL_APT_META="apt"
+	fi
 	ESSENTIAL_CMDS_FILE="$(mktemp -p "$TEGRA_DIR" essential_chroot_setup_commands.XXXXXX.txt)"
-	cat > "$ESSENTIAL_CMDS_FILE" <<'EOF'
-apt update
-apt install -y libglib2.0-0 apt-utils
+cat > "$ESSENTIAL_CMDS_FILE" <<EOF
+apt-get update -o Acquire::Retries=5 -o APT::Update::Error-Mode=any
+apt install -y libglib2.0-0 $ESSENTIAL_APT_META
 EOF
 	sudo "$TEGRA_DIR/jetson_chroot.sh" "$TEGRA_DIR/rootfs" "$SOC" "$ESSENTIAL_CMDS_FILE"
 	rm -f "$ESSENTIAL_CMDS_FILE"
 else
-	echo "Skipping rootfs setup in chroot as requested."
+	echo "Skipping pre-apply_binaries chroot setup as requested."
 fi
 
 # Don't leave a copy of this script inside the BSP — it would shadow the
@@ -549,22 +960,26 @@ echo "All rootfs helper scripts staged in $TEGRA_DIR."
 prompt_user
 
 cd $TEGRA_DIR
-echo "Applying NVIDIA binaries and creating default cartken user..."
-# Inlined from the old setup_rootfs.sh wrapper (which only had one caller,
-# this script, and shared a confusingly similar name with
-# setup_rootfs_as_robot_for_flashing.sh). l4t_flash_prerequisites.sh has
-# already run earlier in this script, so we don't repeat it here.
-echo "Removing existing device nodes before apply_binaries..."
-sudo rm -f "$TEGRA_DIR/rootfs/dev/random"
-sudo rm -f "$TEGRA_DIR/rootfs/dev/urandom"
-sudo "$TEGRA_DIR/apply_binaries.sh"
-echo "Creating default user (cartken/cartken, hostname cart1jetson, autologin)..."
-(
-	cd "$TEGRA_DIR/tools"
-	sudo ./l4t_create_default_user.sh \
-		-u cartken -p cartken -n cart1jetson \
-		--autologin --accept-license
-)
+if [[ "$SKIP_PREP" == false ]]; then
+	echo "Applying NVIDIA binaries and creating default cartken user..."
+	# Inlined from the old setup_rootfs.sh wrapper (which only had one caller,
+	# this script, and shared a confusingly similar name with
+	# setup_rootfs_as_robot_for_flashing.sh). l4t_flash_prerequisites.sh has
+	# already run earlier in this script, so we don't repeat it here.
+	echo "Removing existing device nodes before apply_binaries..."
+	sudo rm -f "$TEGRA_DIR/rootfs/dev/random"
+	sudo rm -f "$TEGRA_DIR/rootfs/dev/urandom"
+	sudo "$TEGRA_DIR/apply_binaries.sh"
+	echo "Creating default user (cartken/cartken, hostname cart1jetson, autologin)..."
+	(
+		cd "$TEGRA_DIR/tools"
+		sudo ./l4t_create_default_user.sh \
+			-u cartken -p cartken -n cart1jetson \
+			--autologin --accept-license
+	)
+else
+	echo "Skipping apply_binaries/default-user setup due to --skip-prep."
+fi
 
 prompt_user
 
@@ -575,7 +990,13 @@ $TEGRA_DIR/get_packages.sh --access-token "$ACCESS_TOKEN" --tag "$TAG"
 # /root/packages/ inside the rootfs which then survive into the flashed image.
 sudo rm -rf "$TEGRA_DIR/rootfs/root/packages"
 sudo cp -r $TEGRA_DIR/packages $TEGRA_DIR/rootfs/root/
-sudo cp "$SCRIPT_DIRECTORY/cartken_jetson_debs.txt" "$TEGRA_DIR/rootfs/root/"
+RESOLVED_CARTKEN_DEBS_HOST="$(mktemp -p "$TEGRA_DIR" cartken_jetson_debs.resolved.XXXXXX.txt)"
+resolve_cartken_manifest_for_packages \
+	"$SCRIPT_DIRECTORY/cartken_jetson_debs.txt" \
+	"$TEGRA_DIR/packages/cartken-jetson-debians" \
+	"$RESOLVED_CARTKEN_DEBS_HOST"
+sudo cp "$RESOLVED_CARTKEN_DEBS_HOST" "$TEGRA_DIR/rootfs/root/cartken_jetson_debs.txt"
+rm -f "$RESOLVED_CARTKEN_DEBS_HOST"
 
 prompt_user
 
@@ -597,12 +1018,19 @@ case "$JETPACK_VERSION" in
 	6.0DP|6.1|6.2)
 		OS_CHROOT_FILE="chroot_install_os_jp6.txt"
 		;;
+	7.2)
+		OS_CHROOT_FILE="chroot_install_os_jp7.txt"
+		;;
 	*)
 		echo "Error: No chroot command file mapping for JetPack $JETPACK_VERSION"
 		exit 1
 		;;
 esac
-CARTKEN_CHROOT_FILE="chroot_install_cartken.txt"
+if [[ "$JETPACK_VERSION" == 7.* ]]; then
+	CARTKEN_CHROOT_FILE="chroot_install_cartken_jp7.txt"
+else
+	CARTKEN_CHROOT_FILE="chroot_install_cartken.txt"
+fi
 
 if [[ "$SKIP_CHROOT_BUILD" == false ]]; then
 	echo "Pass 1/2: OS layer chroot for SoC=$SOC using $OS_CHROOT_FILE..."
@@ -617,6 +1045,8 @@ prompt_user
 
 if [[ "$SKIP_PINMUX" == false ]]; then
 	echo "Getting pinmux files"
+	cp "$SCRIPT_DIRECTORY/helpers/get_pinmux.sh" "$TEGRA_DIR/get_pinmux.sh"
+	chmod +x "$TEGRA_DIR/get_pinmux.sh"
 	sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
 else
 	echo "Skipping pinmux override as requested."
@@ -628,21 +1058,32 @@ fi
 
 prompt_user
 
-if [[ "$SKIP_KERNEL_BUILD" == false || ( "$JETPACK_VERSION" != 6.* && "$SKIP_DISPLAY_DRIVER_BUILD" == false ) ]]; then
-		echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
-		if [ ! -d "$TEGRA_DIR/toolchain" ]; then
-			sudo git clone --config core.symlinks=true --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+if [[ "$SKIP_KERNEL_BUILD" == false || ( "$JETPACK_VERSION" != 6.* && "$JETPACK_VERSION" != 7.* && "$SKIP_DISPLAY_DRIVER_BUILD" == false ) ]]; then
+		if [[ "$JETPACK_VERSION" != 7.* ]]; then
+			echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
+			if [ ! -d "$TEGRA_DIR/toolchain" ]; then
+				sudo git clone --config core.symlinks=true --depth=1 https://github.com/alxhoff/jetson-linux-toolchain "$TEGRA_DIR/toolchain"
+			fi
+			echo "Toolchain cloned successfully."
+		else
+			echo "JP7 kernel builds use NVIDIA Crosstool-NG GCC 13.2 from the Docker image or toolchains/jp7/."
 		fi
-		echo "Toolchain cloned successfully."
 	
 		prompt_user
 	fi
 
 	if [[ "$SKIP_KERNEL_BUILD" == false ]]; then
+		if [[ "$JETPACK_VERSION" == 7.* ]]; then
+			ensure_jp7_kernel_src_complete "$TEGRA_DIR/kernel_src" "$KERNEL_FILE"
+		fi
 		echo "Building kernel"
 		case "$JETPACK_VERSION" in
-			5.1.2|5.1.3|5.1.4|5.1.5|6.0DP|6.1|6.2)
-				sudo $TEGRA_DIR/build_kernel.sh --patch $JETPACK_VERSION --localversion -cartken$JETPACK_VERSION
+			5.1.2|5.1.3|5.1.4|5.1.5|6.0DP|6.1|6.2|7.2)
+				KERNEL_BUILD_ARGS=(--patch "$JETPACK_VERSION" --localversion "-cartken$JETPACK_VERSION")
+				if [[ "$JETPACK_VERSION" == 7.* ]]; then
+					KERNEL_BUILD_ARGS+=(--skip-patches)
+				fi
+				sudo "$TEGRA_DIR/build_kernel.sh" "${KERNEL_BUILD_ARGS[@]}"
 				;;
 			*)
 				echo "Error: Unsupported JetPack version for kernel build."
@@ -678,8 +1119,8 @@ if [[ "$SKIP_KERNEL_BUILD" == false || ( "$JETPACK_VERSION" != 6.* && "$SKIP_DIS
 				echo "Running depmod on $KERNEL_VERSION for rootfs: $ROOTFS_DIR"
 				depmod -b "$ROOTFS_DIR" "$KERNEL_VERSION"
 				;;
-			6.0DP|6.1|6.2)
-				echo "Display driver build is part of kernel build for JetPack 6.x, cannot be skipped separately."
+			6.0DP|6.1|6.2|7.2)
+				echo "Display driver build is part of kernel build for JetPack 6.x/7.x, cannot be skipped separately."
 				;;
 			*)
 				echo "Error: Unsupported JetPack version for kernel build."
