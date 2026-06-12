@@ -7,8 +7,73 @@ show_help() {
   echo
   echo "Options:"
   echo "  --l4t-dir PATH          Path to your L4T directory (Linux_for_Tegra)."
-  echo "  --jetpack-version       The JetPack version (e.g., 5.1.2, 6.0DP)."
+  echo "  --jetpack-version       The JetPack version (e.g., 5.1.2, 6.0DP, 7.2)."
   echo "  --help                  Show this help message and exit."
+}
+
+find_kernel_builder_root() {
+  local dir
+  dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/sources/pinmux" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+fetch_pinmux_dir() {
+  local pinmux_src_dir="$1"
+  local git_ref="${2:-master}"
+
+  TMP_DIR="$(mktemp -d)"
+  cleanup() { rm -rf "$TMP_DIR"; }
+  trap cleanup EXIT
+
+  git init "$TMP_DIR"
+  cd "$TMP_DIR"
+  git remote add origin https://github.com/alxhoff/kernel_builder.git
+  git config core.sparseCheckout true
+  echo "$pinmux_src_dir/" >> .git/info/sparse-checkout
+  git pull origin "$git_ref"
+  echo "$TMP_DIR/$pinmux_src_dir"
+}
+
+apply_jp7_cartken_pinmux_overlay() {
+  local l4t_dir="$1"
+  local overlay_src="$2"
+  local pinmux_dtsi="$overlay_src/bootloader/generic/BCT/Orin-jetson_agx_orin-pinmux.dtsi"
+  local gpio_dtsi="$overlay_src/bootloader/Orin-jetson_agx_orin-gpio-default.dtsi"
+  local generic_bct="$l4t_dir/bootloader/generic/BCT"
+  local p3701_conf="$l4t_dir/p3701.conf.common"
+
+  [[ -f "$pinmux_dtsi" ]] || {
+    echo "Error: missing cartken pinmux overlay $pinmux_dtsi" >&2
+    exit 1
+  }
+
+  mkdir -p "$generic_bct"
+  cp "$pinmux_dtsi" "$generic_bct/"
+
+  if [[ -f "$gpio_dtsi" ]]; then
+    cp "$gpio_dtsi" "$l4t_dir/bootloader/"
+  fi
+
+  # JP7/R39: keep NVIDIA board confs intact; only point flash at cartken pinmux.
+  if [[ -f "$p3701_conf" ]]; then
+    sed -i 's/^PINMUX_CONFIG=.*/PINMUX_CONFIG="Orin-jetson_agx_orin-pinmux.dtsi";/' "$p3701_conf"
+  fi
+
+  echo "Applied JP7 cartken pinmux overlay to $l4t_dir"
+}
+
+apply_legacy_pinmux_tree() {
+  local l4t_dir="$1"
+  local overlay_src="$2"
+  echo "Merging $(basename "$(dirname "$overlay_src")")/$(basename "$overlay_src") into $l4t_dir"
+  cp -rT "$overlay_src" "$l4t_dir"
 }
 
 # --- Parse arguments ---
@@ -48,44 +113,31 @@ if [[ -z "$JETPACK_VERSION" ]]; then
   exit 1
 fi
 
-# --- Determine pinmux source directory ---
 major_version="${JETPACK_VERSION%%.*}"
-if [[ "$major_version" -eq 5 ]]; then
-  PINMUX_SRC_DIR="sources/pinmux/5.X"
-elif [[ "$major_version" -eq 6 ]]; then
-  PINMUX_SRC_DIR="sources/pinmux/6.X"
-elif [[ "$major_version" -eq 7 ]]; then
-  PINMUX_SRC_DIR="sources/pinmux/7.X"
-else
-  echo "Error: Unsupported JetPack major version: $major_version"
-  exit 1
+case "$major_version" in
+  5) PINMUX_SRC_DIR="sources/pinmux/5.X" ;;
+  6) PINMUX_SRC_DIR="sources/pinmux/6.X" ;;
+  7) PINMUX_SRC_DIR="sources/pinmux/7.X" ;;
+  *)
+    echo "Error: Unsupported JetPack major version: $major_version"
+    exit 1
+    ;;
+esac
+
+PINMUX_SRC=""
+if repo_root="$(find_kernel_builder_root)"; then
+  PINMUX_SRC="$repo_root/$PINMUX_SRC_DIR"
 fi
 
-# --- Setup temporary directory ---
-TMP_DIR="$(mktemp -d)"
-cleanup() { rm -rf "$TMP_DIR"; }
-trap cleanup EXIT
+if [[ ! -d "$PINMUX_SRC" ]]; then
+  git_ref="master"
+  [[ "$major_version" -eq 7 ]] && git_ref="jetpack7"
+  echo "Local $PINMUX_SRC_DIR not found; fetching from origin/$git_ref"
+  PINMUX_SRC="$(fetch_pinmux_dir "$PINMUX_SRC_DIR" "$git_ref")"
+fi
 
-# --- Clone only the needed folder using sparse checkout ---
-git init "$TMP_DIR"
-cd "$TMP_DIR"
-git remote add origin https://github.com/alxhoff/kernel_builder.git
-git config core.sparseCheckout true
-echo "$PINMUX_SRC_DIR/" >> .git/info/sparse-checkout
-git pull origin master
-
-# --- Copy and merge pinmux contents into $L4T_DIR ---
-echo "Merging $PINMUX_SRC_DIR directory into $L4T_DIR"
-cp -rT "$TMP_DIR/$PINMUX_SRC_DIR" "$L4T_DIR"
-
-# JP7 flash.sh uses TARGET_DIR=bootloader/generic; ensure cartken pinmux is there.
 if [[ "$major_version" -eq 7 ]]; then
-  generic_bct="$L4T_DIR/bootloader/generic/BCT"
-  t186ref_pinmux="$L4T_DIR/bootloader/t186ref/BCT/Orin-jetson_agx_orin-pinmux.dtsi"
-  generic_pinmux="$generic_bct/Orin-jetson_agx_orin-pinmux.dtsi"
-  if [[ -f "$t186ref_pinmux" && ! -f "$generic_pinmux" ]]; then
-    mkdir -p "$generic_bct"
-    cp "$t186ref_pinmux" "$generic_pinmux"
-  fi
+  apply_jp7_cartken_pinmux_overlay "$L4T_DIR" "$PINMUX_SRC"
+else
+  apply_legacy_pinmux_tree "$L4T_DIR" "$PINMUX_SRC"
 fi
-

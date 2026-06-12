@@ -98,6 +98,43 @@ case "$L4T_VERSION" in
 esac
 BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
 
+validate_jp7_flash_prereqs() {
+    local conf="$L4T_DIR/p3701.conf.common"
+    [[ -f "$conf" ]] || { echo "Error: missing $conf"; exit 1; }
+
+    # shellcheck disable=SC1090
+    source "$conf"
+    if [[ "${target_board}" != "generic" ]]; then
+        echo "Error: p3701.conf.common has target_board=\"${target_board}\" but JP7 requires \"generic\"."
+        echo "  Fix: sed -i 's/^target_board=\"t186ref\";/target_board=\"generic\";/' \"$conf\""
+        exit 1
+    fi
+    if [[ -z "${EMC_BCT:-}" ]]; then
+        echo "Error: EMC_BCT is unset in $conf (JP7 flash.sh does not read EMMC_BCT)."
+        echo "  Fix: sed -i 's/EMMC_BCT=/EMC_BCT=/g' \"$conf\""
+        exit 1
+    fi
+    local bct_dir="$L4T_DIR/bootloader/${target_board}/BCT"
+    if [[ ! -f "$bct_dir/${EMC_BCT}" ]]; then
+        echo "Error: missing SDRAM BCT $bct_dir/${EMC_BCT}"
+        exit 1
+    fi
+    local bpmp_dtb="$L4T_DIR/bootloader/${target_board}/tegra234-bpmp-3701-0000-3737-0000.dtb"
+    if [[ ! -f "$bpmp_dtb" ]]; then
+        echo "Error: missing BPMP DTB $bpmp_dtb"
+        echo "  JP7 stores BPMP DTBs only under bootloader/generic/, not bootloader/t186ref/."
+        exit 1
+    fi
+    if [[ "$(python3 -c 'import sys; print(sys.version_info[:2] >= (3, 13))' 2>/dev/null)" == "True" ]]; then
+        echo "Warning: Python $(python3 --version 2>&1) may expose tegraflash bugs when BPMP DTB is missing."
+        echo "  Use Ubuntu 22.04/24.04 host or python3.12 if flash fails inside tegraflash.py."
+    fi
+}
+
+if [[ "$L4T_VERSION" == 7* && "$DRY_RUN" == false ]]; then
+    validate_jp7_flash_prereqs
+fi
+
 if [[ "$MODE" == "copy-kernel" ]]; then
     FLASH_KERNEL_DIR=$(to_absolute_path "$FLASH_KERNEL_DIR")
 
