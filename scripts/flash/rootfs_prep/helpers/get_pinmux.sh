@@ -135,11 +135,14 @@ fi
 if [[ ! -d "$PINMUX_SRC" ]]; then
   git_ref="master"
   [[ "$major_version" -eq 7 ]] && git_ref="jetpack7"
-  echo "Local $PINMUX_SRC_DIR not found; fetching from origin/$git_ref"
+  echo "get_pinmux.sh: local $PINMUX_SRC_DIR not found; fetching origin/$git_ref"
   PINMUX_SRC="$(fetch_pinmux_dir "$PINMUX_SRC_DIR" "$git_ref")"
+else
+  echo "get_pinmux.sh: using local pinmux at $PINMUX_SRC"
 fi
 
 if [[ "$major_version" -eq 7 ]]; then
+  echo "get_pinmux.sh: JP7 overlay mode (cartken pinmux only; NVIDIA board confs preserved)"
   apply_jp7_cartken_pinmux_overlay "$L4T_DIR" "$PINMUX_SRC"
 else
   apply_legacy_pinmux_tree "$L4T_DIR" "$PINMUX_SRC"

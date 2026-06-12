@@ -119,16 +119,41 @@ validate_jp7_flash_prereqs() {
         echo "Error: missing SDRAM BCT $bct_dir/${EMC_BCT}"
         exit 1
     fi
-    local bpmp_dtb="$L4T_DIR/bootloader/${target_board}/tegra234-bpmp-3701-0000-3737-0000.dtb"
+    local bpmp_dtb
+    bpmp_dtb="$(resolve_jp7_bpmp_dtb "$L4T_DIR")"
     if [[ ! -f "$bpmp_dtb" ]]; then
         echo "Error: missing BPMP DTB $bpmp_dtb"
         echo "  JP7 stores BPMP DTBs only under bootloader/generic/, not bootloader/t186ref/."
         exit 1
     fi
     if [[ "$(python3 -c 'import sys; print(sys.version_info[:2] >= (3, 13))' 2>/dev/null)" == "True" ]]; then
-        echo "Warning: Python $(python3 --version 2>&1) may expose tegraflash bugs when BPMP DTB is missing."
+        echo "Warning: Python $(python3 --version 2>&1) exposes tegraflash bugs when bpmp_fw_dtb is missing from flashcmd.txt."
         echo "  Use Ubuntu 22.04/24.04 host or python3.12 if flash fails inside tegraflash.py."
     fi
+}
+
+resolve_jp7_bpmp_dtb() {
+    local l4t_dir="$1"
+    local sku="0000"
+    if [[ -f "$l4t_dir/bootloader/ecid.bin" ]]; then
+        # shellcheck disable=SC1090
+        source "$l4t_dir/bootloader/ecid.bin" 2>/dev/null || true
+        sku="${BOARDSKU:-0000}"
+    fi
+    case "$sku" in
+        0004) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0004-3737-0000.dtb" ;;
+        0005) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0005-3737-0000.dtb" ;;
+        *)    echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0000-3737-0000.dtb" ;;
+    esac
+}
+
+jp7_flash_extra_args() {
+    if [[ "$L4T_VERSION" != 7* ]]; then
+        return
+    fi
+    local bpmp_dtb
+    bpmp_dtb="$(to_absolute_path "$(resolve_jp7_bpmp_dtb "$L4T_DIR")")"
+    echo "-g $bpmp_dtb"
 }
 
 if [[ "$L4T_VERSION" == 7* && "$DRY_RUN" == false ]]; then
@@ -179,7 +204,7 @@ if [[ "$MODE" == "copy-kernel" ]]; then
     echo "Copy kernel modules: cp -r $MODULES_DIR -> $L4T_DIR/rootfs/lib/modules"
     [[ "$DRY_RUN" == false ]] && cp -r "$MODULES_DIR" "$L4T_DIR/rootfs/lib/modules"
 
-    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit mmcblk0p1"
+    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) jetson-agx-orin-devkit mmcblk0p1"
 else
     KERNEL_IMAGE="$L4T_DIR/kernel/Image"
     if [ -z "$DTB_FILE" ]; then
@@ -192,7 +217,7 @@ else
     KERNEL_IMAGE=$(to_absolute_path "$KERNEL_IMAGE")
     DTB_FILE=$(to_absolute_path "$DTB_FILE")
 
-    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
+    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) -K $KERNEL_IMAGE -d $DTB_FILE jetson-agx-orin-devkit mmcblk0p1"
 fi
 
 echo "Disabling USB autosuspend"

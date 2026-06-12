@@ -1045,6 +1045,8 @@ prompt_user
 
 if [[ "$SKIP_PINMUX" == false ]]; then
 	echo "Getting pinmux files"
+	cp "$SCRIPT_DIRECTORY/helpers/get_pinmux.sh" "$TEGRA_DIR/get_pinmux.sh"
+	chmod +x "$TEGRA_DIR/get_pinmux.sh"
 	sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
 else
 	echo "Skipping pinmux override as requested."

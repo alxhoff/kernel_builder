@@ -22,25 +22,21 @@ to_absolute_path() {
   fi
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --mode) MODE="$2"; shift 2 ;;
-    --l4t-dir) L4T_DIR="${2%/}"; shift 2 ;;
-    --dtb-file) DTB_FILE="$2"; shift 2 ;;
-    --flash-kernel-dir) FLASH_KERNEL_DIR="$2"; shift 2 ;;
-    --kernel) MODE="copy-kernel"; shift ;;
-    --dry-run) DRY_RUN=true; shift ;;
-    --help) exit 0 ;;
-    *) echo "Unknown argument: $1"; exit 1 ;;
+resolve_jp7_bpmp_dtb() {
+  local l4t_dir="$1"
+  local sku="0000"
+  if [[ -f "$l4t_dir/bootloader/ecid.bin" ]]; then
+    # shellcheck disable=SC1090
+    source "$l4t_dir/bootloader/ecid.bin" 2>/dev/null || true
+    sku="${BOARDSKU:-0000}"
+  fi
+  case "$sku" in
+    0004) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0004-3737-0000.dtb" ;;
+    0005) echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0005-3737-0000.dtb" ;;
+    *)    echo "$l4t_dir/bootloader/generic/tegra234-bpmp-3701-0000-3737-0000.dtb" ;;
   esac
-done
+}
 
-L4T_DIR=$(to_absolute_path "$L4T_DIR")
-BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
-BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
-
-# JP7/R39: flash.sh looks under bootloader/${target_board}/ for BPMP/BCT files.
-# Partial pinmux fixes (EMC_BCT only) leave target_board=t186ref and BPMP DTB missing.
 validate_jp7_flash_prereqs() {
   local conf="$L4T_DIR/p3701.conf.common"
   [[ -f "$conf" ]] || { echo "Error: missing $conf"; exit 1; }
@@ -62,17 +58,31 @@ validate_jp7_flash_prereqs() {
     echo "Error: missing SDRAM BCT $bct_dir/${EMC_BCT}"
     exit 1
   fi
-  local bpmp_dtb="$L4T_DIR/bootloader/${target_board}/tegra234-bpmp-3701-0000-3737-0000.dtb"
+  local bpmp_dtb
+  bpmp_dtb="$(resolve_jp7_bpmp_dtb "$L4T_DIR")"
   if [[ ! -f "$bpmp_dtb" ]]; then
     echo "Error: missing BPMP DTB $bpmp_dtb"
-    echo "  JP7 stores BPMP DTBs only under bootloader/generic/, not bootloader/t186ref/."
     exit 1
   fi
-  if [[ "$(python3 -c 'import sys; print(sys.version_info[:2] >= (3, 13))' 2>/dev/null)" == "True" ]]; then
-    echo "Warning: Python $(python3 --version 2>&1) may expose tegraflash bugs when BPMP DTB is missing."
-    echo "  Use Ubuntu 22.04/24.04 host or python3.12 if flash fails inside tegraflash.py."
-  fi
 }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode) MODE="$2"; shift 2 ;;
+    --l4t-dir) L4T_DIR="${2%/}"; shift 2 ;;
+    --dtb-file) DTB_FILE="$2"; shift 2 ;;
+    --flash-kernel-dir) FLASH_KERNEL_DIR="$2"; shift 2 ;;
+    --kernel) MODE="copy-kernel"; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    --help) exit 0 ;;
+    *) echo "Unknown argument: $1"; exit 1 ;;
+  esac
+done
+
+L4T_DIR=$(to_absolute_path "$L4T_DIR")
+BOOTLOADER_PARTITION_XML="$L4T_DIR/bootloader/generic/cfg/flash_t234_qspi_sdmmc.xml"
+BOOTLOADER_PARTITION_XML=$(to_absolute_path "$BOOTLOADER_PARTITION_XML")
+JP7_BPMP_DTB="$(to_absolute_path "$(resolve_jp7_bpmp_dtb "$L4T_DIR")")"
 
 [[ "$DRY_RUN" == false ]] && validate_jp7_flash_prereqs
 
@@ -96,13 +106,13 @@ if [[ "$MODE" == "copy-kernel" ]]; then
     cp -r "$MODULES_DIR" "$L4T_DIR/rootfs/lib/modules"
   fi
 
-  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML jetson-agx-orin-devkit mmcblk0p1"
+  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -g $JP7_BPMP_DTB jetson-agx-orin-devkit mmcblk0p1"
 else
   KERNEL_IMAGE="$L4T_DIR/kernel/Image"
   if [[ -z "$DTB_FILE" ]]; then
     DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
   fi
-  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -K $(to_absolute_path "$KERNEL_IMAGE") -d $(to_absolute_path "$DTB_FILE") jetson-agx-orin-devkit mmcblk0p1"
+  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -g $JP7_BPMP_DTB -K $(to_absolute_path "$KERNEL_IMAGE") -d $(to_absolute_path "$DTB_FILE") jetson-agx-orin-devkit mmcblk0p1"
 fi
 
 [[ "$DRY_RUN" == false ]] && echo -1 | sudo tee /sys/module/usbcore/parameters/autosuspend
