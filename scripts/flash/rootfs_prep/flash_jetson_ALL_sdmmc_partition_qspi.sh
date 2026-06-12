@@ -150,22 +150,35 @@ resolve_jp7_bpmp_dtb() {
 ensure_jp7_uefi_cpubl() {
     local bl="$L4T_DIR/bootloader"
     local tbc="$bl/uefi_jetson.bin"
-    [[ -f "$tbc" ]] && return 0
-    local candidate
+    local candidate src=""
+
+    # flash.sh mkfilesoft() resolves TBCFILE with readlink -f and uses basename as
+    # --cpubl. A symlink uefi_jetson.bin -> uefi_t23x_general.bin yields
+    # --cpubl uefi_t23x_general.bin, so tegraflash creates uefi_t23x_general_with_dtb.bin
+    # while flash.xml still references uefi_jetson_with_dtb.bin (UEFIBL).
+    if [[ -f "$tbc" && ! -L "$tbc" ]]; then
+        return 0
+    fi
+
     for candidate in \
-        "$bl/uefi_jetson_with_dtb.bin" \
-        "$bl/uefi_t23x_general.bin" \
         "$bl/uefi_bins/uefi_t23x_general.bin" \
+        "$bl/uefi_t23x_general.bin" \
         "$bl/uefi_bins/uefi_t23x_minimal.bin"; do
         if [[ -f "$candidate" ]]; then
-            ln -sf "$(realpath --relative-to="$bl" "$candidate")" "$tbc"
-            echo "JP7 flash: linked $tbc -> $(realpath --relative-to="$bl" "$candidate") (--cpubl for tegraflash.py)"
-            return 0
+            src="$candidate"
+            break
         fi
     done
-    echo "Error: missing $tbc (no UEFI payload under $bl or $bl/uefi_bins/)."
-    echo "  tegraflash.py misparses --bins when --cpubl is empty, causing bpmp_fw_dtb errors."
-    exit 1
+
+    if [[ -z "$src" ]]; then
+        echo "Error: missing $tbc (no UEFI payload under $bl or $bl/uefi_bins/)."
+        echo "  tegraflash.py misparses --bins when --cpubl is empty, causing bpmp_fw_dtb errors."
+        exit 1
+    fi
+
+    rm -f "$tbc"
+    cp -f "$src" "$tbc"
+    echo "JP7 flash: installed $tbc from $(basename "$src") (real file; --cpubl must be uefi_jetson.bin)"
 }
 
 jp7_flash_extra_args() {
