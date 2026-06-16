@@ -11,6 +11,14 @@ show_help() {
   echo "  --help                  Show this help message and exit."
 }
 
+FETCH_TMP_DIR=""
+
+cleanup_fetch_tmp() {
+  if [[ -n "${FETCH_TMP_DIR}" && -d "${FETCH_TMP_DIR}" ]]; then
+    rm -rf "${FETCH_TMP_DIR}"
+  fi
+}
+
 find_kernel_builder_root() {
   local dir
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,30 +32,90 @@ find_kernel_builder_root() {
   return 1
 }
 
+resolve_local_pinmux_src() {
+  local pinmux_leaf="$1"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  if repo_root="$(find_kernel_builder_root)"; then
+    if [[ -d "$repo_root/sources/pinmux/$pinmux_leaf" ]]; then
+      echo "$repo_root/sources/pinmux/$pinmux_leaf"
+      return 0
+    fi
+  fi
+
+  if [[ -n "${L4T_DIR:-}" && -d "${L4T_DIR}/.cartken_pinmux" ]]; then
+    echo "${L4T_DIR}/.cartken_pinmux"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$script_dir/pinmux/$pinmux_leaf" \
+    "$script_dir/../helpers/pinmux/$pinmux_leaf" \
+    "/workspace/helpers/pinmux/$pinmux_leaf"; do
+    if [[ -d "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 fetch_pinmux_dir() {
   local pinmux_src_dir="$1"
   local git_ref="${2:-master}"
 
-  TMP_DIR="$(mktemp -d)"
-  cleanup() { rm -rf "$TMP_DIR"; }
-  trap cleanup EXIT
+  cleanup_fetch_tmp
+  FETCH_TMP_DIR="$(mktemp -d)"
 
-  git init "$TMP_DIR"
-  cd "$TMP_DIR"
-  git remote add origin https://github.com/alxhoff/kernel_builder.git
-  git config core.sparseCheckout true
-  echo "$pinmux_src_dir/" >> .git/info/sparse-checkout
-  git pull origin "$git_ref"
-  echo "$TMP_DIR/$pinmux_src_dir"
+  git -C "$FETCH_TMP_DIR" init -q
+  git -C "$FETCH_TMP_DIR" remote add origin https://github.com/alxhoff/kernel_builder.git
+  git -C "$FETCH_TMP_DIR" config core.sparseCheckout true
+  echo "$pinmux_src_dir/" >> "$FETCH_TMP_DIR/.git/info/sparse-checkout"
+  git -C "$FETCH_TMP_DIR" pull -q origin "$git_ref"
+
+  echo "$FETCH_TMP_DIR/$pinmux_src_dir"
+}
+
+jp7_pinmux_overlay_dtsi() {
+  echo "$1/bootloader/generic/BCT/Orin-jetson_agx_orin-pinmux.dtsi"
+}
+
+fetch_remote_pinmux_src() {
+  local pinmux_src_dir="$1"
+  local major_version="$2"
+  local git_ref fetched pinmux_dtsi
+
+  if [[ "$major_version" -eq 7 ]]; then
+    for git_ref in jetpack7 master; do
+      echo "get_pinmux.sh: fetching $pinmux_src_dir from origin/$git_ref" >&2
+      fetched="$(fetch_pinmux_dir "$pinmux_src_dir" "$git_ref")"
+      pinmux_dtsi="$(jp7_pinmux_overlay_dtsi "$fetched")"
+      if [[ -f "$pinmux_dtsi" ]]; then
+        echo "$fetched"
+        return 0
+      fi
+      echo "get_pinmux.sh: origin/$git_ref missing $pinmux_dtsi" >&2
+      cleanup_fetch_tmp
+    done
+    return 1
+  fi
+
+  echo "get_pinmux.sh: fetching $pinmux_src_dir from origin/master" >&2
+  fetch_pinmux_dir "$pinmux_src_dir" master
 }
 
 apply_jp7_cartken_pinmux_overlay() {
   local l4t_dir="$1"
   local overlay_src="$2"
-  local pinmux_dtsi="$overlay_src/bootloader/generic/BCT/Orin-jetson_agx_orin-pinmux.dtsi"
-  local gpio_dtsi="$overlay_src/bootloader/Orin-jetson_agx_orin-gpio-default.dtsi"
-  local generic_bct="$l4t_dir/bootloader/generic/BCT"
-  local p3701_conf="$l4t_dir/p3701.conf.common"
+  local pinmux_dtsi gpio_dtsi generic_bct p3701_conf
+
+  pinmux_dtsi="$(jp7_pinmux_overlay_dtsi "$overlay_src")"
+  gpio_dtsi="$overlay_src/bootloader/Orin-jetson_agx_orin-gpio-default.dtsi"
+  generic_bct="$l4t_dir/bootloader/generic/BCT"
+  p3701_conf="$l4t_dir/p3701.conf.common"
 
   [[ -f "$pinmux_dtsi" ]] || {
     echo "Error: missing cartken pinmux overlay $pinmux_dtsi" >&2
@@ -126,19 +194,17 @@ case "$major_version" in
     exit 1
     ;;
 esac
+PINMUX_LEAF="${PINMUX_SRC_DIR##*/}"
 
 PINMUX_SRC=""
-if repo_root="$(find_kernel_builder_root)"; then
-  PINMUX_SRC="$repo_root/$PINMUX_SRC_DIR"
-fi
-
-if [[ ! -d "$PINMUX_SRC" ]]; then
-  git_ref="master"
-  [[ "$major_version" -eq 7 ]] && git_ref="jetpack7"
-  echo "get_pinmux.sh: local $PINMUX_SRC_DIR not found; fetching origin/$git_ref"
-  PINMUX_SRC="$(fetch_pinmux_dir "$PINMUX_SRC_DIR" "$git_ref")"
-else
+if PINMUX_SRC="$(resolve_local_pinmux_src "$PINMUX_LEAF")"; then
   echo "get_pinmux.sh: using local pinmux at $PINMUX_SRC"
+else
+  echo "get_pinmux.sh: local $PINMUX_SRC_DIR not found" >&2
+  if ! PINMUX_SRC="$(fetch_remote_pinmux_src "$PINMUX_SRC_DIR" "$major_version")"; then
+    echo "Error: could not fetch $PINMUX_SRC_DIR from origin (tried jetpack7 and master)" >&2
+    exit 1
+  fi
 fi
 
 if [[ "$major_version" -eq 7 ]]; then
@@ -147,3 +213,5 @@ if [[ "$major_version" -eq 7 ]]; then
 else
   apply_legacy_pinmux_tree "$L4T_DIR" "$PINMUX_SRC"
 fi
+
+cleanup_fetch_tmp

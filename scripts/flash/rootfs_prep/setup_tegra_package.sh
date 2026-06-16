@@ -1045,6 +1045,17 @@ prompt_user
 
 if [[ "$SKIP_PINMUX" == false ]]; then
 	echo "Getting pinmux files"
+	PINMUX_MAJOR="${JETPACK_VERSION%%.*}.X"
+	for PINMUX_BUNDLE_SRC in \
+		"$SCRIPT_DIRECTORY/helpers/pinmux/$PINMUX_MAJOR" \
+		"$SCRIPT_DIRECTORY/../../../sources/pinmux/$PINMUX_MAJOR"; do
+		if [[ -d "$PINMUX_BUNDLE_SRC" ]]; then
+			rm -rf "$TEGRA_DIR/.cartken_pinmux"
+			cp -r "$PINMUX_BUNDLE_SRC" "$TEGRA_DIR/.cartken_pinmux"
+			echo "Staged pinmux bundle at $TEGRA_DIR/.cartken_pinmux from $PINMUX_BUNDLE_SRC"
+			break
+		fi
+	done
 	cp "$SCRIPT_DIRECTORY/helpers/get_pinmux.sh" "$TEGRA_DIR/get_pinmux.sh"
 	chmod +x "$TEGRA_DIR/get_pinmux.sh"
 	sudo $TEGRA_DIR/get_pinmux.sh --l4t-dir $TEGRA_DIR --jetpack-version $JETPACK_VERSION
