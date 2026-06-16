@@ -4,8 +4,29 @@ import argparse
 import os
 import subprocess
 import sys
-from utils.docker_utils import build_docker_image, inspect_docker_image, cleanup_docker
+from utils.docker_utils import (
+    build_docker_image,
+    cleanup_docker,
+    ensure_docker_image,
+    inspect_docker_image,
+)
 from utils.clone_utils import clone_kernel, clone_toolchain, clone_overlays, clone_device_tree
+from utils.kernel_tree import (
+    cross_compile_prefix,
+    ensure_jp7_toolchain_storage,
+    is_nvbuild_kernel,
+    jp7_toolchain_defaults,
+    locate_nvbuild_dtb,
+    nvbuild_image_path,
+    nvbuild_incremental_build_commands,
+    nvbuild_incremental_ready,
+    nvbuild_kernel_out_dir,
+    nvbuild_kernel_src_dir,
+    nvbuild_kernel_src_subdir,
+    nvbuild_localversion_export,
+    normalize_localversion_suffix,
+    kernel_tree_root,
+)
 
 
 def _host_cross_compile_suffix(toolchain_name: str | None, toolchain_version: str | None) -> str:
@@ -21,9 +42,11 @@ def _host_cross_compile_suffix(toolchain_name: str | None, toolchain_version: st
 
 
 def locate_dtb_file(kernel_name, dtb_name):
-    kernel_source_dir = os.path.join("storage", "kernels", kernel_name, "kernel", "kernel")
+    kernel_subdir = nvbuild_kernel_src_subdir(kernel_name) or "kernel"
+    kernel_source_dir = os.path.join("storage", "kernels", kernel_name, "kernel", kernel_subdir)
+    legacy_kernel_source_dir = os.path.join("storage", "kernels", kernel_name, "kernel", "kernel")
     top_level_dir = os.path.join("storage", "kernels", kernel_name)
-    search_dirs = [kernel_source_dir, top_level_dir]
+    search_dirs = [kernel_source_dir, legacy_kernel_source_dir, top_level_dir]
 
     for search_dir in search_dirs:
         # Search for the specified DTB file within the directory
@@ -37,8 +60,260 @@ def locate_dtb_file(kernel_name, dtb_name):
         except subprocess.CalledProcessError:
             print(f"Info: DTB file {dtb_name} not found in {search_dir}.")
 
+    nvbuild_dtb = locate_nvbuild_dtb(kernel_name, dtb_name)
+    if nvbuild_dtb:
+        print(f"DTB file found at: {nvbuild_dtb}")
+        return nvbuild_dtb
+
     print(f"Warning: DTB file {dtb_name} not found in any of the search paths.")
     return None
+
+
+def _repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _nvbuild_threads(threads) -> str:
+    return str(threads) if threads else "$(nproc)"
+
+
+def _copy_nvbuild_artifacts(kernel_name, arch, localversion, dtb_name, dry_run=False):
+    root = kernel_tree_root(kernel_name)
+    modules_boot = os.path.join(root, "modules", "boot")
+    image_src = nvbuild_image_path(kernel_name)
+    image_filename = f"Image.{localversion}" if localversion else "Image"
+    commands = [
+        f"mkdir -p {modules_boot}",
+        f"cp {image_src} {os.path.join(modules_boot, image_filename)}",
+    ]
+    if dtb_name:
+        dtb_path = locate_dtb_file(kernel_name, dtb_name)
+        if dtb_path:
+            suffix = normalize_localversion_suffix(localversion)
+            new_dtb_name = f"{os.path.splitext(dtb_name)[0]}{suffix}.dtb"
+            commands.append(f"cp {dtb_path} {os.path.join(modules_boot, new_dtb_name)}")
+        else:
+            print(f"Warning: DTB file {dtb_name} not found after nvbuild.")
+    combined = " && ".join(commands)
+    if dry_run:
+        print(f"[Dry-run] Would run: {combined}")
+        return 0
+    print(f"Staging build artifacts: {combined}")
+    return subprocess.run(combined, shell=True).returncode
+
+
+def _nvbuild_append_build_steps(
+    parts: list[str],
+    *,
+    kernel_name: str,
+    arch: str,
+    kernel_src: str,
+    config: str | None,
+    build_target: str | None,
+    build_modules: bool,
+    threads: int | None,
+    incremental: bool,
+    clean: bool,
+) -> None:
+    """Extend *parts* with nvbuild full or incremental build commands."""
+    if build_target == "menuconfig":
+        return
+    if build_target == "mrproper":
+        return
+
+    oot_only = build_target in ("modules",) or build_modules
+    use_incremental = incremental and not clean and nvbuild_incremental_ready(kernel_name)
+
+    if use_incremental:
+        print("Incremental build: reusing kernel_out/.config and object files.")
+        parts.extend(nvbuild_incremental_build_commands(arch, threads, oot_only=oot_only))
+        return
+
+    if incremental and not clean:
+        print(
+            "Incremental: no kernel_out/.config found — running full nvbuild "
+            "(use --no-incremental to force full rebuild when kernel_out exists)."
+        )
+
+    if config:
+        parts.append(f"make -C {kernel_src} ARCH={arch} {config}")
+
+    if oot_only:
+        headers = os.path.join(
+            nvbuild_kernel_out_dir(kernel_name),
+            "kernel",
+            nvbuild_kernel_src_subdir(kernel_name),
+        )
+        parts.append(f'export KERNEL_HEADERS="{headers}"')
+        parts.append("./nvbuild.sh -m")
+    else:
+        parts.append("./nvbuild.sh")
+
+
+def compile_nvbuild_kernel_host(
+    kernel_name,
+    arch,
+    toolchain_name=None,
+    toolchain_version=None,
+    config=None,
+    build_target=None,
+    threads=None,
+    clean=True,
+    incremental=True,
+    localversion="",
+    dtb_name=None,
+    build_modules=False,
+    dry_run=False,
+):
+    if not is_nvbuild_kernel(kernel_name):
+        raise ValueError(f"{kernel_name} is not an nvbuild kernel tree")
+
+    repo_root = _repo_root()
+    ensure_jp7_toolchain_storage(repo_root, dry_run=dry_run)
+
+    if not toolchain_name or not toolchain_version:
+        toolchain_name, toolchain_version = jp7_toolchain_defaults()
+
+    root = os.path.abspath(kernel_tree_root(kernel_name))
+    kernel_src = nvbuild_kernel_src_dir(kernel_name)
+    if not kernel_src:
+        print(f"Error: could not find kernel source under {root}/kernel/")
+        return 1
+
+    cross = os.path.abspath(
+        cross_compile_prefix(toolchain_name, toolchain_version, docker=False)
+    )
+    if not os.path.isfile(f"{cross}gcc") and not dry_run:
+        print(f"Error: JP7 cross compiler not found at {cross}gcc")
+        return 1
+
+    parts = [f"cd {root}"]
+    parts.append(f'export CROSS_COMPILE="{cross}"')
+    lv_export = nvbuild_localversion_export(localversion)
+    if lv_export:
+        parts.append(lv_export)
+
+    if clean and not build_target:
+        parts.append(f"rm -rf {nvbuild_kernel_out_dir(kernel_name)}")
+
+    if build_target == "menuconfig":
+        parts.append(
+            f"make -C {kernel_src} ARCH={arch} menuconfig"
+        )
+        combined = " && ".join(parts)
+        if dry_run:
+            print(f"[Dry-run] Would run: {combined}")
+            return 0
+        return subprocess.run(combined, shell=True).returncode
+
+    if build_target == "mrproper":
+        parts.append(f"rm -rf {nvbuild_kernel_out_dir(kernel_name)}")
+        combined = " && ".join(parts)
+        if dry_run:
+            print(f"[Dry-run] Would run: {combined}")
+            return 0
+        return subprocess.run(combined, shell=True).returncode
+
+    _nvbuild_append_build_steps(
+        parts,
+        kernel_name=kernel_name,
+        arch=arch,
+        kernel_src=kernel_src,
+        config=config,
+        build_target=build_target,
+        build_modules=build_modules,
+        threads=threads,
+        incremental=incremental,
+        clean=clean,
+    )
+
+    combined = " && ".join(parts)
+    if dry_run:
+        print(f"[Dry-run] Would run: {combined}")
+        return _copy_nvbuild_artifacts(kernel_name, arch, localversion, dtb_name, dry_run=True)
+
+    print(f"Running nvbuild command: {combined}")
+    rc = subprocess.run(combined, shell=True).returncode
+    if rc != 0:
+        return rc
+    return _copy_nvbuild_artifacts(kernel_name, arch, localversion, dtb_name)
+
+
+def compile_nvbuild_kernel_docker(
+    kernel_name,
+    arch,
+    toolchain_name=None,
+    toolchain_version=None,
+    config=None,
+    build_target=None,
+    threads=None,
+    clean=True,
+    incremental=True,
+    localversion="",
+    dtb_name=None,
+    build_modules=False,
+    dry_run=False,
+):
+    if not is_nvbuild_kernel(kernel_name):
+        raise ValueError(f"{kernel_name} is not an nvbuild kernel tree")
+
+    kernels_dir_abs = os.path.abspath(os.path.join("storage", "kernels"))
+    toolchains_dir_abs = os.path.abspath(os.path.join("storage", "toolchains"))
+    volume_args = [
+        "-v", f"{kernels_dir_abs}:/builder/kernels",
+        "-v", f"{toolchains_dir_abs}:/builder/toolchains",
+    ]
+
+    docker_tty = ["-it"] if (sys.stdin.isatty() and sys.stdout.isatty()) else []
+    docker_command_base = [
+        "docker", "run", "--rm", *docker_tty, "--init", "-u", "0:0",
+        "--cpus=" + str(os.cpu_count()),
+    ] + volume_args + [
+        "-w", f"/builder/kernels/{kernel_name}",
+        "kernel_builder_jp7", "/bin/bash", "-c",
+    ]
+
+    if not toolchain_name or not toolchain_version:
+        toolchain_name, toolchain_version = jp7_toolchain_defaults()
+
+    cross = cross_compile_prefix(toolchain_name, toolchain_version, docker=True)
+    kernel_src_rel = f"kernel/{nvbuild_kernel_src_subdir(kernel_name)}"
+    parts = [f'export CROSS_COMPILE="{cross}"']
+    lv_export = nvbuild_localversion_export(localversion)
+    if lv_export:
+        parts.append(lv_export)
+
+    if clean and not build_target:
+        parts.append("rm -rf kernel_out")
+
+    if build_target == "menuconfig":
+        parts.append(f"make -C {kernel_src_rel} ARCH={arch} menuconfig")
+    elif build_target == "mrproper":
+        parts.append("rm -rf kernel_out")
+    else:
+        _nvbuild_append_build_steps(
+            parts,
+            kernel_name=kernel_name,
+            arch=arch,
+            kernel_src=kernel_src_rel,
+            config=config,
+            build_target=build_target,
+            build_modules=build_modules,
+            threads=threads,
+            incremental=incremental,
+            clean=clean,
+        )
+
+    combined = " && ".join(parts)
+    if dry_run:
+        print(f"[Dry-run] Would run nvbuild docker: {' '.join(docker_command_base + [combined])}")
+        return _copy_nvbuild_artifacts(kernel_name, arch, localversion, dtb_name, dry_run=True)
+
+    print(f"Running Docker nvbuild command: {' '.join(docker_command_base + [combined])}")
+    rc = subprocess.Popen(docker_command_base + [combined]).wait()
+    if rc != 0:
+        return rc
+    return _copy_nvbuild_artifacts(kernel_name, arch, localversion, dtb_name)
 
 
 def _host_kernel_path_to_docker(host_path: str, kernels_dir_abs: str) -> str:
@@ -65,7 +340,23 @@ def _host_kernel_path_to_docker(host_path: str, kernels_dir_abs: str) -> str:
     return s
 
 
-def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
+def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_version=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, incremental=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
+    if is_nvbuild_kernel(kernel_name):
+        return compile_nvbuild_kernel_host(
+            kernel_name=kernel_name,
+            arch=arch,
+            toolchain_name=toolchain_name,
+            toolchain_version=toolchain_version,
+            config=config,
+            build_target=build_target,
+            threads=threads,
+            clean=clean,
+            incremental=incremental,
+            localversion=localversion,
+            dtb_name=dtb_name,
+            build_modules=build_modules or build_dtb,
+            dry_run=dry_run,
+        )
     # Compiles the kernel directly on the host system.
     kernels_dir = os.path.join("storage", "kernels")
     kernel_dir = os.path.join(kernels_dir, kernel_name, "kernel", "kernel")
@@ -87,7 +378,7 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
 
     # Combine mrproper (if enabled), configuration, and kernel compilation into a single command
     combined_command = ""
-    if clean:
+    if clean and not incremental:
         combined_command += f"{base_command} mrproper && "
     if config or use_current_config:
         combined_command += f"{base_command} {config or 'oldconfig'} && "
@@ -210,7 +501,25 @@ def compile_kernel_host(kernel_name, arch, toolchain_name=None, toolchain_versio
     return proc.returncode
 
 
-def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
+def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_version=None, rpi_model=None, config=None, generate_ctags=False, build_target=None, threads=None, clean=True, incremental=True, use_current_config=False, localversion="", dtb_name=None, build_dtb=False, build_modules=False, overlays=None, dry_run=False):
+    if is_nvbuild_kernel(kernel_name):
+        ensure_docker_image(jp7=True, dry_run=dry_run)
+        return compile_nvbuild_kernel_docker(
+            kernel_name=kernel_name,
+            arch=arch,
+            toolchain_name=toolchain_name,
+            toolchain_version=toolchain_version,
+            config=config,
+            build_target=build_target,
+            threads=threads,
+            clean=clean,
+            incremental=incremental,
+            localversion=localversion,
+            dtb_name=dtb_name,
+            build_modules=build_modules or build_dtb,
+            dry_run=dry_run,
+        )
+    ensure_docker_image(jp7=False, dry_run=dry_run)
     # Compiles the kernel using Docker for encapsulation.
     kernels_dir = os.path.join("storage", "kernels")
     toolchains_dir = os.path.join("storage", "toolchains")
@@ -263,7 +572,7 @@ def compile_kernel_docker(kernel_name, arch, toolchain_name=None, toolchain_vers
 
     # Combine mrproper (if enabled), configuration, and kernel compilation into a single Docker run command
     combined_command_phase_1 = ""
-    if clean:
+    if clean and not incremental:
         combined_command_phase_1 += f"{base_command} mrproper && "
     if config or use_current_config:
         combined_command_phase_1 += f"{base_command} {config or 'oldconfig'} && "
@@ -433,6 +742,7 @@ def main():
     # Build Docker image command
     build_parser = subparsers.add_parser("build")
     build_parser.add_argument("--rebuild", action="store_true", help="Rebuild the Docker image without using the cache")
+    build_parser.add_argument("--jp7", action="store_true", help="Build the JetPack 7.x nvbuild Docker image (kernel_builder_jp7)")
 
     # Clone kernel command
     clone_parser = subparsers.add_parser("clone-kernel")
@@ -470,7 +780,14 @@ def main():
     compile_parser.add_argument("--generate-ctags", action="store_true", help="Generate ctags/tags file for the kernel source")
     compile_parser.add_argument("--build-target", help="Comma-separated list of build targets (e.g., kernel,dtbs,modules,bindeb-pkg). If 'kernel' is specified, it will directly call make without a target.")
     compile_parser.add_argument("--threads", type=int, help="Number of threads to use for compilation (default: use all available cores)")
-    compile_parser.add_argument("--clean", action="store_true", help="Run mrproper to clean the kernel build directory before building")
+    compile_parser.add_argument("--clean", action="store_true", help="Delete kernel_out / run mrproper before building (full rebuild)")
+    compile_parser.add_argument(
+        "--no-incremental",
+        dest="incremental",
+        action="store_false",
+        help="Force full nvbuild (rsync --delete + defconfig) even when kernel_out exists",
+    )
+    compile_parser.set_defaults(incremental=True)
     compile_parser.add_argument("--use-current-config", action="store_true", help="Use the current system kernel configuration for building the kernel")
     compile_parser.add_argument("--localversion", help="Set a local version string to append to the kernel version")
     compile_parser.add_argument("--host-build", action="store_true", help="Compile the kernel directly on the host instead of using Docker")
@@ -494,7 +811,7 @@ def main():
         exit(1)
 
     if args.command == "build":
-        build_docker_image(rebuild=args.rebuild)
+        build_docker_image(rebuild=args.rebuild, jp7=args.jp7)
     elif args.command == "clone-kernel":
         clone_kernel(kernel_source_url=args.kernel_source_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "clone-toolchain":
@@ -504,7 +821,15 @@ def main():
     elif args.command == "clone-device-tree":
         clone_device_tree(device_tree_url=args.device_tree_url, kernel_name=args.kernel_name, git_tag=args.git_tag)
     elif args.command == "compile":
-        if (
+        if is_nvbuild_kernel(args.kernel_name):
+            default_name, default_version = jp7_toolchain_defaults()
+            if not args.toolchain_name:
+                args.toolchain_name = default_name
+            if not args.toolchain_version:
+                args.toolchain_version = default_version
+            if not args.dry_run:
+                ensure_jp7_toolchain_storage(_repo_root())
+        elif (
             args.toolchain_name
             and args.toolchain_version
             and not args.dry_run
@@ -551,8 +876,9 @@ def main():
                 build_target=args.build_target,
                 threads=args.threads,
                 clean=args.clean,
+                incremental=args.incremental,
                 use_current_config=args.use_current_config,
-                localversion=args.localversion,
+                localversion=args.localversion or "",
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
                 build_modules=args.build_modules,
@@ -571,8 +897,9 @@ def main():
                 build_target=args.build_target,
                 threads=args.threads,
                 clean=args.clean,
+                incremental=args.incremental,
                 use_current_config=args.use_current_config,
-                localversion=args.localversion,
+                localversion=args.localversion or "",
                 dtb_name=args.dtb_name,
                 build_dtb=args.build_dtb,
                 build_modules=args.build_modules,

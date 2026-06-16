@@ -1,5 +1,23 @@
-kernels/*
-toolchains/*
-scripts/*
-utils/*
-__pychache__
+# kernel_builder / kernel_builder_jp7 images only apt-get install packages.
+# Kernels, BSPs, and toolchains are bind-mounted at runtime — never COPY'd.
+# Prefer: docker build -f Dockerfile -t kernel_builder docker/kernel-builder-context
+
+.git
+.git/**
+
+storage/**
+scripts/flash/rootfs_prep/bsp/**
+scripts/flash/rootfs_prep/downloads/**
+
+**/kernel_out/**
+**/Linux_for_Tegra/**
+**/*.tbz2
+**/*.tar.gz
+**/*.tar.bz2
+**/*.tgz
+**/*.zip
+**/*.deb
+
+# Legacy paths (were wrong: kernels/ is not storage/kernels/)
+kernels/**
+toolchains/**

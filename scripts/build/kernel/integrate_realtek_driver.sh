@@ -81,8 +81,8 @@ show_help() {
     cat <<EOF
 Usage: $0 <KERNEL_NAME> --driver <name> [OPTIONS]
 
-Integrate a Realtek vendor Wi-Fi driver into storage/kernels/<KERNEL_NAME>/kernel/kernel
-as an in-tree staging driver.
+Integrate a Realtek vendor Wi-Fi driver into storage/kernels/<KERNEL_NAME>/kernel/<src>/
+as an in-tree staging driver (kernel-noble on JP7, kernel-jammy-src or kernel on older BSPs).
 
 Arguments:
   KERNEL_NAME           Name of the kernel tree under storage/kernels/ (e.g. cartken_5_1_5).
@@ -156,9 +156,16 @@ KCONFIG_SYMBOL="${DRIVER_SYMBOL[$DRIVER]}"
 MODULE_NAME="${DRIVER_MODULE[$DRIVER]}"
 KCONFIG_DESC="${DRIVER_DESC[$DRIVER]}"
 
-KERNEL_ROOT="$REPO_ROOT/storage/kernels/$KERNEL_NAME/kernel/kernel"
-if [[ ! -d "$KERNEL_ROOT" ]]; then
-    echo "Error: kernel source not found at $KERNEL_ROOT" >&2
+KERNEL_PARENT="$REPO_ROOT/storage/kernels/$KERNEL_NAME/kernel"
+KERNEL_ROOT=""
+for _subdir in kernel-noble kernel-jammy-src kernel; do
+    if [[ -d "$KERNEL_PARENT/$_subdir" ]]; then
+        KERNEL_ROOT="$KERNEL_PARENT/$_subdir"
+        break
+    fi
+done
+if [[ -z "$KERNEL_ROOT" ]]; then
+    echo "Error: kernel source not found under $KERNEL_PARENT (tried kernel-noble, kernel-jammy-src, kernel)" >&2
     exit 1
 fi
 

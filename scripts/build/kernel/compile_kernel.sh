@@ -20,6 +20,8 @@ fi
 KERNEL_NAME="$1"
 shift # Shift arguments to parse the rest of the options
 
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
 # Initialize arguments
 CONFIG_ARG=""
 LOCALVERSION_ARG=""
@@ -30,9 +32,17 @@ BUILD_DTB_ARG=""
 BUILD_MODULES_ARG=""
 HOST_BUILD_ARG=""
 DRY_RUN_ARG=""
+INCREMENTAL_ARG=""
 OVERLAYS_ARG=""
 TOOLCHAIN_NAME_ARG="--toolchain-name aarch64-buildroot-linux-gnu"
 TOOLCHAIN_VERSION_ARG="--toolchain-version 9.3"
+
+if [[ -f "$REPO_ROOT/storage/kernels/$KERNEL_NAME/nvbuild.sh" ]]; then
+  echo "Detected JP6/JP7 nvbuild kernel tree: $KERNEL_NAME"
+  TOOLCHAIN_NAME_ARG="--toolchain-name aarch64-none-linux-gnu"
+  TOOLCHAIN_VERSION_ARG="--toolchain-version 13.2"
+  DTB_NAME_ARG="--dtb-name tegra234-p3737-0000+p3701-0000.dtb"
+fi
 
 # Function to display help message
 show_help() {
@@ -52,8 +62,9 @@ show_help() {
     echo "  --build-dtb                    Build the Device Tree Blob (DTB) separately using 'make dtbs'."
     echo "  --build-modules                Build kernel modules separately using 'make modules'."
     echo "  --overlays <list>              A comma-separated list of DTBO files to apply as overlays."
-    echo "  --host-build                   Compile the kernel directly on the host instead of using Docker."
-    echo "  --dry-run                      Print the commands without executing them."
+  echo "  --host-build                   Compile the kernel directly on the host instead of using Docker."
+  echo "  --no-incremental               Force full nvbuild (rsync --delete + defconfig) when kernel_out exists."
+  echo "  --dry-run                      Print the commands without executing them."
     echo "  --help                         Display this help message and exit."
     echo ""
     echo "Examples:"
@@ -154,6 +165,10 @@ while [[ "$#" -gt 0 ]]; do
       DRY_RUN_ARG="--dry-run"
       shift
       ;;
+    --no-incremental)
+      INCREMENTAL_ARG="--no-incremental"
+      shift
+      ;;
     --overlays)
       if [ -n "$2" ]; then
         OVERLAYS_ARG="--overlays $2"
@@ -175,7 +190,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Compile the kernel using kernel_builder.py
-COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $BUILD_MODULES_ARG $OVERLAYS_ARG"
+COMMAND="python3 "$KERNEL_BUILDER_PATH" compile --kernel-name "$KERNEL_NAME" --arch arm64 $TOOLCHAIN_NAME_ARG $TOOLCHAIN_VERSION_ARG $CONFIG_ARG $THREADS_ARG $LOCALVERSION_ARG $DTB_NAME_ARG $HOST_BUILD_ARG $DRY_RUN_ARG $INCREMENTAL_ARG $BUILD_TARGET_ARG $BUILD_DTB_ARG $BUILD_MODULES_ARG $OVERLAYS_ARG"
 
 # Execute the command
 echo "Running: $COMMAND"

@@ -30,6 +30,19 @@ them from the repo root without typing long paths. Every wrapper simply
 ./bin/build cartken_5_1_5_realsense --soc orin
 ./bin/package cartken_6_2 --localversion cartken6.2
 ./bin/menuconfig cartken_6_2
+./bin/compile cartken_7_2 --localversion cartken7.2
+./bin/compile cartken_7_2 --localversion cartken7.2 --no-incremental   # force full nvbuild
+
+JetPack 7.x nvbuild trees (`cartken_7_2`, etc.) use a separate Docker image with the
+L4T gcc 13.2 toolchain baked in:
+
+```bash
+python3 python/kernel_builder.py build --jp7    # once
+./bin/compile cartken_7_2 --localversion cartken7.2
+./bin/compile cartken_7_2 --localversion cartken7.2 --no-incremental   # force full nvbuild
+```
+
+JP5 trees still use `python3 python/kernel_builder.py build` (Ubuntu 20.04 image).
 ./bin/deploy --ip 10.42.0.5 --user cartken
 ./bin/chroot 5.1.5
 ./bin/dtb extract /boot/dtb/tegra234-p3737-0000+p3701-0000.dtb

@@ -1,13 +1,57 @@
 import os
 import subprocess
 
-def build_docker_image(rebuild=False):
-    # Command to build/rebuild the Docker image.
-    build_command = "docker build -t kernel_builder ."
+
+def _repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def docker_image_tag(jp7: bool = False) -> str:
+    return "kernel_builder_jp7" if jp7 else "kernel_builder"
+
+
+def docker_image_exists(tag: str) -> bool:
+    return (
+        subprocess.run(
+            ["docker", "image", "inspect", tag],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
+def _kernel_builder_build_context() -> str:
+    context = os.path.join(_repo_root(), "docker", "kernel-builder-context")
+    os.makedirs(context, exist_ok=True)
+    return context
+
+
+def build_docker_image(rebuild=False, jp7=False):
+    repo_root = _repo_root()
+    dockerfile = os.path.join(repo_root, "Dockerfile.jp7" if jp7 else "Dockerfile")
+    context = _kernel_builder_build_context()
+    tag = docker_image_tag(jp7=jp7)
+
+    build_command = ["docker", "build", "-f", dockerfile, "-t", tag]
     if rebuild:
-        build_command += " --no-cache"
-    print(f"Running command: {build_command}")
-    os.system(build_command)
+        build_command.append("--no-cache")
+    build_command.append(context)
+
+    print(f"Running command: {' '.join(build_command)}")
+    subprocess.run(build_command, cwd=repo_root, check=True)
+
+
+def ensure_docker_image(jp7=False, rebuild=False, dry_run=False):
+    tag = docker_image_tag(jp7=jp7)
+    if docker_image_exists(tag) and not rebuild:
+        return
+    if dry_run:
+        print(f"[Dry-run] Would build Docker image '{tag}'")
+        return
+    print(f"Docker image '{tag}' not found; building now (one-time setup)...")
+    build_docker_image(rebuild=rebuild, jp7=jp7)
+
 
 def inspect_docker_image(output_dir="output"):
     # Opens a bash shell inside the Docker container for inspection
@@ -52,4 +96,3 @@ def cleanup_docker():
         subprocess.run(["docker", "rmi", "-f", "kernel_builder"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error removing image: {e}")
-
