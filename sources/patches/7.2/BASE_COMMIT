@@ -1,0 +1,6 @@
+# Stock kernel import — not applied as a patch during BSP builds.
+commit: e7115d03082a3741c4b20a769c8283ee9799d0dd
+tag: patch-base
+subject: Initial JetPack 7.2 kernel import
+date: 2026-06-16 12:31:07 +0200
+kernel_tree: storage/kernels/cartken_7_2
