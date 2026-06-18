@@ -1,0 +1,40 @@
+From 2570425f1418759f66965937d3f769fbbf5296da Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 18 Jun 2026 13:02:46 +0200
+Subject: [PATCH 12/12] panic_logger: Include panic_notifier.h for kernel 6.x
+ (JP7)
+
+panic_notifier_list moved out of <linux/notifier.h> into its own
+<linux/panic_notifier.h> in Linux 5.15, so on the JP7 6.x kernel the
+symbol was undeclared and the module failed to build. Pull in the new
+header for >= 5.15 while leaving the JP5 (5.10) include path unchanged.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ kernel/kernel-noble/drivers/misc/pstore_logger.h | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/kernel/kernel-noble/drivers/misc/pstore_logger.h b/kernel/kernel-noble/drivers/misc/pstore_logger.h
+index d5e2893a7..4de142d3b 100644
+--- a/kernel/kernel-noble/drivers/misc/pstore_logger.h
++++ b/kernel/kernel-noble/drivers/misc/pstore_logger.h
+@@ -11,6 +11,16 @@
+ #include <linux/fs.h>
+ #include <linux/version.h>
+ 
++/*
++ * panic_notifier_list moved from <linux/notifier.h> into its own header in
++ * Linux 5.15. JetPack 5.x (kernel 5.10) still finds it via notifier.h above;
++ * JetPack 7.2 (kernel 6.x) needs the dedicated header or the symbol is
++ * undeclared.
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
++#include <linux/panic_notifier.h>
++#endif
++
+ #define PSTORE_DIR "/sys/fs/pstore"
+ #define PANIC_LOG_PATH "/var/log/panic.log"
+ 
+-- 
+2.54.0
+

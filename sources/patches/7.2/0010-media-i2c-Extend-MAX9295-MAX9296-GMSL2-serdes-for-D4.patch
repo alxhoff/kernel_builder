@@ -1,7 +1,7 @@
 From e8bbe9ca937ccfa9f2bd3241125450ccfcd741c4 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 19:01:10 +0200
-Subject: [PATCH 10/11] media/i2c: Extend MAX9295/MAX9296 GMSL2 serdes for D4xx
+Subject: [PATCH 10/12] media/i2c: Extend MAX9295/MAX9296 GMSL2 serdes for D4xx
  (JP7)
 
 Serializer/deserializer support required by the D4xx driver, ported from

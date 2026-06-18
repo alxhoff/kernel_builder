@@ -1,7 +1,7 @@
 From e1404c55d59b8bae80e2ffbd60a891b147bc7f39 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 19:01:01 +0200
-Subject: [PATCH 09/11] camera/vi: Add D4xx embedded-metadata channel and GMSL
+Subject: [PATCH 09/12] camera/vi: Add D4xx embedded-metadata channel and GMSL
  plumbing (JP7)
 
 VI-core support for the RealSense D4xx GMSL2 stack, ported from JP5

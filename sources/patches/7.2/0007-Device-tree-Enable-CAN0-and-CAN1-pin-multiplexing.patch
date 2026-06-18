@@ -1,7 +1,7 @@
 From ddcf877f87d9ed586777f256a064ac057ce89c37 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 09:03:30 +0200
-Subject: [PATCH 07/11] Device tree: Enable CAN0 and CAN1 pin multiplexing
+Subject: [PATCH 07/12] Device tree: Enable CAN0 and CAN1 pin multiplexing
 
 Configure the 40-pin header CAN transceiver pin muxing (CAN0/CAN1 on
 paa0-paa3) on pinmux_aon so the CAN controllers work without the Jetson

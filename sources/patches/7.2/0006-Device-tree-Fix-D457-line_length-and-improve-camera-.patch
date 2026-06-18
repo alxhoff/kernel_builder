@@ -1,7 +1,7 @@
 From 7227e43a9641a7120acde83552cc57faae2fffb2 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 09:02:33 +0200
-Subject: [PATCH 06/11] Device tree: Fix D457 line_length and improve camera
+Subject: [PATCH 06/12] Device tree: Fix D457 line_length and improve camera
  port documentation
 
 Fix D457 line_length from 1280 to 2200 for all 8 camera modes to match

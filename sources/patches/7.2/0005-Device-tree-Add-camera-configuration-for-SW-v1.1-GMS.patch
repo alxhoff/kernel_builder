@@ -1,7 +1,7 @@
 From 72858317db7424d92583a27905f6a96c527faa56 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 09:01:42 +0200
-Subject: [PATCH 05/11] Device tree: Add camera configuration for SW v1.1 GMSL2
+Subject: [PATCH 05/12] Device tree: Add camera configuration for SW v1.1 GMSL2
  adapter board
 
 Add cartken-10-GMSL.dtsi describing the SW v1.1 camera adapter board

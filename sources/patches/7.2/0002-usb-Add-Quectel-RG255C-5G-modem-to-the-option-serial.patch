@@ -1,7 +1,7 @@
 From 74b0c8ca1813a91932c84c051793126c3bd3a91f Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 08:47:44 +0200
-Subject: [PATCH 02/11] usb: Add Quectel RG255C 5G modem to the option serial
+Subject: [PATCH 02/12] usb: Add Quectel RG255C 5G modem to the option serial
  driver
 
 Add USB product ID 0x0316 for the Quectel RG255C-GL 5G cellular modem to

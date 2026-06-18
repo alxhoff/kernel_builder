@@ -1,7 +1,7 @@
 From 8a9cd2e4397b215561c954b17c46153b967b9f7c Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 08:47:44 +0200
-Subject: [PATCH 03/11] usb: Add Quectel RG255C to qmi_wwan
+Subject: [PATCH 03/12] usb: Add Quectel RG255C to qmi_wwan
 
 Bind the RG255C QMI data interface (3) so the cellular data path comes up.
 

@@ -1,7 +1,7 @@
 From a964dd1c35ad85aa485d4d7c0c89a814aefc3b54 Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 08:56:34 +0200
-Subject: [PATCH 04/11] ISX031: Add RGB camera driver with MAX96712 GMSL2
+Subject: [PATCH 04/12] ISX031: Add RGB camera driver with MAX96712 GMSL2
  deserializer support
 
 V4L2 sensor driver for the Sony ISX031 RGB camera module (fzcam/fzcama

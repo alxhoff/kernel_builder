@@ -1,7 +1,7 @@
 From 49d7503db5f920831d3aa4c2c80744433d00d74b Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 10:42:36 +0200
-Subject: [PATCH 08/11] ISX031: Fix -Wmissing-prototypes under the JP7
+Subject: [PATCH 08/12] ISX031: Fix -Wmissing-prototypes under the JP7
  toolchain
 
 The JP7 nvidia-oot build enables -Wmissing-prototypes -Werror. Mark the

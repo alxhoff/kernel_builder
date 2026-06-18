@@ -1,7 +1,7 @@
 From 5040f460012566182b9d38ec8d939880fa10f68d Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 08:45:50 +0200
-Subject: [PATCH 01/11] Cartken panic logger
+Subject: [PATCH 01/12] Cartken panic logger
 
 Register a panic notifier that logs CARTKEN_KERNEL_HAS_PANICKED for
 post-reboot crash detection on deployed robots.

@@ -1,7 +1,7 @@
 From c58a42630639509048aef2afc5549856d634d84f Mon Sep 17 00:00:00 2001
 From: Alexander Hoffman <alxhoff@gmail.com>
 Date: Wed, 17 Jun 2026 19:01:20 +0200
-Subject: [PATCH 11/11] media/i2c: Add Intel RealSense D4xx MIPI GMSL2 driver
+Subject: [PATCH 11/12] media/i2c: Add Intel RealSense D4xx MIPI GMSL2 driver
  (JP7)
 
 Cumulative D4xx driver (JP5 0004->0028) adapted to the JP7 kernel 6.8
