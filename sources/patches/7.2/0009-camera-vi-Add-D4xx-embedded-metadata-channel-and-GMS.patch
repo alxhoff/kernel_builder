@@ -1,0 +1,705 @@
+From e1404c55d59b8bae80e2ffbd60a891b147bc7f39 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 17 Jun 2026 19:01:01 +0200
+Subject: [PATCH 09/11] camera/vi: Add D4xx embedded-metadata channel and GMSL
+ plumbing (JP7)
+
+VI-core support for the RealSense D4xx GMSL2 stack, ported from JP5
+(0004/0028) and adapted to kernel 6.8:
+
+- mc_common.[hc]: embedded-metadata channel (MAX_CHANNELS, struct embedded,
+  dser/ser device pointers) and nvidia,gmsl-dser/ser-device DT parsing
+- channel.c/graph.c/vi5_fops.c: metadata video device (open/close, querycap,
+  fmt/ioctl/queue ops), embedded-buffer release, graph init/cleanup hooks
+- sensor_common.c: grey_y8 (V4L2_PIX_FMT_GREY) and grey_y16 (V4L2_PIX_FMT_Y16)
+- tegra_camera_core.h: 64-byte stride alignment, EMBEDDED_8/USER_1..4 data types
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ .../platform/tegra/camera/sensor_common.c     |   4 +
+ .../media/platform/tegra/camera/vi/channel.c  | 338 +++++++++++++++++-
+ .../media/platform/tegra/camera/vi/graph.c    |  45 ++-
+ .../platform/tegra/camera/vi/mc_common.c      |  30 ++
+ .../media/platform/tegra/camera/vi/vi5_fops.c |  36 ++
+ nvidia-oot/include/media/mc_common.h          |  21 ++
+ nvidia-oot/include/media/tegra_camera_core.h  |   9 +-
+ 7 files changed, 476 insertions(+), 7 deletions(-)
+
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/sensor_common.c b/nvidia-oot/drivers/media/platform/tegra/camera/sensor_common.c
+index 3d86b3dfc..66227cc5b 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/sensor_common.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/sensor_common.c
+@@ -341,6 +341,10 @@ static int extract_pixel_format(
+ 		*format = V4L2_PIX_FMT_UYVY;
+ 	else if (strncmp(pixel_t, "yuv_vyuy16", size) == 0)
+ 		*format = V4L2_PIX_FMT_VYUY;
++	else if (strncmp(pixel_t, "grey_y8", size) == 0)
++		*format = V4L2_PIX_FMT_GREY;
++	else if (strncmp(pixel_t, "grey_y16", size) == 0)
++		*format = V4L2_PIX_FMT_Y16;
+ 	else {
+ 		pr_err("%s: Need to extend format%s\n", __func__, pixel_t);
+ 		return -EINVAL;
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c b/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
+index 33700bb32..65c9e9418 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -231,7 +231,11 @@ static void tegra_channel_fmt_align(struct tegra_channel *chan,
+ 	 * different. Aligned width also may force a sensor mode change other
+ 	 * than the requested one
+ 	 */
+-	*height = clamp(*height, TEGRA_MIN_HEIGHT, TEGRA_MAX_HEIGHT);
++	/*
++	 * For D4XX IMU, one frame is 32 bytes with width:height = 32:1, so
++	 * clamp height with a floor of 1 instead of TEGRA_MIN_HEIGHT.
++	 */
++	*height = clamp(*height, 1U /* TEGRA_MIN_HEIGHT */, TEGRA_MAX_HEIGHT);
+ 
+ 	/* Clamp the requested bytes per line value. If the maximum bytes per
+ 	 * line value is zero, the module doesn't support user configurable line
+@@ -1126,7 +1130,8 @@ tegra_channel_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
+ 
+ 	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+ 	cap->device_caps |= V4L2_CAP_EXT_PIX_FORMAT;
+-	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
++	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS |
++			V4L2_CAP_META_CAPTURE;
+ 
+ 	len = strscpy(cap->driver, "tegra-video", sizeof(cap->driver));
+ 	if (len < 0)
+@@ -2224,6 +2229,17 @@ __tegra_channel_try_format(struct tegra_channel *chan,
+ 	v4l2_fill_mbus_format(&fmt.format, pix, vfmt->code);
+ 
+ 	ret = v4l2_subdev_call(sd, pad, set_fmt, &cfg, &fmt);
++	/*
++	 * If set_fmt could not honour the target format and returned the
++	 * default one, update pix->pixelformat and vfmt to stay aligned.
++	 */
++	if (!ret && fmt.format.code != vfmt->code) {
++		int idx = tegra_core_get_idx_by_code(chan, fmt.format.code, 0);
++
++		pix->pixelformat = tegra_core_get_fourcc_by_idx(chan, idx);
++		vfmt = tegra_core_get_format_by_fourcc(chan, pix->pixelformat);
++	}
++
+ 	if (ret == -ENOIOCTLCMD)
+ 		return -ENOTTY;
+ 
+@@ -2678,6 +2694,317 @@ static int tegra_channel_csi_init(struct tegra_channel *chan)
+ 	return ret;
+ }
+ 
++static int tegra_metadata_open(struct file *fp)
++{
++	struct video_device *vdev = video_devdata(fp);
++	struct tegra_channel *chan = video_get_drvdata(vdev);
++	int ret;
++
++	mutex_lock(&chan->embedded.lock);
++	ret = v4l2_fh_open(fp);
++	mutex_unlock(&chan->embedded.lock);
++
++	return ret;
++}
++
++static int tegra_metadata_close(struct file *fp)
++{
++	struct video_device *vdev = video_devdata(fp);
++	struct tegra_channel *chan = video_get_drvdata(vdev);
++
++	return _vb2_fop_release(fp, &chan->embedded.lock);
++}
++
++static const struct v4l2_file_operations tegra_metadata_fops = {
++	.owner		= THIS_MODULE,
++	.unlocked_ioctl	= video_ioctl2,
++	.open		= tegra_metadata_open,
++	.release	= tegra_metadata_close,
++	.read		= vb2_fop_read,
++	.poll		= vb2_fop_poll,
++	.mmap		= vb2_fop_mmap,
++};
++
++static int tegra_metadata_querycap(struct file *file, void *fh,
++				struct v4l2_capability *cap)
++{
++	struct v4l2_fh *vfh = file->private_data;
++	struct tegra_channel *chan = video_drvdata(file);
++
++	cap->device_caps = V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING;
++	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS |
++			V4L2_CAP_EXT_PIX_FORMAT | V4L2_CAP_VIDEO_CAPTURE;
++
++	strscpy(cap->driver, "tegra-embedded", sizeof(cap->driver));
++	strscpy(cap->card, vfh->vdev->name, sizeof(cap->card));
++	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s:%u",
++			dev_name(chan->vi->dev), chan->port[0]);
++
++	return 0;
++}
++
++static int tegra_metadata_enum_format(struct file *file, void *fh,
++				struct v4l2_fmtdesc *f)
++{
++	if (f->index)
++		return -EINVAL;
++
++	f->pixelformat = V4L2_META_FMT_D4XX;
++	strscpy(f->description, "D4XX metadata format", sizeof(f->description));
++
++	return 0;
++}
++
++static int tegra_metadata_get_format(struct file *file, void *fh,
++				struct v4l2_format *format)
++{
++	struct v4l2_fh *vfh = file->private_data;
++	struct v4l2_meta_format *fmt = &format->fmt.meta;
++
++	if (format->type != vfh->vdev->queue->type)
++		return -EINVAL;
++
++	memset(fmt, 0, sizeof(*fmt));
++
++	fmt->dataformat = V4L2_META_FMT_D4XX;
++	fmt->buffersize = 255;
++
++	return 0;
++}
++
++static int tegra_metadata_set_format(struct file *file, void *fh,
++				struct v4l2_format *format)
++{
++	return 0;
++}
++
++static int tegra_metadata_try_format(struct file *file, void *fh,
++				struct v4l2_format *format)
++{
++	return 0;
++}
++
++static const struct v4l2_ioctl_ops tegra_metadata_ioctl_ops = {
++	.vidioc_querycap		= tegra_metadata_querycap,
++	.vidioc_enum_fmt_meta_cap	= tegra_metadata_enum_format,
++	.vidioc_g_fmt_meta_cap		= tegra_metadata_get_format,
++	.vidioc_s_fmt_meta_cap		= tegra_metadata_set_format,
++	.vidioc_try_fmt_meta_cap	= tegra_metadata_try_format,
++	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
++	.vidioc_querybuf		= vb2_ioctl_querybuf,
++	.vidioc_qbuf			= vb2_ioctl_qbuf,
++	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
++	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
++	.vidioc_expbuf			= vb2_ioctl_expbuf,
++	.vidioc_streamon		= vb2_ioctl_streamon,
++	.vidioc_streamoff		= vb2_ioctl_streamoff,
++};
++
++static int tegra_metadata_queue_setup(struct vb2_queue *vq,
++		unsigned int *nbuffers, unsigned int *nplanes,
++		unsigned int sizes[], struct device *alloc_devs[])
++{
++	struct tegra_channel *chan = vb2_get_drv_priv(vq);
++
++	if (*nplanes) {
++		if (*nplanes != 1)
++			return -EINVAL;
++
++		if (sizes[0] < 255)
++			return -EINVAL;
++
++		return 0;
++	}
++
++	*nplanes = 1;
++	sizes[0] = 255;
++	alloc_devs[0] = chan->vi->dev;
++
++	return 0;
++}
++
++static int tegra_metadata_buffer_prepare(struct vb2_buffer *vb)
++{
++	if (vb->num_planes != 1)
++		return -EINVAL;
++
++	if (vb2_plane_size(vb, 0) < 255)
++		return -EINVAL;
++
++	return 0;
++}
++
++static void tegra_metadata_buffer_queue(struct vb2_buffer *vb)
++{
++	struct tegra_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
++
++	spin_lock(&chan->embedded.spin_lock);
++	if (chan->embedded.num_buffers < 16) {
++		chan->embedded.buffers[chan->embedded.head] = vb;
++		chan->embedded.head++;
++		if (chan->embedded.head > 15)
++			chan->embedded.head = chan->embedded.head - 16;
++		chan->embedded.num_buffers++;
++	}
++	spin_unlock(&chan->embedded.spin_lock);
++}
++
++static int tegra_metadata_start_streaming(struct vb2_queue *vq,
++		unsigned int count)
++{
++	return 0;
++}
++
++static void tegra_metadata_stop_streaming(struct vb2_queue *vq)
++{
++	struct tegra_channel *chan = vb2_get_drv_priv(vq);
++	int i = 0;
++
++	spin_lock(&chan->embedded.spin_lock);
++	for (i = 0; i < chan->embedded.num_buffers; i++) {
++		struct vb2_buffer *evb;
++
++		evb = chan->embedded.buffers[chan->embedded.tail];
++		chan->embedded.buffers[chan->embedded.tail] = NULL;
++		chan->embedded.tail++;
++		if (chan->embedded.tail > 15)
++			chan->embedded.tail = chan->embedded.tail - 16;
++		vb2_buffer_done(evb, VB2_BUF_STATE_ERROR);
++	}
++	spin_unlock(&chan->embedded.spin_lock);
++
++	chan->embedded.head = 0;
++	chan->embedded.tail = 0;
++	chan->embedded.num_buffers = 0;
++}
++
++static const struct vb2_ops tegra_metadata_qops = {
++	.queue_setup		= tegra_metadata_queue_setup,
++	.buf_prepare		= tegra_metadata_buffer_prepare,
++	.buf_queue		= tegra_metadata_buffer_queue,
++	.wait_prepare		= vb2_ops_wait_prepare,
++	.wait_finish		= vb2_ops_wait_finish,
++	.start_streaming	= tegra_metadata_start_streaming,
++	.stop_streaming		= tegra_metadata_stop_streaming,
++};
++
++int tegra_channel_init_video_embedded(struct tegra_channel *chan)
++{
++	struct video_device *video;
++	struct vb2_queue *queue = &chan->embedded.queue;
++	struct tegra_mc_vi *vi = chan->vi;
++	int ret;
++
++	mutex_init(&chan->embedded.lock);
++	spin_lock_init(&chan->embedded.spin_lock);
++
++	video = chan->embedded.video = video_device_alloc();
++	chan->embedded.pad.flags = MEDIA_PAD_FL_SINK;
++
++	ret = tegra_media_entity_init(&video->entity, 1,
++					&chan->embedded.pad, false, false);
++	if (ret < 0) {
++		video_device_release(video);
++		dev_err(vi->dev, "%s(): metadata entity init: %d\n",
++				__func__, ret);
++		return ret;
++	}
++
++	ret = v4l2_ctrl_handler_init(&chan->embedded.ctrl_handler,
++					MAX_CID_CONTROLS);
++	if (chan->embedded.ctrl_handler.error) {
++		dev_err(&video->dev, "failed to init control handler\n");
++		return ret;
++	}
++
++	video->fops = &tegra_metadata_fops;
++	video->v4l2_dev = &vi->v4l2_dev;
++	video->queue = queue;
++	snprintf(video->name, sizeof(video->name), "%s-metadata-%u",
++			dev_name(vi->dev), chan->port[0]);
++	video->vfl_type = VFL_TYPE_VIDEO;
++	video->device_caps = V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING;
++	video->vfl_dir = VFL_DIR_RX;
++	video->release = video_device_release_empty;
++	video->ioctl_ops = &tegra_metadata_ioctl_ops;
++	video->ctrl_handler = &chan->embedded.ctrl_handler;
++	video->lock = &chan->embedded.lock;
++
++	video_set_drvdata(video, chan);
++
++#if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
++	ret = tegra_vb2_dma_init(vi->dev, &chan->embedded.alloc_ctx,
++					SZ_64K, &vi->vb2_dma_alloc_refcnt);
++	if (ret < 0)
++		goto ctx_alloc_error;
++#endif
++
++	queue->type = V4L2_BUF_TYPE_META_CAPTURE;
++	queue->io_modes = VB2_MMAP | VB2_DMABUF | VB2_READ | VB2_USERPTR;
++	queue->lock = &chan->embedded.lock;
++	queue->drv_priv = chan;
++	queue->buf_struct_size = sizeof(struct tegra_channel_buffer);
++	queue->ops = &tegra_metadata_qops;
++#if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
++	queue->mem_ops = &vb2_dma_contig_memops;
++#endif
++	queue->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC |
++			V4L2_BUF_FLAG_TSTAMP_SRC_EOF;
++	ret = vb2_queue_init(queue);
++	if (ret < 0) {
++		dev_err(vi->dev, "%s(): metadata queue initialize: %d\n",
++				__func__, ret);
++		goto vb2_queue_error;
++	}
++
++	return 0;
++
++vb2_queue_error:
++#if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
++	tegra_vb2_dma_cleanup(vi->dev, chan->embedded.alloc_ctx,
++			&vi->vb2_dma_alloc_refcnt);
++ctx_alloc_error:
++#endif
++	media_entity_cleanup(&video->entity);
++
++	return ret;
++}
++
++int tegra_channel_cleanup_video_embedded(struct tegra_channel *chan)
++{
++	struct video_device *video = chan->embedded.video;
++	struct vb2_queue *queue = &chan->embedded.queue;
++	struct device *vi_unit_dev = tegra_channel_get_vi_unit(chan);
++
++	if (!video)
++		return -EINVAL;
++
++	video_unregister_device(video);
++
++	/* release embedded data buffer */
++	if (chan->emb_buf_size > 0) {
++		dma_free_coherent(vi_unit_dev,
++				chan->emb_buf_size,
++				chan->emb_buf_addr, chan->emb_buf);
++		chan->emb_buf_size = 0;
++		vb2_queue_release(queue);
++#if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
++		tegra_vb2_dma_cleanup(vi_unit_dev, chan->embedded.alloc_ctx,
++						&chan->vi->vb2_dma_alloc_refcnt);
++#endif
++	}
++
++	v4l2_ctrl_handler_free(&chan->embedded.ctrl_handler);
++
++#if defined(CONFIG_MEDIA_CONTROLLER)
++	media_entity_cleanup(&video->entity);
++#endif
++
++	video_device_release(video);
++
++	return 0;
++}
++
+ int tegra_channel_init_video(struct tegra_channel *chan)
+ {
+ 	struct tegra_mc_vi *vi = chan->vi;
+@@ -2878,6 +3205,13 @@ int tegra_channel_cleanup(struct tegra_channel *chan)
+ 			chan->emb_buf_size,
+ 			chan->emb_buf_addr, chan->emb_buf);
+ 		chan->emb_buf_size = 0;
++		vb2_queue_release(&chan->embedded.queue);
++#if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
++		tegra_vb2_dma_cleanup(vi_unit_dev, chan->embedded.alloc_ctx,
++				&chan->vi->vb2_dma_alloc_refcnt);
++#endif
++		if (chan->embedded.video)
++			media_entity_cleanup(&chan->embedded.video->entity);
+ 	}
+ 
+ 	tegra_channel_dealloc_buffer_queue(chan);
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/graph.c b/nvidia-oot/drivers/media/platform/tegra/camera/vi/graph.c
+index 097db3f74..d19a99e68 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -291,6 +291,10 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 	struct tegra_channel *chan =
+ 		container_of(notifier, struct tegra_channel, notifier);
+ 	struct tegra_vi_graph_entity *entity;
++	struct camera_common_data *s_data;
++	struct device_node *node;
++	struct sensor_mode_properties *sensor_mode = NULL;
++	int idx;
+ 	int ret;
+ 
+ 	dev_dbg(chan->vi->dev, "notify complete, all subdevs registered\n");
+@@ -315,26 +319,58 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 		if (entity->entity != NULL) {
+ 			ret = tegra_vi_graph_build_one(chan, entity);
+ 			if (ret < 0)
+-				goto graph_error;
++				goto link_error;
+ 		}
+ 	}
+ 
+ 	/* Create links for channels */
+ 	ret = tegra_vi_graph_build_links(chan);
+ 	if (ret < 0)
+-		goto graph_error;
++		goto link_error;
++
++	/* Init embedded channel only if embedded is set in DT */
++	s_data = to_camera_common_data(chan->subdev_on_csi->dev);
++	node = chan->subdev_on_csi->dev->of_node;
++	if (s_data && node) {
++		idx = s_data->mode_prop_idx;
++		if (idx < s_data->sensor_props.num_modes)
++			sensor_mode = &s_data->sensor_props.sensor_modes[idx];
++	}
++
++	if (sensor_mode &&
++		sensor_mode->image_properties.embedded_metadata_height > 0) {
++		ret = tegra_channel_init_video_embedded(chan);
++		if (ret < 0) {
++			dev_err(chan->vi->dev,
++					"failed to initialize embedded channel\n");
++			goto register_embedded_device_error;
++		}
++		ret = video_register_device(chan->embedded.video,
++						VFL_TYPE_VIDEO, -1);
++		if (ret < 0) {
++			dev_err(&chan->video->dev,
++					"failed to register embedded %s: %d\n",
++					chan->embedded.video->name, ret);
++			goto register_embedded_device_error;
++		}
++	}
+ 
+ 	ret = v4l2_device_register_subdev_nodes(&chan->vi->v4l2_dev);
+ 	if (ret < 0) {
+ 		dev_err(chan->vi->dev, "failed to register subdev nodes\n");
+-		goto graph_error;
++		goto register_nodes_error;
+ 	}
+ 
+ 	chan->link_status++;
+ 
+ 	return 0;
+ 
+-graph_error:
++register_nodes_error:
++	if (chan->embedded.video)
++		video_unregister_device(chan->embedded.video);
++register_embedded_device_error:
++	tegra_vi_graph_remove_links(chan);
++link_error:
+ 	video_unregister_device(chan->video);
+ register_device_error:
+ 	video_device_release(chan->video);
+@@ -397,6 +433,7 @@ static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+ 
+ 	/* cleanup for complete */
+ 	if (chan->link_status) {
++		tegra_channel_cleanup_video_embedded(chan);
+ 		tegra_vi_graph_remove_links(chan);
+ 		tegra_channel_cleanup_video(chan);
+ 		chan->link_status--;
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/mc_common.c b/nvidia-oot/drivers/media/platform/tegra/camera/vi/mc_common.c
+index ee1d6e26d..0f4db0dde 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/mc_common.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/mc_common.c
+@@ -16,6 +16,9 @@
+ #include <media/tegra_camera_platform.h>
+ #include <media/vi.h>
+ #include <media/vi2_registers.h>
++#include <media/gmsl-link.h>
++#include <media/max9296.h>
++#include <media/max9295.h>
+ #include <linux/nvhost.h>
+ 
+ static struct tegra_mc_vi *tegra_mcvi;
+@@ -162,6 +165,10 @@ static int vi_parse_dt(struct tegra_mc_vi *vi, struct platform_device *dev)
+ 	struct device_node *node = dev->dev.of_node;
+ 	struct device_node *ports;
+ 	struct device_node *port;
++	struct device_node *dser_node = NULL;
++	struct i2c_client *dser_i2c = NULL;
++	struct device_node *ser_node = NULL;
++	struct i2c_client *ser_i2c = NULL;
+ 	int value = 0xFF;
+ 	int ret = 0;
+ 
+@@ -171,6 +178,29 @@ static int vi_parse_dt(struct tegra_mc_vi *vi, struct platform_device *dev)
+ 			"Failed to find num of channels, set to 0\n");
+ 		num_channels = 0;
+ 	}
++
++	vi->dser_dev = NULL;
++	dser_node = of_parse_phandle(node, "nvidia,gmsl-dser-device", 0);
++	if (dser_node) {
++		dser_i2c = of_find_i2c_device_by_node(dser_node);
++		of_node_put(dser_node);
++		if (dser_i2c) {
++			dev_info(&dev->dev, "dser_i2c->addr 0x%x", dser_i2c->addr);
++			vi->dser_dev = &dser_i2c->dev;
++		}
++	}
++
++	vi->ser_dev = NULL;
++	ser_node = of_parse_phandle(node, "nvidia,gmsl-ser-device", 0);
++	if (ser_node) {
++		ser_i2c = of_find_i2c_device_by_node(ser_node);
++		of_node_put(ser_node);
++		if (ser_i2c) {
++			dev_info(&dev->dev, "ser_i2c->addr 0x%x", ser_i2c->addr);
++			vi->ser_dev = &ser_i2c->dev;
++		}
++	}
++
+ 	vi->num_channels = num_channels;
+ 
+ 	ports = of_get_child_by_name(node, "ports");
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 69d76521b..fddc52482 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -463,6 +463,39 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+ 		chan->capture_descr_sequence += 1;
+ }
+ 
++static void vi5_release_metadata_buffer(struct tegra_channel *chan,
++	struct vb2_v4l2_buffer *vbuf)
++{
++	struct vb2_buffer *evb = NULL;
++	struct vb2_v4l2_buffer *evbuf;
++	void *frm_buffer;
++
++	spin_lock(&chan->embedded.spin_lock);
++	if (chan->embedded.num_buffers > 0) {
++		evb = chan->embedded.buffers[chan->embedded.tail];
++		chan->embedded.buffers[chan->embedded.tail] = NULL;
++		chan->embedded.tail++;
++		if (chan->embedded.tail > 15)
++			chan->embedded.tail = chan->embedded.tail - 16;
++		chan->embedded.num_buffers--;
++	}
++	spin_unlock(&chan->embedded.spin_lock);
++
++	if (!evb)
++		return;
++
++	frm_buffer = vb2_plane_vaddr(evb, 0);
++	if (!frm_buffer)
++		return;
++
++	memcpy(frm_buffer, chan->emb_buf_addr, 255);
++	evbuf = to_vb2_v4l2_buffer(evb);
++	evbuf->sequence = vbuf->sequence;
++	vb2_set_plane_payload(evb, 0, 68);
++	evb->timestamp = vbuf->vb2_buf.timestamp;
++	vb2_buffer_done(evb, VB2_BUF_STATE_DONE);
++}
++
+ static void vi5_release_buffer(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+@@ -478,6 +511,9 @@ static void vi5_release_buffer(struct tegra_channel *chan,
+ 	vb2_set_plane_payload(&vbuf->vb2_buf, 0, chan->format.sizeimage);
+ 
+ 	vb2_buffer_done(&vbuf->vb2_buf, buf->vb2_state);
++
++	if (chan->embedded_data_height == 1 && buf->vb2_state == VB2_BUF_STATE_DONE)
++		vi5_release_metadata_buffer(chan, vbuf);
+ }
+ 
+ static void vi5_capture_enqueue(struct tegra_channel *chan,
+diff --git a/nvidia-oot/include/media/mc_common.h b/nvidia-oot/include/media/mc_common.h
+index e74971f55..155d756fc 100644
+--- a/nvidia-oot/include/media/mc_common.h
++++ b/nvidia-oot/include/media/mc_common.h
+@@ -31,6 +31,7 @@
+ #define	ENABLE		1
+ #define	DISABLE		0
+ #define MAX_SYNCPT_PER_CHANNEL	3
++#define MAX_CHANNELS 6
+ 
+ #define CAPTURE_MIN_BUFFERS	1U
+ #define CAPTURE_MAX_BUFFERS	240U
+@@ -224,6 +225,21 @@ struct tegra_channel {
+ 	unsigned int embedded_data_width;
+ 	unsigned int embedded_data_height;
+ 
++	struct {
++		struct video_device *video;
++		struct mutex lock;
++		spinlock_t spin_lock;
++		struct vb2_queue queue;
++		/* FIXME: 16 is max queued metadata buffers */
++		struct vb2_buffer *buffers[16];
++		unsigned int head;
++		unsigned int tail;
++		unsigned int num_buffers;
++		void *alloc_ctx;
++		struct media_pad pad;
++		struct v4l2_ctrl_handler ctrl_handler;
++	} embedded;
++
+ 	DECLARE_BITMAP(fmts_bitmap, MAX_FORMAT_NUM);
+ 	atomic_t power_on_refcnt;
+ 	struct v4l2_fh *fh;
+@@ -305,6 +321,9 @@ struct tegra_mc_vi {
+ 	unsigned int num_channels;
+ 	unsigned int num_subdevs;
+ 
++	struct device *dser_dev;
++	struct device *ser_dev;
++
+ 	struct tegra_csi_device *csi;
+ 	struct list_head vi_chans;
+ 	struct tegra_channel *tpg_start;
+@@ -401,7 +420,9 @@ struct tegra_channel_buffer *dequeue_inflight(struct tegra_channel *chan);
+ int tegra_channel_set_power(struct tegra_channel *chan, bool on);
+ 
+ int tegra_channel_init_video(struct tegra_channel *chan);
++int tegra_channel_init_video_embedded(struct tegra_channel *chan);
+ int tegra_channel_cleanup_video(struct tegra_channel *chan);
++int tegra_channel_cleanup_video_embedded(struct tegra_channel *chan);
+ 
+ struct tegra_vi_fops {
+ 	int (*vi_power_on)(struct tegra_channel *chan);
+diff --git a/nvidia-oot/include/media/tegra_camera_core.h b/nvidia-oot/include/media/tegra_camera_core.h
+index be84820cc..b19bdbb8d 100644
+--- a/nvidia-oot/include/media/tegra_camera_core.h
++++ b/nvidia-oot/include/media/tegra_camera_core.h
+@@ -30,7 +30,7 @@
+ /* Width alignment */
+ #define TEGRA_WIDTH_ALIGNMENT	1
+ /* Stride alignment */
+-#define TEGRA_STRIDE_ALIGNMENT	1
++#define TEGRA_STRIDE_ALIGNMENT	64
+ /* Height alignment */
+ #define TEGRA_HEIGHT_ALIGNMENT	1
+ /* Size alignment */
+@@ -44,6 +44,8 @@
+ #define TEGRA_IMAGE_FORMAT_DEF	32
+ 
+ enum tegra_image_dt {
++	TEGRA_IMAGE_DT_EMBEDDED_8 = 18,
++
+ 	TEGRA_IMAGE_DT_YUV420_8 = 24,
+ 	TEGRA_IMAGE_DT_YUV420_10,
+ 
+@@ -64,6 +66,11 @@ enum tegra_image_dt {
+ 	TEGRA_IMAGE_DT_RAW12,
+ 	TEGRA_IMAGE_DT_RAW14,
+ 	TEGRA_IMAGE_DT_RAW16,
++
++	TEGRA_IMAGE_DT_USER_1 = 48,
++	TEGRA_IMAGE_DT_USER_2,
++	TEGRA_IMAGE_DT_USER_3,
++	TEGRA_IMAGE_DT_USER_4,
+ };
+ 
+ /* Supported CSI to VI Data Formats */
+-- 
+2.54.0
+

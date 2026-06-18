@@ -41,7 +41,16 @@ Commit order (5.1.5 reference) — `[x]` done and building on JP7:
 2. `[x]` `0017` Quectel RG255C (option serial + qmi_wwan binding)
 3. `[x]` `0003` ISX031 driver (V4L2/i2c-probe/conftest fixes; -Wmissing-prototypes)
 4. `[x]` `0002` / `0011` / `0027` board DT (translated to JP7 nv-public labels)
-5. `[ ]` `0004`–`0006`, `0010`, `0015`–`0016`, `0025`–`0028` D4xx (one commit per patch after JP7 fixes)
+5. `[~]` `0004`–`0006`, `0010`, `0015`–`0016`, `0025`–`0028` D4xx — ported, pending build/HW test
+   - VI core (`mc_common.[ch]`, `channel.c`, `graph.c`, `vi5_fops.c`,
+     `sensor_common.c`, `tegra_camera_core.h`): embedded-metadata channel,
+     `grey_y8`/`grey_y16` formats, GREY/Y16 stride, frame-interval pad_ops
+   - serdes (`max9295.[ch]`, `max9296.[ch]`, `gmsl-link.h`): pipe mgmt,
+     `init_settings`, GPIO triggers (0010), serdes lock + `settings_setup`
+     guard + `prim_priv`/`sensor_regmap` refactor (0005)
+   - `d4xx.c`: full cumulative 0004→0028 driver, adapted to k6.x
+     (`get/set_frame_interval` in pad_ops, i2c probe/remove conftest guards)
+   - `Makefile`: `obj-m += d4xx.o` + `-DCONFIG_VIDEO_D4XX_SERDES`
 6. `[ ]` `0014` UVC RealSense
 7. `[ ]` `0033` rtl8192eu
 8. `[ ]` `0013` defconfig → `sources/configs/7.2/defconfig` (also enables CONFIG_CARTKEN_PANIC_LOGGER)

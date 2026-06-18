@@ -1,0 +1,27 @@
+From 8a9cd2e4397b215561c954b17c46153b967b9f7c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 17 Jun 2026 08:47:44 +0200
+Subject: [PATCH 03/11] usb: Add Quectel RG255C to qmi_wwan
+
+Bind the RG255C QMI data interface (3) so the cellular data path comes up.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ kernel/kernel-noble/drivers/net/usb/qmi_wwan.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/kernel/kernel-noble/drivers/net/usb/qmi_wwan.c b/kernel/kernel-noble/drivers/net/usb/qmi_wwan.c
+index 15ea603be..a15ec17db 100644
+--- a/kernel/kernel-noble/drivers/net/usb/qmi_wwan.c
++++ b/kernel/kernel-noble/drivers/net/usb/qmi_wwan.c
+@@ -1448,6 +1448,7 @@ static const struct usb_device_id products[] = {
+ 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0195, 4)},	/* Quectel EG95 */
+ 	{QMI_FIXED_INTF(0x2c7c, 0x0296, 4)},	/* Quectel BG96 */
+ 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x030e, 4)},	/* Quectel EM05GV2 */
++	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0316, 3)},	/* Quectel RG255C */
+ 	{QMI_QUIRK_SET_DTR(0x2cb7, 0x0104, 4)},	/* Fibocom NL678 series */
+ 	{QMI_QUIRK_SET_DTR(0x2cb7, 0x0112, 0)},	/* Fibocom FG132 */
+ 	{QMI_FIXED_INTF(0x0489, 0xe0b4, 0)},	/* Foxconn T77W968 LTE */
+-- 
+2.54.0
+

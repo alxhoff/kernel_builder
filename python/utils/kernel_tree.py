@@ -96,9 +96,24 @@ def nvbuild_incremental_build_commands(
     ]
     if not oot_only:
         parts += [
-            'echo "==> Incremental in-tree kernel (olddefconfig + Image + modules)"',
-            f'make -j{jobs} ARCH={arch} -C "$OUT_SRC" olddefconfig',
-            f'make -j{jobs} ARCH={arch} -C "$OUT_SRC" --output-sync=target Image modules',
+            'echo "==> Incremental in-tree kernel (reuse .config + Image + modules)"',
+            # CROSS_COMPILE MUST be passed to olddefconfig: Kconfig evaluates
+            # compiler-gated symbols (e.g. CC_HAVE_STACKPROTECTOR_SYSREG, which
+            # selects CONFIG_STACKPROTECTOR_PER_TASK on arm64) with $(CC). Without
+            # the cross prefix, $(CC) falls back to the host x86 gcc, which rejects
+            # -mstack-protector-guard=sysreg and silently drops PER_TASK. That
+            # desyncs the config from a vmlinux built per-task and makes OOT modpost
+            # fail with "__stack_chk_guard undefined". The env exports CROSS_COMPILE
+            # (see kernel_builder.py); guard against it being empty just in case.
+            'if [[ -z "${CROSS_COMPILE:-}" ]]; then echo "Error: CROSS_COMPILE unset; olddefconfig would mis-detect compiler-gated configs (e.g. STACKPROTECTOR_PER_TASK)." >&2; exit 1; fi',
+            # Resolve any NEW Kconfig symbols to their defaults non-interactively
+            # (stdin from /dev/null). olddefconfig is idempotent on a complete
+            # .config: it rewrites byte-identical content, so kbuild's syncconfig
+            # stays a no-op and the build remains incremental. Crucially it also
+            # stops `make` from dropping into an interactive oldconfig prompt
+            # (which hangs the build) whenever the source tree adds new symbols.
+            f'make -j{jobs} ARCH={arch} CROSS_COMPILE="${{CROSS_COMPILE}}" -C "$OUT_SRC" olddefconfig </dev/null',
+            f'make -j{jobs} ARCH={arch} CROSS_COMPILE="${{CROSS_COMPILE}}" -C "$OUT_SRC" --output-sync=target Image modules </dev/null',
         ]
     else:
         parts.append('echo "==> Incremental OOT modules only (kernel image unchanged)"')

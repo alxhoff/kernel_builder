@@ -1,0 +1,60 @@
+From 49d7503db5f920831d3aa4c2c80744433d00d74b Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Wed, 17 Jun 2026 10:42:36 +0200
+Subject: [PATCH 08/11] ISX031: Fix -Wmissing-prototypes under the JP7
+ toolchain
+
+The JP7 nvidia-oot build enables -Wmissing-prototypes -Werror. Mark the
+internal-only register-list helpers static (Deser_write_reg_list,
+serdesa_write_reg_list) and add a prototype for the EXPORT_SYMBOL'd
+Deser_lock in serdes.h.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ nvidia-oot/drivers/media/i2c/isx031/serdes.c  | 2 +-
+ nvidia-oot/drivers/media/i2c/isx031/serdes.h  | 2 ++
+ nvidia-oot/drivers/media/i2c/isx031/serdesa.c | 2 +-
+ 3 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/nvidia-oot/drivers/media/i2c/isx031/serdes.c b/nvidia-oot/drivers/media/i2c/isx031/serdes.c
+index 6ff7af1f2..b5748c57c 100644
+--- a/nvidia-oot/drivers/media/i2c/isx031/serdes.c
++++ b/nvidia-oot/drivers/media/i2c/isx031/serdes.c
+@@ -76,7 +76,7 @@ static int Deser_write_reg(int channel, u8 slave_addr, u16 reg, u8 val)
+ 	return err;
+ }
+ 
+-int Deser_write_reg_list(int channel, struct deser_reg *table, int size)
++static int Deser_write_reg_list(int channel, struct deser_reg *table, int size)
+ {
+ 	struct i2c_client *i2c_client = NULL;
+ 	int err = 0, i;
+diff --git a/nvidia-oot/drivers/media/i2c/isx031/serdes.h b/nvidia-oot/drivers/media/i2c/isx031/serdes.h
+index e4ae6ddd2..68ee08715 100644
+--- a/nvidia-oot/drivers/media/i2c/isx031/serdes.h
++++ b/nvidia-oot/drivers/media/i2c/isx031/serdes.h
+@@ -12,6 +12,8 @@ struct deser_reg
+ 	u16 val;
+ };
+ 
++int Deser_lock(int channel);
++
+ #define DESERILIAER_ADDR    0x48
+ #define SERILIAER_ADDR      0x62
+ #define SERILIAER_ADDR_A    0x41
+diff --git a/nvidia-oot/drivers/media/i2c/isx031/serdesa.c b/nvidia-oot/drivers/media/i2c/isx031/serdesa.c
+index 53b150e8d..ab4ec3523 100644
+--- a/nvidia-oot/drivers/media/i2c/isx031/serdesa.c
++++ b/nvidia-oot/drivers/media/i2c/isx031/serdesa.c
+@@ -100,7 +100,7 @@ static int serdesa_write_reg(int channel, u8 slave_addr, u16 reg, u8 val)
+ // 	return 1;
+ // }
+ 
+-int serdesa_write_reg_list(int channel, struct deser_reg *table, int size)
++static int serdesa_write_reg_list(int channel, struct deser_reg *table, int size)
+ {
+ 	struct i2c_client *i2c_client = NULL;
+ 	int err = 0, i;
+-- 
+2.54.0
+
