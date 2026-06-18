@@ -611,7 +611,7 @@ if [[ "$ONLY_KERNEL_BUILD" == true ]]; then
 	)
 	shopt -u nullglob
 	cp "${helper_files[@]}" "$TEGRA_DIR/"
-	chmod +x "$TEGRA_DIR/"*.sh
+	find "$TEGRA_DIR" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} +
 
 	if [[ "$JETPACK_VERSION" != 7.* && ! -d "$TEGRA_DIR/toolchain" ]]; then
 		echo "Cloning Jetson Linux toolchain into $TEGRA_DIR/toolchain..."
@@ -664,7 +664,7 @@ if [[ "$ONLY_OOT_MODULES_BUILD" == true ]]; then
 	)
 	shopt -u nullglob
 	cp "${helper_files[@]}" "$TEGRA_DIR/"
-	chmod +x "$TEGRA_DIR/"*.sh
+	find "$TEGRA_DIR" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} +
 
 	KERNEL_BUILD_ARGS=(
 		--patch "$JETPACK_VERSION"
@@ -703,7 +703,7 @@ if [[ "$ONLY_INSTALL_KERNEL_ARTIFACTS" == true ]]; then
 	)
 	shopt -u nullglob
 	cp "${helper_files[@]}" "$TEGRA_DIR/"
-	chmod +x "$TEGRA_DIR/"*.sh
+	find "$TEGRA_DIR" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} +
 
 	KERNEL_BUILD_ARGS=(
 		--patch "$JETPACK_VERSION"
@@ -954,7 +954,12 @@ fi
 # that needs it there.
 rm -f "$TEGRA_DIR/setup_tegra_package.sh"
 echo "Setting execute permissions for scripts..."
-chmod +x "$TEGRA_DIR/"*.sh
+# Only chmod regular files. NVIDIA ships some top-level .sh as symlinks
+# (e.g. l4t_initrd_flash.sh -> tools/kernel_flash/...), which can dangle in
+# the JP7 BSP layout; a plain `chmod +x *.sh` then fails on the dangling link
+# and, under set -e, aborts the whole setup. -type f matches real files and
+# skips symlinks (dangling or not) without erroring.
+find "$TEGRA_DIR" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} +
 echo "All rootfs helper scripts staged in $TEGRA_DIR."
 
 prompt_user
