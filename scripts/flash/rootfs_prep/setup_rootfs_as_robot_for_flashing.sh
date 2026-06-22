@@ -1005,7 +1005,7 @@ chmod +x "$FLASH_SCRIPT"
 MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)
 
 if [[ "$MAJOR_VERSION" -ge 6 ]]; then
-  DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+  DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
   echo "Jetpack 6.0+ detected, using DTB file: $DTB_FILE"
   sudo "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR" --dtb-file "$DTB_FILE"
 else

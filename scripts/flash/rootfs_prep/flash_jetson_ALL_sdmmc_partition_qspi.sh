@@ -244,7 +244,7 @@ else
     KERNEL_IMAGE="$L4T_DIR/kernel/Image"
     if [ -z "$DTB_FILE" ]; then
         if [[ "$L4T_VERSION" == 6* || "$L4T_VERSION" == 7* ]]; then
-            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
         else
             DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
         fi

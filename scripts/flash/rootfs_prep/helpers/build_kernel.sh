@@ -304,6 +304,51 @@ is_valid_defconfig() {
     [[ "$config_lines" -ge 50 ]]
 }
 
+depmod_rootfs_modules() {
+    local rootfs_dir="$1"
+    local image_path="$2"
+    local kernel_version=""
+
+    [[ -f "$image_path" ]] || return 0
+    kernel_version="$(strings "$image_path" | grep -oP 'Linux version \K[0-9]+\.[0-9]+\.[0-9]+(?:-[\w\d\.-]+)?' | head -n 1 || true)"
+    if [[ -z "$kernel_version" ]]; then
+        echo "Warning: could not determine kernel version for depmod; skipping." >&2
+        return 0
+    fi
+
+    echo "Running depmod for ${kernel_version} in ${rootfs_dir}..."
+    depmod -b "$rootfs_dir" "$kernel_version"
+
+    local rtl8822ce_ko=""
+    rtl8822ce_ko="$(find "$rootfs_dir/lib/modules/$kernel_version" -name 'rtl8822ce.ko' 2>/dev/null | head -n 1 || true)"
+    local iwlwifi_ko=""
+    iwlwifi_ko="$(find "$rootfs_dir/lib/modules/$kernel_version" -name 'iwlwifi.ko' 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$iwlwifi_ko" ]]; then
+        echo "Intel internal Wi-Fi module staged: $iwlwifi_ko"
+    else
+        echo "Warning: iwlwifi.ko not found (Intel AX210 robots need this for wlan0)" >&2
+    fi
+    if [[ -n "$rtl8822ce_ko" ]]; then
+        echo "Realtek internal Wi-Fi module staged: $rtl8822ce_ko"
+    else
+        echo "Warning: rtl8822ce.ko not found (RTL8822CE robots need this for wlan0)" >&2
+    fi
+}
+
+install_cartken_wlan0_modules_load() {
+    local rootfs_dir="$1"
+    local modules_load_file="$rootfs_dir/etc/modules-load.d/cartken-internal-wifi.conf"
+
+    sudo mkdir -p "$rootfs_dir/etc/modules-load.d"
+    # Cartken udev names iwlwifi (Intel AX210) or rtl88x2ce (RTL8822CE) as wlan0.
+    # Load both; the driver that matches the PCIe card present on the board wins.
+    sudo tee "$modules_load_file" >/dev/null <<'EOF'
+iwlwifi
+rtl8822ce
+EOF
+    echo "Installed $modules_load_file (Cartken internal wlan0 drivers)"
+}
+
 restore_stock_nvidia_defconfig() {
     local defconfig_path="$1"
     local tegra_prod_defconfig="$(dirname "$defconfig_path")/tegra_prod_defconfig"
@@ -562,6 +607,11 @@ if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
     sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
 else
     sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
+fi
+
+if [[ "$BUILD_FLOW" != "jp5" && -d "$ROOTFS_ROOT_DIR" ]]; then
+    depmod_rootfs_modules "$ROOTFS_ROOT_DIR" "$KERNEL_IMAGE_SRC"
+    install_cartken_wlan0_modules_load "$ROOTFS_ROOT_DIR"
 fi
 
 echo "Kernel build completed successfully!"
