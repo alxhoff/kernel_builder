@@ -493,9 +493,14 @@ else
     KERNEL_IMAGE_SRC="$KERNEL_BUILD_DIR/arch/arm64/boot/Image"
     if [[ -n "$DTB_NAME_OVERRIDE" ]]; then
         DTB_NAMES=("$DTB_NAME_OVERRIDE")
-    elif [[ "$JP_MAJOR" == "7"* ]]; then
-        DTB_NAMES=("tegra234-p3737-0000+p3701-0000.dtb")
     else
+        # Both the JP6 and JP7 AGX Orin devkit flash confs set
+        #   DTB_FILE=tegra234-p3737-0000+p3701-0000-nv.dtb
+        # and the bootloader loads that "-nv" variant from the kernel-dtb
+        # partition. Our camera nodes (cartken-10-GMSL.dtsi) live only in the
+        # "-nv" DTS, so we MUST stage the "-nv" dtb under that exact name —
+        # staging the base "tegra234-p3737-0000+p3701-0000.dtb" silently ships
+        # a camera-less tree that the partition flash never even reads.
         DTB_NAMES=("tegra234-p3737-0000+p3701-0000-nv.dtb")
     fi
     DTB_SRC_DIR="$(resolve_oot_dtb_src_dir "$KERNEL_OUT_DIR" || true)"

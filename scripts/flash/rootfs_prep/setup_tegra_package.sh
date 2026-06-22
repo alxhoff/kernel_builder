@@ -1,6 +1,10 @@
 #!/bin/bash
 
-set -ex
+set -e
+# Command tracing (`set -x`) is extremely noisy — it echoes every line of the
+# script, which even turns `--help` into a wall of `+ ...` output. Keep it
+# opt-in for troubleshooting: run with SETUP_DEBUG=1 to enable.
+[[ -n "${SETUP_DEBUG:-}" ]] && set -x
 
 # --- Optional Docker wrapper ----------------------------------------------
 # If --docker is given, re-launch this script inside a consistent

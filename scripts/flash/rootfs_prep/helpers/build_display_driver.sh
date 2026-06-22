@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -ex
+set -e
+# Command tracing (`set -x`) is opt-in; run with SETUP_DEBUG=1 to enable it.
+[[ -n "${SETUP_DEBUG:-}" ]] && set -x
 
 CROSS_PREFIX="aarch64-buildroot-linux-gnu-"
 TOOLCHAIN_PATH=""
