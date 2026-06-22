@@ -134,14 +134,26 @@ if [[ "$MODE" == "copy-kernel" ]]; then
     cp "$KERNEL_IMAGE" "$L4T_DIR/rootfs/boot/Image"
     cp "$STAGED_DTB" "$L4T_DIR/kernel/dtb"
     cp "$STAGED_DTB" "$L4T_DIR/rootfs/boot/dtb"
+    cp "$STAGED_DTB" "$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
     cp -r "$MODULES_DIR" "$L4T_DIR/rootfs/lib/modules"
   fi
 
-  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -g $JP7_BPMP_DTB jetson-agx-orin-devkit mmcblk0p1"
+  # p3737 conf DTB_FILE is tegra234-p3701-0000-p3737-0000.dtb; camera DT lives in -nv.dtb.
+  PARTITION_DTB="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+  if [[ -f "$PARTITION_DTB" ]]; then
+    DTB_FILE="$PARTITION_DTB"
+  else
+    DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
+  fi
+  CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -g $JP7_BPMP_DTB -d $(to_absolute_path "$DTB_FILE") jetson-agx-orin-devkit mmcblk0p1"
 else
   KERNEL_IMAGE="$L4T_DIR/kernel/Image"
   if [[ -z "$DTB_FILE" ]]; then
-    DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000.dtb"
+    if [[ -f "$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" ]]; then
+      DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+    else
+      DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
+    fi
   fi
   CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML -g $JP7_BPMP_DTB -K $(to_absolute_path "$KERNEL_IMAGE") -d $(to_absolute_path "$DTB_FILE") jetson-agx-orin-devkit mmcblk0p1"
 fi

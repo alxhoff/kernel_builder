@@ -463,6 +463,34 @@ resolve_built_dtb_path() {
     return 1
 }
 
+# UEFI applies L4T/camera DTBOs on top of the extlinux FDT. Large camera trees
+# (cartken-10-GMSL.dtsi) need extra blob padding or overlay merge fails with
+# FDT_ERR_NOSPACE and UEFI falls back to the stock embedded DTB (num-channels=2).
+repack_dtb_for_uefi_overlay_padding() {
+    local src="$1"
+    local dest="$2"
+    local padding="${TEGRA_DTB_PADDING:-0x20000}"
+    local tmp_dts=""
+
+    if ! command -v dtc &>/dev/null; then
+        echo "Warning: dtc not found; copying DTB without UEFI overlay padding." >&2
+        sudo cp -v "$src" "$dest"
+        return 0
+    fi
+
+    tmp_dts="$(mktemp "${TMPDIR:-/tmp}/cartken-dtb.XXXXXX.dts")"
+    if dtc -I dtb -O dts -o "$tmp_dts" "$src" \
+        && dtc -I dts -O dtb -p "$padding" -o "$dest" "$tmp_dts"; then
+        rm -f "$tmp_dts"
+        echo "Repacked $(basename "$dest") with ${padding} bytes UEFI overlay padding"
+        return 0
+    fi
+
+    rm -f "$tmp_dts"
+    echo "Warning: DTB repack failed; copying without padding." >&2
+    sudo cp -v "$src" "$dest"
+}
+
 if [ "$BUILD_FLOW" = "jp5" ]; then
     sudo make -C "$KERNEL_SRC" $MAKE_ARGS mrproper
 
@@ -539,14 +567,14 @@ else
     if [[ -n "$DTB_NAME_OVERRIDE" ]]; then
         DTB_NAMES=("$DTB_NAME_OVERRIDE")
     else
-        # Both the JP6 and JP7 AGX Orin devkit flash confs set
-        #   DTB_FILE=tegra234-p3737-0000+p3701-0000-nv.dtb
-        # and the bootloader loads that "-nv" variant from the kernel-dtb
-        # partition. Our camera nodes (cartken-10-GMSL.dtsi) live only in the
-        # "-nv" DTS, so we MUST stage the "-nv" dtb under that exact name —
-        # staging the base "tegra234-p3737-0000+p3701-0000.dtb" silently ships
-        # a camera-less tree that the partition flash never even reads.
+        # Camera nodes (cartken-10-GMSL.dtsi) are built only into the "-nv" DTS.
+        # Rootfs/extlinux uses that "-nv" filename, but p3737-0000+p3701-0000.conf
+        # sets DTB_FILE=tegra234-p3701-0000-p3737-0000.dtb for kernel-dtb partition
+        # flashes (-k A_kernel-dtb without -d). Stage both names from the same blob.
         DTB_NAMES=("tegra234-p3737-0000+p3701-0000-nv.dtb")
+        # p3737 conf + UEFI extlinux expect this partition name (no '+'). Stage the same
+        # camera blob under both names so partition flash and FDT paths stay aligned.
+        FLASH_PARTITION_DTB_NAMES=("tegra234-p3701-0000-p3737-0000.dtb")
     fi
     DTB_SRC_DIR="$(resolve_oot_dtb_src_dir "$KERNEL_OUT_DIR" || true)"
 fi
@@ -571,10 +599,12 @@ else
     exit 1
 fi
 
+ROOTFS_ABS_DTB_FILE="/boot/dtb/${DTB_NAMES[0]}"
+BUILT_CAMERA_DTB=""
+
 for DTB_NAME in "${DTB_NAMES[@]}"; do
     KERNEL_DTB_FILE="$KERNEL_DTB_DIR/$DTB_NAME"
     ROOTFS_DTB_FILE="$ROOTFS_DTB_DIR/$DTB_NAME"
-    ROOTFS_ABS_DTB_FILE="/boot/dtb/$DTB_NAME"
     DTB_SRC=""
 
     if [[ -n "$DTB_SRC_DIR" ]]; then
@@ -589,10 +619,15 @@ for DTB_NAME in "${DTB_NAMES[@]}"; do
 
     if [[ -n "$DTB_SRC" && -f "$DTB_SRC" ]]; then
         echo "Using built DTB: $DTB_SRC"
-        echo "Copying $(basename "$DTB_SRC") to $KERNEL_DTB_FILE..."
-        sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
-        echo "Copying $(basename "$DTB_SRC") to $ROOTFS_DTB_FILE..."
-        sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
+        echo "Staging $(basename "$DTB_SRC") to $KERNEL_DTB_FILE..."
+        if [[ "$BUILD_FLOW" != "jp5" ]]; then
+            repack_dtb_for_uefi_overlay_padding "$DTB_SRC" "$KERNEL_DTB_FILE"
+            sudo cp -v "$KERNEL_DTB_FILE" "$ROOTFS_DTB_FILE"
+        else
+            sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
+            sudo cp -v "$DTB_SRC" "$ROOTFS_DTB_FILE"
+        fi
+        BUILT_CAMERA_DTB="$KERNEL_DTB_FILE"
     else
         echo "Error: $DTB_NAME not found under kernel_out." >&2
         if [[ -n "$DTB_SRC_DIR" && -d "$DTB_SRC_DIR" ]]; then
@@ -602,6 +637,19 @@ for DTB_NAME in "${DTB_NAMES[@]}"; do
         exit 1
     fi
 done
+
+if [[ -n "${FLASH_PARTITION_DTB_NAMES:-}" && -n "$BUILT_CAMERA_DTB" ]]; then
+    for FLASH_DTB_NAME in "${FLASH_PARTITION_DTB_NAMES[@]}"; do
+        FLASH_DTB_FILE="$KERNEL_DTB_DIR/$FLASH_DTB_NAME"
+        ROOTFS_FLASH_DTB_FILE="$ROOTFS_DTB_DIR/$FLASH_DTB_NAME"
+        echo "Aliasing camera DTB for kernel-dtb partition flash: $FLASH_DTB_FILE"
+        sudo cp -v "$BUILT_CAMERA_DTB" "$FLASH_DTB_FILE"
+        sudo cp -v "$BUILT_CAMERA_DTB" "$ROOTFS_FLASH_DTB_FILE"
+    done
+    # UEFI reads FDT from extlinux; use the flash-conf partition name (no '+') so the
+    # path matches what flash.sh / p3737.conf expect and avoids FDT load failures.
+    ROOTFS_ABS_DTB_FILE="/boot/dtb/${FLASH_PARTITION_DTB_NAMES[0]}"
+fi
 
 if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
     sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"

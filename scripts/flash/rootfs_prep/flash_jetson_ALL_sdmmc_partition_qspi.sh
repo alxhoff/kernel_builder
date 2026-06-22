@@ -237,13 +237,22 @@ if [[ "$MODE" == "copy-kernel" ]]; then
     echo "Copy DTB file: cp $STAGED_DTB -> $L4T_DIR/rootfs/boot/dtb"
     [[ "$DRY_RUN" == false ]] && cp "$STAGED_DTB" "$L4T_DIR/rootfs/boot/dtb"
     echo "Copy kernel modules: cp -r $MODULES_DIR -> $L4T_DIR/rootfs/lib/modules"
+    [[ "$DRY_RUN" == false ]] && cp "$STAGED_DTB" "$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
     [[ "$DRY_RUN" == false ]] && cp -r "$MODULES_DIR" "$L4T_DIR/rootfs/lib/modules"
 
-    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) jetson-agx-orin-devkit mmcblk0p1"
+    PARTITION_DTB="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+    if [[ -f "$PARTITION_DTB" ]]; then
+      FLASH_DTB="$PARTITION_DTB"
+    else
+      FLASH_DTB="$STAGED_DTB"
+    fi
+    CMD="sudo ./flash.sh -c $BOOTLOADER_PARTITION_XML $(jp7_flash_extra_args) -d $(to_absolute_path "$FLASH_DTB") jetson-agx-orin-devkit mmcblk0p1"
 else
     KERNEL_IMAGE="$L4T_DIR/kernel/Image"
     if [ -z "$DTB_FILE" ]; then
-        if [[ "$L4T_VERSION" == 6* || "$L4T_VERSION" == 7* ]]; then
+        if [[ -f "$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" ]]; then
+            DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+        elif [[ "$L4T_VERSION" == 6* || "$L4T_VERSION" == 7* ]]; then
             DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
         else
             DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"

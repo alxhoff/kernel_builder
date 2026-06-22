@@ -1005,8 +1005,17 @@ chmod +x "$FLASH_SCRIPT"
 MAJOR_VERSION=$(echo "$TARGET_BSP" | cut -d. -f1)
 
 if [[ "$MAJOR_VERSION" -ge 6 ]]; then
-  DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
-  echo "Jetpack 6.0+ detected, using DTB file: $DTB_FILE"
+  # flash.sh -d must match p3737.conf DTB_FILE for UEFI (A_cpu-bootloader) embedding.
+  if [[ -f "$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb" ]]; then
+    DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3701-0000-p3737-0000.dtb"
+  else
+    DTB_FILE="$L4T_DIR/kernel/dtb/tegra234-p3737-0000+p3701-0000-nv.dtb"
+  fi
+  echo "JetPack 6.0+ detected, using DTB file: $DTB_FILE"
+  if command -v fdtget &>/dev/null; then
+    fdtget "$DTB_FILE" /tegra-capture-vi num-channels 2>/dev/null \
+      && echo "  tegra-capture-vi num-channels=$(fdtget "$DTB_FILE" /tegra-capture-vi num-channels 2>/dev/null) (expect 14 for Cartken cameras)"
+  fi
   sudo "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR" --dtb-file "$DTB_FILE"
 else
   sudo "$FLASH_SCRIPT" --l4t-dir "$L4T_DIR"
