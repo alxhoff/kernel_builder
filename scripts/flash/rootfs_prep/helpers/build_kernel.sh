@@ -646,15 +646,26 @@ if [[ -n "${FLASH_PARTITION_DTB_NAMES:-}" && -n "$BUILT_CAMERA_DTB" ]]; then
         sudo cp -v "$BUILT_CAMERA_DTB" "$FLASH_DTB_FILE"
         sudo cp -v "$BUILT_CAMERA_DTB" "$ROOTFS_FLASH_DTB_FILE"
     done
-    # UEFI reads FDT from extlinux; use the flash-conf partition name (no '+') so the
-    # path matches what flash.sh / p3737.conf expect and avoids FDT load failures.
-    ROOTFS_ABS_DTB_FILE="/boot/dtb/${FLASH_PARTITION_DTB_NAMES[0]}"
 fi
 
-if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
-    sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
+# JP6/JP7 UEFI DTB priority (NVIDIA UEFI guide):
+#   1. extlinux FDT (rootfs file) + firmware overlays
+#   2. A_kernel-dtb partition (when FDT line absent or unusable)
+#   3. UEFI embedded DTB (stock fallback)
+# A rootfs FDT that fails overlay merge skips (2) and lands on stock (3).
+# Cartken cameras live in the flashed A_kernel-dtb blob; do NOT add an FDT line.
+if [[ "$BUILD_FLOW" == "jp5" ]]; then
+    ROOTFS_ABS_DTB_FILE="/boot/dtb/${DTB_NAMES[0]}"
+    if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
+        sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
+    else
+        sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
+    fi
 else
-    sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
+    if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
+        sed -i '/^[[:space:]]*FDT /d' "$ROOTFS_EXTLINUX_FILE"
+        echo "Removed extlinux FDT line (JP6/JP7 boots DTB from A_kernel-dtb partition)"
+    fi
 fi
 
 if [[ "$BUILD_FLOW" != "jp5" && -d "$ROOTFS_ROOT_DIR" ]]; then

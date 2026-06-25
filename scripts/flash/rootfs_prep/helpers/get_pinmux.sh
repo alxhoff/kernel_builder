@@ -140,6 +140,28 @@ apply_jp7_cartken_pinmux_overlay() {
   echo "Applied JP7 cartken pinmux overlay to $l4t_dir"
 }
 
+# JP7/R39: UEFI still applies OVERLAY_DTB_FILE from the flash conf at boot (same
+# model as JP6). Cartken cameras are in the main DTB; drop devkit camera dtbos
+# that cause overlay merge failure and a stock-DTB fallback (num-channels=2).
+apply_jp7_cartken_overlay_flash_conf() {
+  local l4t_dir="$1"
+  local devkit_conf="$l4t_dir/jetson-agx-orin-devkit.conf"
+  local cartken_overlays
+  cartken_overlays='L4TConfiguration.dtbo,tegra234-p3737-0000+p3701-0000-dynamic.dtbo,tegra234-carveouts.dtbo,tegra-optee.dtbo,T234SetFmpImageTypeGuid.dtbo'
+
+  if [[ ! -f "$devkit_conf" ]]; then
+    echo "Warning: $devkit_conf not found; skipping cartken OVERLAY_DTB_FILE patch" >&2
+    return 0
+  fi
+
+  if grep -q '^OVERLAY_DTB_FILE=' "$devkit_conf"; then
+    sed -i "s|^OVERLAY_DTB_FILE=.*|OVERLAY_DTB_FILE=\"${cartken_overlays}\";|" "$devkit_conf"
+    echo "Patched cartken JP7 overlays in $(basename "$devkit_conf") (devkit camera dtbos removed)"
+  else
+    echo "Warning: no OVERLAY_DTB_FILE in $devkit_conf" >&2
+  fi
+}
+
 apply_legacy_pinmux_tree() {
   local l4t_dir="$1"
   local overlay_src="$2"
@@ -210,6 +232,7 @@ fi
 if [[ "$major_version" -eq 7 ]]; then
   echo "get_pinmux.sh: JP7 overlay mode (cartken pinmux only; NVIDIA board confs preserved)"
   apply_jp7_cartken_pinmux_overlay "$L4T_DIR" "$PINMUX_SRC"
+  apply_jp7_cartken_overlay_flash_conf "$L4T_DIR"
 else
   apply_legacy_pinmux_tree "$L4T_DIR" "$PINMUX_SRC"
 fi
