@@ -463,9 +463,65 @@ resolve_built_dtb_path() {
     return 1
 }
 
-# UEFI applies L4T/camera DTBOs on top of the extlinux FDT. Large camera trees
-# (cartken-10-GMSL.dtsi) need extra blob padding or overlay merge fails with
-# FDT_ERR_NOSPACE and UEFI falls back to the stock embedded DTB (num-channels=2).
+# JP6/JP7 platform overlays normally live in QSPI and are merged at flash time
+# (TBCDTB + OVERLAY_DTB_FILE). When extlinux FDT points at rootfs, QSPI overlays
+# are skipped — merge them at build time so boot needs only the FDT file.
+JP7_PLATFORM_OVERLAY_DTBOS=(
+    "L4TConfiguration.dtbo"
+    "tegra234-p3737-0000+p3701-0000-dynamic.dtbo"
+    "tegra234-carveouts.dtbo"
+    "tegra-optee.dtbo"
+    "T234SetFmpImageTypeGuid.dtbo"
+)
+
+merge_platform_overlays_into_dtb() {
+    local src="$1"
+    local dest="$2"
+    local dtbo_dir="$3"
+    local overlay_paths=()
+    local dtbo=""
+
+    for dtbo in "${JP7_PLATFORM_OVERLAY_DTBOS[@]}"; do
+        if [[ -f "$dtbo_dir/$dtbo" ]]; then
+            overlay_paths+=("$dtbo_dir/$dtbo")
+        else
+            echo "Warning: platform overlay missing, skipping merge: $dtbo_dir/$dtbo" >&2
+        fi
+    done
+
+    if [[ ${#overlay_paths[@]} -eq 0 ]]; then
+        echo "Warning: no platform overlays found under $dtbo_dir; using base DTB only." >&2
+        cp -f "$src" "$dest"
+        return 0
+    fi
+
+    if ! command -v fdtoverlay &>/dev/null; then
+        echo "Error: fdtoverlay required to pre-merge JP7 platform overlays for rootfs FDT boot." >&2
+        exit 1
+    fi
+
+    if ! fdtoverlay -i "$src" -o "$dest" "${overlay_paths[@]}"; then
+        echo "Error: fdtoverlay failed merging platform overlays into $(basename "$dest")" >&2
+        exit 1
+    fi
+    echo "Pre-merged ${#overlay_paths[@]} JP7 platform overlay(s) into $(basename "$dest")"
+}
+
+stage_jp7_platform_overlays_to_rootfs() {
+    local dtbo_dir="$1"
+    local rootfs_dtb_dir="$2"
+    local dtbo=""
+
+    for dtbo in "${JP7_PLATFORM_OVERLAY_DTBOS[@]}"; do
+        if [[ -f "$dtbo_dir/$dtbo" ]]; then
+            sudo cp -v "$dtbo_dir/$dtbo" "$rootfs_dtb_dir/$dtbo"
+        else
+            echo "Warning: platform overlay not staged (missing): $dtbo_dir/$dtbo" >&2
+        fi
+    done
+}
+
+# UEFI may still apply extlinux OVERLAYS at boot; keep padding headroom anyway.
 repack_dtb_for_uefi_overlay_padding() {
     local src="$1"
     local dest="$2"
@@ -621,7 +677,10 @@ for DTB_NAME in "${DTB_NAMES[@]}"; do
         echo "Using built DTB: $DTB_SRC"
         echo "Staging $(basename "$DTB_SRC") to $KERNEL_DTB_FILE..."
         if [[ "$BUILD_FLOW" != "jp5" ]]; then
-            repack_dtb_for_uefi_overlay_padding "$DTB_SRC" "$KERNEL_DTB_FILE"
+            merged_dtb="$(mktemp "${TMPDIR:-/tmp}/cartken-merged-dtb.XXXXXX.dtb")"
+            merge_platform_overlays_into_dtb "$DTB_SRC" "$merged_dtb" "$KERNEL_DTB_DIR"
+            repack_dtb_for_uefi_overlay_padding "$merged_dtb" "$KERNEL_DTB_FILE"
+            rm -f "$merged_dtb"
             sudo cp -v "$KERNEL_DTB_FILE" "$ROOTFS_DTB_FILE"
         else
             sudo cp -v "$DTB_SRC" "$KERNEL_DTB_FILE"
@@ -648,24 +707,32 @@ if [[ -n "${FLASH_PARTITION_DTB_NAMES:-}" && -n "$BUILT_CAMERA_DTB" ]]; then
     done
 fi
 
+if [[ "$BUILD_FLOW" != "jp5" && -d "$ROOTFS_DTB_DIR" ]]; then
+    stage_jp7_platform_overlays_to_rootfs "$KERNEL_DTB_DIR" "$ROOTFS_DTB_DIR"
+fi
+
 # JP6/JP7 UEFI DTB priority (NVIDIA UEFI guide):
-#   1. extlinux FDT (rootfs file) + firmware overlays
-#   2. A_kernel-dtb partition (when FDT line absent or unusable)
-#   3. UEFI embedded DTB (stock fallback)
-# A rootfs FDT that fails overlay merge skips (2) and lands on stock (3).
-# Cartken cameras live in the flashed A_kernel-dtb blob; do NOT add an FDT line.
-if [[ "$BUILD_FLOW" == "jp5" ]]; then
-    ROOTFS_ABS_DTB_FILE="/boot/dtb/${DTB_NAMES[0]}"
+#   1. extlinux FDT (rootfs) — Cartken requirement: DTB must be updatable on rootfs
+#   2. A_kernel-dtb partition (when FDT absent or load/merge fails)
+#   3. UEFI embedded DTB in QSPI (TBCDTB + flash-time overlays; stock fallback)
+# Without extlinux FDT, boot uses (3) regardless of what is on disk or in A_kernel-dtb.
+# Platform overlays are pre-merged at build time so UEFI does not need QSPI dtbos.
+if [[ -f "$ROOTFS_EXTLINUX_FILE" ]]; then
+    if [[ -n "${FLASH_PARTITION_DTB_NAMES:-}" ]]; then
+        # Robots already use the JP5-style flash partition name in extlinux.
+        ROOTFS_ABS_DTB_FILE="/boot/dtb/${FLASH_PARTITION_DTB_NAMES[0]}"
+    else
+        ROOTFS_ABS_DTB_FILE="/boot/dtb/${DTB_NAMES[0]}"
+    fi
     if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
         sed -i "s|^[[:space:]]*FDT .*|      FDT ${ROOTFS_ABS_DTB_FILE}|" "$ROOTFS_EXTLINUX_FILE"
     else
         sed -i "/^[[:space:]]*LINUX /a \      FDT ${ROOTFS_ABS_DTB_FILE}" "$ROOTFS_EXTLINUX_FILE"
     fi
-else
-    if grep -q "^[[:space:]]*FDT " "$ROOTFS_EXTLINUX_FILE"; then
-        sed -i '/^[[:space:]]*FDT /d' "$ROOTFS_EXTLINUX_FILE"
-        echo "Removed extlinux FDT line (JP6/JP7 boots DTB from A_kernel-dtb partition)"
+    if grep -q "^[[:space:]]*OVERLAYS " "$ROOTFS_EXTLINUX_FILE"; then
+        sed -i '/^[[:space:]]*OVERLAYS /d' "$ROOTFS_EXTLINUX_FILE"
     fi
+    echo "extlinux FDT -> ${ROOTFS_ABS_DTB_FILE} (rootfs-updatable DTB; platform overlays pre-merged)"
 fi
 
 if [[ "$BUILD_FLOW" != "jp5" && -d "$ROOTFS_ROOT_DIR" ]]; then
