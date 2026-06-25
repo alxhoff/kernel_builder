@@ -37,8 +37,8 @@ except ImportError as exc:
 
 
 _ENV_BY_NAME = {
-    "production": BackendEnvironment.PROD,
-    "prod": BackendEnvironment.PROD,
+    "production": BackendEnvironment.PRODUCTION,
+    "prod": BackendEnvironment.PRODUCTION,
     "staging": BackendEnvironment.STAGING,
     "sandbox": BackendEnvironment.SANDBOX,
     "localhost": BackendEnvironment.LOCALHOST,
