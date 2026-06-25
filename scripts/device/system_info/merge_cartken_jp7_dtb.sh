@@ -22,7 +22,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../flash/rootfs_prep/helpers/build_kernel.sh
 JP7_PLATFORM_OVERLAY_DTBOS=(
     "L4TConfiguration.dtbo"
-    "tegra234-p3737-0000+p3701-0000-dynamic.dtbo"
     "tegra234-carveouts.dtbo"
     "tegra-optee.dtbo"
     "T234SetFmpImageTypeGuid.dtbo"
@@ -59,14 +58,21 @@ if [[ -z "$DTB_DIR" ]]; then
 fi
 
 if [[ -z "$BASE_DTB" ]]; then
+    best_base=""
+    best_channels=-1
     for candidate in \
         "$DTB_DIR/tegra234-p3701-0000-p3737-0000.dtb" \
         "$DTB_DIR/tegra234-p3737-0000+p3701-0000-nv.dtb"; do
-        if [[ -f "$candidate" ]]; then
-            BASE_DTB="$candidate"
-            break
+        if [[ ! -f "$candidate" ]]; then
+            continue
+        fi
+        channels="$(fdtget "$candidate" /tegra-capture-vi num-channels 2>/dev/null || echo 0)"
+        if [[ "$channels" =~ ^[0-9]+$ ]] && (( channels > best_channels )); then
+            best_channels=$channels
+            best_base=$candidate
         fi
     done
+    BASE_DTB="$best_base"
 fi
 
 if [[ -z "$BASE_DTB" || ! -f "$BASE_DTB" ]]; then
@@ -99,7 +105,6 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     echo >&2
     echo "Copy them from the flash host BSP, e.g.:" >&2
     echo "  Linux_for_Tegra/kernel/dtb/L4TConfiguration.dtbo \\" >&2
-    echo "  Linux_for_Tegra/kernel/dtb/tegra234-p3737-0000+p3701-0000-dynamic.dtbo \\" >&2
     echo "  Linux_for_Tegra/kernel/dtb/tegra234-carveouts.dtbo \\" >&2
     echo "  Linux_for_Tegra/kernel/dtb/tegra-optee.dtbo \\" >&2
     echo "  Linux_for_Tegra/kernel/dtb/T234SetFmpImageTypeGuid.dtbo" >&2
@@ -113,8 +118,17 @@ echo "Output:   $OUTPUT"
 fdtoverlay -i "$BASE_DTB" -o "$OUTPUT" "${overlay_paths[@]}"
 
 if command -v fdtget &>/dev/null; then
+    base_channels="$(fdtget "$BASE_DTB" /tegra-capture-vi num-channels 2>/dev/null || echo "?")"
     channels="$(fdtget "$OUTPUT" /tegra-capture-vi num-channels 2>/dev/null || echo "?")"
+    echo "Base DTB tegra-capture-vi num-channels=$base_channels"
     echo "Merged DTB tegra-capture-vi num-channels=$channels (expect 14)"
+    if [[ "$base_channels" == "14" && "$channels" != "14" ]]; then
+        echo "Error: merge changed num-channels $base_channels -> $channels (overlay conflict)" >&2
+        exit 1
+    fi
+    if [[ "$channels" != "14" ]]; then
+        echo "Warning: merged DTB does not have num-channels=14; check base DTB is the Cartken camera build" >&2
+    fi
 fi
 
 if [[ "$UPDATE_EXTLINUX" == true ]]; then

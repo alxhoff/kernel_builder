@@ -466,9 +466,11 @@ resolve_built_dtb_path() {
 # JP6/JP7 platform overlays normally live in QSPI and are merged at flash time
 # (TBCDTB + OVERLAY_DTB_FILE). When extlinux FDT points at rootfs, QSPI overlays
 # are skipped — merge them at build time so boot needs only the FDT file.
+#
+# Do NOT include tegra234-p3737-0000+p3701-0000-dynamic.dtbo: it adds devkit camera
+# nodes (tegra-capture-vi num-channels=2). Cartken GMSL cameras are in the main DTB.
 JP7_PLATFORM_OVERLAY_DTBOS=(
     "L4TConfiguration.dtbo"
-    "tegra234-p3737-0000+p3701-0000-dynamic.dtbo"
     "tegra234-carveouts.dtbo"
     "tegra-optee.dtbo"
     "T234SetFmpImageTypeGuid.dtbo"

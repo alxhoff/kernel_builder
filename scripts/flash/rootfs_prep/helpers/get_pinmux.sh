@@ -147,7 +147,7 @@ apply_jp7_cartken_overlay_flash_conf() {
   local l4t_dir="$1"
   local devkit_conf="$l4t_dir/jetson-agx-orin-devkit.conf"
   local cartken_overlays
-  cartken_overlays='L4TConfiguration.dtbo,tegra234-p3737-0000+p3701-0000-dynamic.dtbo,tegra234-carveouts.dtbo,tegra-optee.dtbo,T234SetFmpImageTypeGuid.dtbo'
+  cartken_overlays='L4TConfiguration.dtbo,tegra234-carveouts.dtbo,tegra-optee.dtbo,T234SetFmpImageTypeGuid.dtbo'
 
   if [[ ! -f "$devkit_conf" ]]; then
     echo "Warning: $devkit_conf not found; skipping cartken OVERLAY_DTB_FILE patch" >&2
