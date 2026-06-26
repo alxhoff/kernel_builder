@@ -316,6 +316,11 @@ depmod_rootfs_modules() {
         return 0
     fi
 
+    if [[ ! -d "$rootfs_dir/lib/modules/$kernel_version" ]]; then
+        echo "Warning: no modules at ${rootfs_dir}/lib/modules/${kernel_version}; skipping depmod." >&2
+        return 0
+    fi
+
     echo "Running depmod for ${kernel_version} in ${rootfs_dir}..."
     depmod -b "$rootfs_dir" "$kernel_version"
 
@@ -619,6 +624,15 @@ else
         popd > /dev/null
     else
         echo "Skipping nvbuild; installing existing kernel_out artifacts only."
+        if [[ -d "$KERNEL_BUILD_DIR" && -f "$NVBUILD_SCRIPT" ]]; then
+            export INSTALL_MOD_PATH="$ROOTFS_ROOT_DIR"
+            pushd "$KERNEL_SRC_ROOT" > /dev/null
+            echo "Installing kernel modules from kernel_out into rootfs..."
+            sudo -E "./nvbuild.sh" -i
+            popd > /dev/null
+        else
+            echo "Warning: kernel_out not found; staging Image/DTB only (no modules)." >&2
+        fi
     fi
 
     KERNEL_IMAGE_SRC="$KERNEL_BUILD_DIR/arch/arm64/boot/Image"
