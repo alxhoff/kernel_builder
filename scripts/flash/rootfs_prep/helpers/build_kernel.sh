@@ -504,6 +504,7 @@ merge_platform_overlays_into_dtb() {
 
     if ! command -v fdtoverlay &>/dev/null; then
         echo "Error: fdtoverlay required to pre-merge JP7 platform overlays for rootfs FDT boot." >&2
+        echo "Install device-tree-compiler (provides fdtoverlay/dtc), e.g. apt-get install -y device-tree-compiler" >&2
         exit 1
     fi
 

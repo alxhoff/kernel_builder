@@ -147,6 +147,7 @@ if [[ "$DOCKER_FLAG_PRESENT" -eq 1 ]]; then
             rsync \
             zlib1g \
             libssl-dev \
+            device-tree-compiler \
             && mkdir -p /opt/nvidia-l4t-toolchain \
             && wget -q -O /tmp/x-tools.tbz2 https://developer.download.nvidia.com/embedded/L4T/r38_Release_v2.0/release/x-tools.tbz2 \
             && tar -xjf /tmp/x-tools.tbz2 -C /opt/nvidia-l4t-toolchain \

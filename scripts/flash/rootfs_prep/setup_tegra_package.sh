@@ -134,6 +134,7 @@ RUN apt-get update && apt-get install -y \
 	docker.io jq qemu-user-static binfmt-support unzip \
 	build-essential kmod flex bison libelf-dev bc dwarves \
 	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev \
+	device-tree-compiler \
 	&& mkdir -p /opt/nvidia-l4t-toolchain \
 	&& wget -q -O /tmp/x-tools.tbz2 https://developer.download.nvidia.com/embedded/L4T/r38_Release_v2.0/release/x-tools.tbz2 \
 	&& tar -xjf /tmp/x-tools.tbz2 -C /opt/nvidia-l4t-toolchain \
@@ -147,7 +148,7 @@ RUN apt-get update && apt-get install -y \
 	sudo tar bzip2 git wget curl openssh-client iputils-ping \
 	docker.io jq qemu-user-static binfmt-support unzip \
 	build-essential kmod flex bison libelf-dev bc dwarves \
-	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev
+	ccache libncurses5-dev vim-common rsync zlib1g libssl-dev device-tree-compiler
 EOF
 		fi
 	else
