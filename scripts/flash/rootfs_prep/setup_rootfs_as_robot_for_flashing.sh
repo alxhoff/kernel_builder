@@ -262,6 +262,7 @@ EOF
         -w "/workspace" \
         -e HOME="/workspace" \
         -e SUDO_USER="${SUDO_USER-}" \
+        -e KB_IN_DOCKER_WRAPPER="1" \
         "$DOCKER_TAG" \
         /bin/bash -c "$CONTAINER_CMD"
 
@@ -574,9 +575,8 @@ fi
 # we want to converge on a known state without hand-debugging dpkg's
 # database. setup_tegra_package.sh re-extracts the BSP rootfs tarball,
 # re-applies NVIDIA binaries, and re-runs the base chroot (which now does a
-# full cartken-* purge before installing). Kernel/display/pinmux rebuilds
-# are skipped for speed; pass them up to setup_tegra_package.sh manually if
-# you actually need to rebuild those.
+# Pinmux always runs on pass 1; kernel compile is skipped when kernel_out exists,
+# then pass 2 re-stages merged DTB/extlinux into the fresh rootfs.
 if [[ "$CLEAN_ROOTFS" -eq 1 ]]; then
   TEGRA_PKG_SH="$SCRIPT_DIRECTORY/setup_tegra_package.sh"
   if [[ ! -x "$TEGRA_PKG_SH" ]]; then
@@ -586,17 +586,36 @@ if [[ "$CLEAN_ROOTFS" -eq 1 ]]; then
   echo "--clean-rootfs: wiping $ROOTFS_PATH and re-running setup_tegra_package.sh (tag=$TAG, jetpack=$TARGET_BSP)..."
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "[dry-run] rm -rf $ROOTFS_PATH"
-    echo "[dry-run] $TEGRA_PKG_SH --jetpack $TARGET_BSP --access-token <redacted> --tag $TAG --soc $SOC --skip-kernel-build --skip-display-driver-build --skip-pinmux"
+    echo "[dry-run] $TEGRA_PKG_SH --jetpack $TARGET_BSP --access-token <redacted> --tag $TAG --soc $SOC --skip-display-driver-build [--skip-kernel-build] [--only-install-kernel-artifacts]"
   else
     rm -rf "$ROOTFS_PATH"
-    "$TEGRA_PKG_SH" \
+  fi
+  # setup_tegra_package.sh requires --docker on JP7 unless already inside the
+  # jetson_builder container (KB_IN_DOCKER_WRAPPER=1). --only-install-kernel-artifacts
+  # skips rootfs prep/chroot, so run a full package pass first when rootfs was wiped.
+  if [[ "$DRY_RUN" -ne 1 ]]; then
+    TEGRA_PKG_PASS1_ARGS=(--skip-display-driver-build)
+    if [[ -d "$L4T_DIR/kernel_src/kernel_out/kernel" ]]; then
+      echo "--clean-rootfs: existing kernel_out found; pass 1 skips kernel compile."
+      TEGRA_PKG_PASS1_ARGS+=(--skip-kernel-build)
+    fi
+    KB_IN_DOCKER_WRAPPER="${KB_IN_DOCKER_WRAPPER:-1}" \
+      "$TEGRA_PKG_SH" \
       --jetpack "$TARGET_BSP" \
       --access-token "$ACCESS_TOKEN" \
       --tag "$TAG" \
       --soc "$SOC" \
-      --skip-kernel-build \
-      --skip-display-driver-build \
-      --skip-pinmux
+      "${TEGRA_PKG_PASS1_ARGS[@]}"
+    if [[ -d "$L4T_DIR/kernel_src/kernel_out/kernel" ]]; then
+      echo "--clean-rootfs: pass 2 — install kernel Image/DTB artifacts into rootfs."
+      KB_IN_DOCKER_WRAPPER="${KB_IN_DOCKER_WRAPPER:-1}" \
+        "$TEGRA_PKG_SH" \
+        --only-install-kernel-artifacts \
+        --jetpack "$TARGET_BSP" \
+        --access-token "$ACCESS_TOKEN" \
+        --tag "$TAG" \
+        --soc "$SOC"
+    fi
     echo "--clean-rootfs: rootfs rebuilt; continuing with per-robot setup."
   fi
 fi
