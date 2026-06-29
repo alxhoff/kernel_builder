@@ -43,8 +43,9 @@ Commit order (5.1.5 reference) — `[x]` done and building on JP7:
 4. `[x]` `0002` / `0011` / `0027` board DT (translated to JP7 nv-public labels)
 5. `[~]` `0004`–`0006`, `0010`, `0015`–`0016`, `0025`–`0028` D4xx — ported, pending build/HW test
    - VI core (`mc_common.[ch]`, `channel.c`, `graph.c`, `vi5_fops.c`,
-     `sensor_common.c`, `tegra_camera_core.h`): embedded-metadata channel,
-     `grey_y8`/`grey_y16` formats, GREY/Y16 stride, frame-interval pad_ops
+     `sensor_common.c`, `tegra_camera_core.h`, `vi5_formats.h`): embedded-metadata
+     channel, `grey_y8`/`grey_y16` formats, D4xx mbus→fourcc remaps (Z16/Y8I/Y12I),
+     fmtinfo NULL guard in `tegra_channel_s_ctrl`
    - serdes (`max9295.[ch]`, `max9296.[ch]`, `gmsl-link.h`): pipe mgmt,
      `init_settings`, GPIO triggers (0010), serdes lock + `settings_setup`
      guard + `prim_priv`/`sensor_regmap` refactor (0005)

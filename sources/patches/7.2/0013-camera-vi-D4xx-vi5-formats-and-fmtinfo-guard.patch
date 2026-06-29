@@ -1,0 +1,132 @@
+From 8f3c2a1b4d5e6f708192a3b4c5d6e7f8091a2b3c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 22 Jun 2026 12:00:00 +0200
+Subject: [PATCH 13/13] camera/vi: D4xx vi5 formats and fmtinfo NULL guard
+
+The JP7 tegra_camera vi5_video_formats[] table lacked the RealSense D4xx
+mbus-code remaps (UYVY8_1X16 -> Z16, etc.) that exist on JP5/JP6. When
+d4xx probes and tegra_channel_init_subdevices() runs, tegra_channel_
+fmts_bitmap_init() can leave chan->fmtinfo NULL; v4l2_ctrl_handler_setup()
+then panics in tegra_channel_s_ctrl() dereferencing fmtinfo->bpp.
+
+Add the D4xx format entries and guard alignment controls when fmtinfo is
+not yet resolved.
+---
+ .../media/platform/tegra/camera/vi/channel.c    | 25 +++++++++++++++++--
+ .../media/platform/tegra/camera/vi/vi5_formats.h | 24 ++++++++++++------
+ 2 files changed, 40 insertions(+), 9 deletions(-)
+
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c b/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
+index 33700bb32..a1b2c3d4e5 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -394,12 +394,18 @@ static void tegra_channel_fmts_bitmap_init(struct tegra_channel *chan)
+ 	}
+ 		/* Get the format based on active code of the sub-device */
+ 	ret = v4l2_subdev_call(subdev, pad, get_fmt, &cfg, &fmt);
+-	if (ret)
+-		return;
+ 
+ 	/* Initiate the channel format to the first matched format */
+-	chan->fmtinfo =
+-		tegra_core_get_format_by_code(chan, fmt.format.code, 0);
++	if (!ret)
++		chan->fmtinfo =
++			tegra_core_get_format_by_code(chan, fmt.format.code, 0);
++
++	if (!chan->fmtinfo && init_code)
++		chan->fmtinfo = tegra_core_get_format_by_code(chan, init_code, 0);
++
++	if (!chan->fmtinfo)
++		chan->fmtinfo = tegra_core_get_default_format();
++
+ 	if (!chan->fmtinfo)
+ 		return;
+ 
+@@ -1446,6 +1452,11 @@ int tegra_channel_s_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ 	case TEGRA_CAMERA_CID_VI_HEIGHT_ALIGN:
+ 		chan->height_align = ctrl->val;
++		if (!chan->fmtinfo) {
++			dev_dbg(&chan->video->dev,
++				"%s: skip height align, fmtinfo not set\n", __func__);
++			break;
++		}
+ 		tegra_channel_update_format(chan, chan->format.width,
+ 				chan->format.height,
+ 				chan->format.pixelformat,
+@@ -1459,6 +1470,11 @@ int tegra_channel_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			return -EINVAL;
+ 		}
+ 		chan->size_align = size_align_ctrl_qmenu[ctrl->val];
++		if (!chan->fmtinfo) {
++			dev_dbg(&chan->video->dev,
++				"%s: skip size align, fmtinfo not set\n", __func__);
++			break;
++		}
+ 		tegra_channel_update_format(chan, chan->format.width,
+ 				chan->format.height,
+ 				chan->format.pixelformat,
+@@ -1469,6 +1485,11 @@ int tegra_channel_s_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ 	case TEGRA_CAMERA_CID_VI_PREFERRED_STRIDE:
+ 		chan->preferred_stride = ctrl->val;
++		if (!chan->fmtinfo) {
++			dev_dbg(&chan->video->dev,
++				"%s: skip preferred stride, fmtinfo not set\n", __func__);
++			break;
++		}
+ 		tegra_channel_update_format(chan, chan->format.width,
+ 				chan->format.height,
+ 				chan->format.pixelformat,
+diff --git a/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_formats.h b/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_formats.h
+index 1a2b3c4d5e..6f7a8b9c0d 100644
+--- a/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_formats.h
++++ b/nvidia-oot/drivers/media/platform/tegra/camera/vi/vi5_formats.h
+@@ -88,6 +88,8 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 	/* RAW 7: TODO */
+ 
+ 	/* RAW 8 */
++	TEGRA_VIDEO_FORMAT(RAW8, 8, Y8_1X8, 1, 1, T_R8,
++				RAW8, GREY, "Greyscale 8"),
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SRGGB8_1X8, 1, 1, T_R8,
+ 				RAW8, SRGGB8, "RGRG.. GBGB.."),
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SGRBG8_1X8, 1, 1, T_R8,
+@@ -138,22 +140,14 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 				RAW16, SBGGR16, "BGBG.. GRGR.."),
+ 
+ 	/* RGB888 */
+-	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
+-				RGB888, RGBA32, "RGBA-8-8-8-8"),
+ 	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X32_PADHI, 4, 1, T_A8B8G8R8,
+ 				RGB888, RGB32, "RGB-8-8-8-8"),
+ 
+ 	/* YUV422 */
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
+-				YUV422_8, UYVY, "YUV 4:2:2"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
+-				YUV422_8, VYUY, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YUYV8_1X16, 2, 1, T_Y8_U8__Y8_V8,
+ 				YUV422_8, YUYV, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
+-				YUV422_8, NV16, "NV16"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_2X8, 2, 1, T_U8_Y8__V8_Y8,
+ 				YUV422_8, UYVY, "YUV 4:2:2 UYVY"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_2X8, 2, 1, T_V8_Y8__U8_Y8,
+@@ -162,6 +156,14 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 				YUV422_8, YUYV, "YUV 4:2:2 YUYV"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_2X8, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2 YVYU"),
++
++	/* RealSense D4xx over GMSL (depth / IR / RGB) */
++	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
++				YUV422_8, Z16, "Depth 16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
++				YUV422_8, Y8I, "Y8I 16"),
++	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
++				RGB888, Y12I, "Y12I 24"),
+ };
+ 
+ #endif
