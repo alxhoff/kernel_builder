@@ -1,0 +1,445 @@
+From 67dd3310cd7e7b1bf67ad16e7f85404a9f0bb0fa Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Thu, 26 Mar 2026 11:38:58 +0100
+Subject: [PATCH 35/43] Workign configuration with 2800 line_length and setting
+ the csi lane count
+
+---
+ ...4-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi | 28 +++---
+ kernel/nvidia/drivers/media/i2c/d4xx.c        | 20 +++-
+ kernel/nvidia/drivers/media/i2c/max9296.c     | 92 ++++++++++++++++---
+ .../platform/tegra/camera/camera_common.c     |  2 +-
+ .../media/platform/tegra/camera/csi/csi.c     |  5 +
+ .../media/platform/tegra/camera/vi/vi5_fops.c |  5 +
+ 6 files changed, 118 insertions(+), 34 deletions(-)
+
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+index ae6741520..ab47de46a 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+@@ -297,7 +297,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -345,7 +345,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -392,7 +392,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -440,7 +440,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -523,7 +523,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -571,7 +571,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -618,7 +618,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -666,7 +666,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2400";
++						line_length = "2800";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -724,7 +724,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -796,7 +796,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -880,7 +880,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -952,7 +952,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -1022,7 +1022,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -1093,7 +1093,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2400";
++						line_length = "2800";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+diff --git a/kernel/nvidia/drivers/media/i2c/d4xx.c b/kernel/nvidia/drivers/media/i2c/d4xx.c
+index d35d5381b..65630df52 100644
+--- a/kernel/nvidia/drivers/media/i2c/d4xx.c
++++ b/kernel/nvidia/drivers/media/i2c/d4xx.c
+@@ -1504,9 +1504,8 @@ static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
+ 			      int pipe_id, u32 vc_id)
+ {
+ 	int ret = 0;
+-	dev_dbg(&state->client->dev,
+-			 "set pipe %d, data_type1: 0x%x, \
+-			 data_type2: 0x%x, vc_id: %u\n",
++	dev_info(&state->client->dev,
++			 "ds5_setup_pipeline: pipe %d, dt1: 0x%x, dt2: 0x%x, vc_id: %u\n",
+ 			 pipe_id, data_type1, data_type2, vc_id);
+ 	ret |= max9295_set_pipe(state->ser_dev, pipe_id,
+ 				data_type1, data_type2, vc_id);
+@@ -3490,6 +3489,11 @@ static int ds5_serdes_setup(struct ds5 *state)
+ 
+ 	/* Pair sensor to serializer dev */
+ 	if (state->is_prim_d4m) {
++		dev_info(&c->dev,
++			"%s: is_prim_d4m, num_csi_lanes=%u, dst_csi_port=%d, s_dev=%p, c_dev=%p\n",
++			__func__, state->g_ctx.num_csi_lanes,
++			state->g_ctx.dst_csi_port, state->g_ctx.s_dev, &c->dev);
++
+ 		max9296_lock_serdes(state->dser_dev);
+ 
+ 		ret = max9295_sdev_pair(state->ser_dev, &state->g_ctx);
+@@ -3500,8 +3504,10 @@ static int ds5_serdes_setup(struct ds5 *state)
+ 
+ 		/* Register sensor to deserializer dev */
+ 		ret = max9296_sdev_register(state->dser_dev, &state->g_ctx);
+-		if (ret)
++		if (ret) {
+ 			dev_err(&c->dev, "gmsl deserializer register failed\n");
++			goto unlock;
++		}
+ 
+ 		ret = ds5_gmsl_serdes_setup(state);
+ 		if (ret) {
+@@ -3517,11 +3523,15 @@ static int ds5_serdes_setup(struct ds5 *state)
+ 		}
+ 
+ 		ret = max9296_init_settings(state->dser_dev);
+-		if (ret)
++		if (ret) {
+ 			dev_err(&c->dev, "%s, failed to init max9296 settings\n", __func__);
++			goto unlock;
++		}
+ 
+ unlock:
+ 		max9296_unlock_serdes(state->dser_dev);
++	} else {
++		dev_info(&c->dev, "%s: not is_prim_d4m, skipping serdes init\n", __func__);
+ 	}
+ return ret;
+ }
+diff --git a/kernel/nvidia/drivers/media/i2c/max9296.c b/kernel/nvidia/drivers/media/i2c/max9296.c
+index d1c36ae06..69a48b65b 100644
+--- a/kernel/nvidia/drivers/media/i2c/max9296.c
++++ b/kernel/nvidia/drivers/media/i2c/max9296.c
+@@ -125,6 +125,7 @@ struct max9296 {
+ 	u8 csi_mode;
+ 	u8 lane_mp1;
+ 	u8 lane_mp2;
++	u32 num_csi_lanes;
+ 	int reset_gpio;
+ 	int pw_ref;
+ 	struct regulator *vdd_cam_1v2;
+@@ -179,11 +180,18 @@ static int max9296_get_sdev_idx(struct device *dev,
+ 
+ 	mutex_lock(&priv->lock);
+ 	for (i = 0; i < priv->max_src; i++) {
+-		if (priv->sources[i].g_ctx->s_dev == s_dev)
++		if (priv->sources[i].g_ctx &&
++		    priv->sources[i].g_ctx->s_dev == s_dev)
+ 			break;
+ 	}
+ 	if (i == priv->max_src) {
+-		dev_err(dev, "no sdev found\n");
++		dev_err(dev,
++			"no sdev found for s_dev=%p, max_src=%u, num_src=%u\n",
++			s_dev, priv->max_src, priv->num_src);
++		for (i = 0; i < priv->max_src && i < priv->num_src; i++)
++			dev_err(dev, "  sources[%u].g_ctx->s_dev=%p\n",
++				i, priv->sources[i].g_ctx ?
++				priv->sources[i].g_ctx->s_dev : NULL);
+ 		err = -EINVAL;
+ 		goto ret;
+ 	}
+@@ -511,6 +519,14 @@ int max9296_sdev_register(struct device *dev, struct gmsl_link_ctx *g_ctx)
+ 	priv->sources[priv->num_src].g_ctx = g_ctx;
+ 	priv->sources[priv->num_src].st_enabled = false;
+ 
++	if (priv->num_src == 0)
++		priv->num_csi_lanes = g_ctx->num_csi_lanes;
++
++	dev_info(dev,
++		"%s: registered src %d, num_csi_lanes=%u, dst_csi_port=%d, dst_vc=%d, s_dev=%p\n",
++		__func__, priv->num_src, g_ctx->num_csi_lanes,
++		g_ctx->dst_csi_port, g_ctx->dst_vc, g_ctx->s_dev);
++
+ 	priv->num_src++;
+ 
+ error:
+@@ -758,15 +774,26 @@ int max9296_setup_streaming(struct device *dev, struct device *s_dev)
+ 	unsigned int i = 0;
+ 	u16 lane_ctrl_addr;
+ 
++	dev_info(dev, "%s: called with s_dev=%p\n", __func__, s_dev);
++
+ 	err = max9296_get_sdev_idx(dev, s_dev, &i);
+-	if (err)
++	if (err) {
++		dev_err(dev, "%s: get_sdev_idx failed err=%d\n", __func__, err);
+ 		return err;
++	}
+ 
+ 	mutex_lock(&priv->lock);
+-	if (priv->sources[i].st_enabled)
++	if (priv->sources[i].st_enabled) {
++		dev_info(dev, "%s: src %u already st_enabled, skipping\n",
++			__func__, i);
+ 		goto ret;
++	}
+ 
+ 	g_ctx = priv->sources[i].g_ctx;
++	dev_info(dev,
++		"%s: src=%u, num_csi_lanes=%u, dst_csi_port=%d, num_streams=%d, lane_setup=%d\n",
++		__func__, i, g_ctx->num_csi_lanes, g_ctx->dst_csi_port,
++		g_ctx->num_streams, priv->lane_setup);
+ 
+ 	err = max9296_setup_pipeline(dev, g_ctx);
+ 	if (err)
+@@ -799,10 +826,17 @@ int max9296_setup_streaming(struct device *dev, struct device *s_dev)
+ 	 * as the device compatibility is already
+ 	 * checked during sdev registration against the des properties.
+ 	 */
++	dev_info(dev, "%s: writing lane_ctrl=0x%02x to reg 0x%04x\n",
++		__func__, MAX9296_LANE_CTRL_MAP(g_ctx->num_csi_lanes-1),
++		lane_ctrl_addr);
+ 	max9296_write_reg(dev, lane_ctrl_addr,
+ 		MAX9296_LANE_CTRL_MAP(g_ctx->num_csi_lanes-1));
+ 
+ 	if (!priv->lane_setup) {
++		dev_info(dev,
++			"%s: writing CSI mode=0x%02x, lane_mp1=0x%02x, lane_mp2=0x%02x, PHY1_CLK=0x%02x\n",
++			__func__, priv->csi_mode, priv->lane_mp1,
++			priv->lane_mp2, MAX9296_PHY1_CLK);
+ 		max9296_write_reg(dev,
+ 			MAX9296_DST_CSI_MODE_ADDR, priv->csi_mode);
+ 		max9296_write_reg(dev,
+@@ -816,6 +850,7 @@ int max9296_setup_streaming(struct device *dev, struct device *s_dev)
+ 	}
+ 
+ 	priv->sources[i].st_enabled = true;
++	dev_info(dev, "%s: streaming setup complete for src %u\n", __func__, i);
+ 
+ ret:
+ 	mutex_unlock(&priv->lock);
+@@ -894,25 +929,22 @@ EXPORT_SYMBOL(max9296_reset_oneshot);
+ static int __max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
+ 			      u8 data_type2, u32 vc_id)
+ {
++	struct max9296 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	int i = 0;
+ 	u8 en_mapping_num = 0x0F;
+ 	u8 all_mapping_phy = 0x55;
++	u8 lane_ctrl_val = (priv->num_csi_lanes > 2) ? 0xC0 : 0x50;
++	u8 phy1_clk_val = (priv->num_csi_lanes > 2) ?
++		MAX9296_PHY1_CLK : 0x2F;
+ 	struct reg_pair map_pipe_opt[] = {
+ 		{0x1458, 0x28}, // PHY A Optimization
+ 		{0x1459, 0x68}, // PHY A Optimization
+ 		{0x1558, 0x28}, // PHY B Optimization
+ 		{0x1559, 0x68}, // PHY B Optimization
+-		// 4 lanes on port A, write 0x50 for 2 lanes
+-		{MAX9296_LANE_CTRL1_ADDR, 0x50},
+-		// 1500Mbps/lane on port A
+-		{MAX9296_PHY1_CLK_ADDR, 0x2F},
+-		// Do not un-double 8bpp (Un-double 8bpp data)
+-		//{0x031C, 0x00},
+-		// Do not un-double 8bpp
+-		//{0x031F, 0x00},
+-		// 0x02: ALT_MEM_MAP8, 0x10: ALT2_MEM_MAP8
+-		{0x0473, 0x10},
++		{MAX9296_LANE_CTRL1_ADDR, lane_ctrl_val},
++		{MAX9296_PHY1_CLK_ADDR, phy1_clk_val},
++		{0x0473, 0x10}, // ALT2_MEM_MAP8
+ 	};
+ 	struct reg_pair map_pipe_control[] = {
+ 		// Enable 4 mappings for Pipe X
+@@ -935,6 +967,11 @@ static int __max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
+ 		{0x0100, 0x23}, // pipe X
+ 	};
+ 
++	dev_info(dev,
++		"%s: pipe_id=%d, num_csi_lanes=%u, lane_ctrl=0x%02x, phy1_clk=0x%02x, vc_id=%u\n",
++		__func__, pipe_id, priv->num_csi_lanes, lane_ctrl_val,
++		phy1_clk_val, vc_id);
++
+ 	for (i = 0; i < 10; i++) {
+ 		map_pipe_control[i].addr += 0x40 * pipe_id;
+ 	}
+@@ -986,12 +1023,37 @@ int max9296_init_settings(struct device *dev)
+ 
+ 	mutex_lock(&priv->lock);
+ 
++	dev_info(dev, "%s: settings_setup=%d, num_csi_lanes=%u\n",
++		__func__, priv->settings_setup, priv->num_csi_lanes);
++
+ 	if (!priv->settings_setup) {
++		u8 lane_ctrl = (priv->num_csi_lanes > 2) ? 0xC0 : 0x50;
++		u8 phy1_clk = (priv->num_csi_lanes > 2) ?
++			MAX9296_PHY1_CLK : 0x2F;
++
+ 		for (i = 0; i < MAX9296_MAX_PIPES; i++)
+ 			err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
+ 					GMSL_CSI_DT_EMBED, i);
+ 
++		max9296_write_reg(dev,
++			MAX9296_DST_CSI_MODE_ADDR, priv->csi_mode);
++		max9296_write_reg(dev,
++			MAX9296_LANE_MAP1_ADDR, priv->lane_mp1);
++		max9296_write_reg(dev,
++			MAX9296_LANE_MAP2_ADDR, priv->lane_mp2);
++		max9296_write_reg(dev,
++			MAX9296_PHY1_CLK_ADDR, phy1_clk);
++		max9296_write_reg(dev,
++			MAX9296_LANE_CTRL1_ADDR, lane_ctrl);
++
++		dev_info(dev,
++			"%s: CSI config: mode=0x%02x, lane_mp1=0x%02x, lane_mp2=0x%02x, PHY1_CLK=0x%02x, lane_ctrl=0x%02x (lanes=%u)\n",
++			__func__, priv->csi_mode, priv->lane_mp1,
++			priv->lane_mp2, phy1_clk, lane_ctrl,
++			priv->num_csi_lanes);
++
+ 		priv->settings_setup = true;
++		dev_info(dev, "%s: pipe init done, err=%d\n", __func__, err);
+ 	}
+ 
+ 	// Trigger Depth
+@@ -1135,6 +1197,8 @@ static int max9296_probe(struct i2c_client *client,
+ 		return -EFAULT;
+ 	}
+ 
++	priv->num_csi_lanes = 2;
++
+ 	max9296_pipes_reset(priv);
+ 
+ 	if (priv->max_src > MAX9296_MAX_SOURCES) {
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/camera_common.c b/kernel/nvidia/drivers/media/platform/tegra/camera/camera_common.c
+index 2b0b341b0..922376df5 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/camera_common.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/camera_common.c
+@@ -315,7 +315,7 @@ int camera_common_parse_ports(struct device *dev,
+ 	}
+ 	s_data->csi_port = port;
+ 
+-	dev_dbg(dev, "%s: port %d num of lanes %d\n",
++	dev_info(dev, "%s: port %d num of lanes %d\n",
+ 		__func__, s_data->csi_port, s_data->numlanes);
+ 
+ 	return 0;
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+index 8632b9b68..df0a6dd35 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+@@ -952,6 +952,11 @@ static int tegra_csi_channel_init_one(struct tegra_csi_channel *chan)
+ 
+ 		if (!chan->pg_mode)
+ 			chan->ports[i].csi_port = chan->port[i];
++
++		dev_info(csi->dev,
++			"csi_chan_init: port[%d] csi_port=%d lanes=%d (total numlanes=%d numports=%d)\n",
++			i, chan->ports[i].csi_port, chan->ports[i].lanes,
++			chan->numlanes, chan->numports);
+ 	}
+ 
+ 	if (!chan->pg_mode) {
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 04b1c6503..e5bca8dfc 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -373,6 +373,11 @@ static int tegra_channel_capture_setup(struct tegra_channel *chan, unsigned int
+ 		setup.csi_port = csi_chan->ports[vi_port].csi_port;
+ 	}
+ 
++	dev_info(chan->vi->dev,
++		"vi5 capture_setup: stream_id=%u, vc_id=%u, csi_port=%u, numlanes=%d\n",
++		setup.csi_stream_id, setup.virtual_channel_id,
++		setup.csi_port, chan->numlanes);
++
+ 	err = vi_capture_setup(chan->tegra_vi_channel[vi_port], &setup);
+ 	if (err) {
+ 		dev_err(chan->vi->dev, "vi capture setup failed\n");
+-- 
+2.54.0
+

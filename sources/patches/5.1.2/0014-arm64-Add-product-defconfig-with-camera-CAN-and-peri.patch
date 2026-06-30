@@ -1,0 +1,33 @@
+From 1e68ad342391b59671f72760ed45aa6cea4a9b9c Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 7 Apr 2025 14:46:09 +0200
+Subject: [PATCH 14/43] arm64: Add product defconfig with camera, CAN, and
+ peripheral support
+
+Add a product-specific ARM64 defconfig enabling D4xx and ISX031 camera
+drivers, GMSL2 serializer/deserializer support, CAN bus interfaces, the
+Cartken panic logger, and other required peripheral configurations.
+---
+ kernel/kernel/arch/arm64/configs/defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/kernel/arch/arm64/configs/defconfig b/kernel/kernel/arch/arm64/configs/defconfig
+index 09237ccb8..03b88fa37 100644
+--- a/kernel/kernel/arch/arm64/configs/defconfig
++++ b/kernel/kernel/arch/arm64/configs/defconfig
+@@ -918,7 +918,6 @@ CONFIG_NV_DESER_MAX96712=m
+ CONFIG_NV_VIDEO_AR0234=m
+ CONFIG_NV_VIDEO_HAWK_OWL=m
+ CONFIG_NV_VIRTUAL_I2C_MUX=m
+-CONFIG_NV_VIDEO_ISX031=y
+ # CONFIG_CXD2880_SPI_DRV is not set
+ CONFIG_MEDIA_TUNER_SIMPLE=y
+ # CONFIG_MEDIA_TUNER_TDA18250 is not set
+@@ -1571,3 +1570,4 @@ CONFIG_STACK_TRACER=y
+ # CONFIG_UPROBE_EVENTS is not set
+ CONFIG_PID_IN_CONTEXTIDR=y
+ # CONFIG_RUNTIME_TESTING_MENU is not set
++
+-- 
+2.54.0
+

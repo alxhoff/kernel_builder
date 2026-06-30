@@ -1,0 +1,1126 @@
+From ac21a65fb70ef7ec930b14c1889f3d4b18514c49 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 27 Oct 2025 13:28:37 +0100
+Subject: [PATCH 36/43] slcanfd-cobs driver with device tree
+
+---
+ .../kernel-dts/cvb/cartken-slcanfd.dtsi       |   43 +
+ .../tegra234-p3701-0000-p3737-0000.dts        |    1 +
+ kernel/kernel/drivers/net/can/Kconfig         |    8 +
+ kernel/kernel/drivers/net/can/Makefile        |    1 +
+ kernel/kernel/drivers/net/can/slcanfd_cobs.c  | 1013 +++++++++++++++++
+ 5 files changed, 1066 insertions(+)
+ create mode 100644 hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/cartken-slcanfd.dtsi
+ create mode 100644 kernel/kernel/drivers/net/can/slcanfd_cobs.c
+
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/cartken-slcanfd.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/cartken-slcanfd.dtsi
+new file mode 100644
+index 000000000..54a5a1944
+--- /dev/null
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/cartken-slcanfd.dtsi
+@@ -0,0 +1,43 @@
++/*
++ * This is an example of how to use the "cartken,slcanfd-cobs"
++ * binding in your board's final .dts file (e.g., tegra234-p3701.dts).
++ *
++ * You must find the UART controller you are physically connected to
++ * (e.g., &serial2, which might map to /dev/ttyTHS2 on a Jetson)
++ * and add the 'slcanfd_gateway' node as its child.
++ */
++
++&uarta {
++	status = "okay";
++
++	slcanfd_gateway: slcanfd-cobs-gateway {
++		compatible = "cartken,slcanfd-cobs";
++		baudrate = <4250000>;
++		parity = "none";
++		/* hw-flow-control; */
++
++		status = "okay";
++		can-clock-frequency = <170000000>;
++
++		can@0 {
++			reg = <0>; /* Protocol index 0 */
++			can-transceiver {
++				max-bitrate = <5000000>;
++			};
++		};
++
++		can@1 {
++			reg = <1>; /* Protocol index 1 */
++			can-transceiver {
++				max-bitrate = <5000000>;
++			};
++		};
++
++		can@2 {
++			reg = <2>; /* Protocol index 2 */
++			can-transceiver {
++				max-bitrate = <5000000>;
++			};
++		};
++	};
++};
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+index d906f68e4..77d00e592 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/tegra234-p3701-0000-p3737-0000.dts
+@@ -21,6 +21,7 @@
+ #include "tegra234-dcb-p3701-0000-a02-p3737-0000-a01.dtsi"
+ #include <tegra234-soc/mods-simple-bus.dtsi>
+ #include "cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi"
++#include "cvb/cartken-slcanfd.dtsi"
+ #include <t234-common-cvb/tegra234-pwm.dtsi>
+ #include <t234-common-cvm/tegra234-cpuidle.dtsi>
+ #include <t234-common-cvm/tegra234-thermal.dtsi>
+diff --git a/kernel/kernel/drivers/net/can/Kconfig b/kernel/kernel/drivers/net/can/Kconfig
+index 1c28eade6..3875b086a 100644
+--- a/kernel/kernel/drivers/net/can/Kconfig
++++ b/kernel/kernel/drivers/net/can/Kconfig
+@@ -189,4 +189,12 @@ config CAN_DEBUG_DEVICES
+ 	  a problem with CAN support and want to see more of what is going
+ 	  on.
+ 
++config CAN_SLCANFD_COBS
++	tristate "Serial Line CAN-FD gateway driver"
++	depends on CAN_DEV && SERIAL_DEV_BUS
++	help
++	  This driver supports CAN-FD via Serial Link from a gateway device
++	  multiplexing multiple CAN-FD devices. Messages are sent using COBS
++	  encoding over the Serial Link.
++
+ endmenu
+diff --git a/kernel/kernel/drivers/net/can/Makefile b/kernel/kernel/drivers/net/can/Makefile
+index a2b4463d8..18479d5ee 100644
+--- a/kernel/kernel/drivers/net/can/Makefile
++++ b/kernel/kernel/drivers/net/can/Makefile
+@@ -29,5 +29,6 @@ obj-$(CONFIG_CAN_SUN4I)		+= sun4i_can.o
+ obj-$(CONFIG_CAN_TI_HECC)	+= ti_hecc.o
+ obj-$(CONFIG_CAN_XILINXCAN)	+= xilinx_can.o
+ obj-$(CONFIG_PCH_CAN)		+= pch_can.o
++obj-$(CONFIG_CAN_SLCANFD_COBS)		+=slcanfd_cobs.o
+ 
+ subdir-ccflags-$(CONFIG_CAN_DEBUG_DEVICES) += -DDEBUG
+diff --git a/kernel/kernel/drivers/net/can/slcanfd_cobs.c b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+new file mode 100644
+index 000000000..8b26a4bcd
+--- /dev/null
++++ b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+@@ -0,0 +1,1013 @@
++/*
++ * slcanfd_cobs.c - Gateway driver for multiplexed CAN-FD via serial line
++ *
++ * This version uses an optimized, variable-length packet protocol
++ * to increase throughput and reduce overhead.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/serdev.h>
++#include <linux/netdevice.h>
++#include <linux/can/dev.h>
++#include <linux/can/can-ml.h>
++#include <linux/can.h>
++#include <linux/can/netlink.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/workqueue.h>
++#include <linux/mutex.h>
++#include <linux/spinlock.h>
++#include <linux/skbuff.h>
++#include <linux/kfifo.h>
++#include <linux/device.h>
++#include <linux/uaccess.h> // For copy_from_user, etc. (future)
++
++#define DRIVER_NAME "slcanfd_cobs"
++#define MAX_GATEWAY_DEVICES 3
++
++/*
++ * Max CAN-FD packet: 1(info) + 1(seq) + 4(id) + 1(len) + 1(flags) + 64(data) = 72
++ */
++#define MAX_RAW_PACKET_SIZE 72
++#define MAX_COBS_PACKET_SIZE 128
++
++/*
++ * PROTOCOL DEFINITIONS (Must match firmware v2)
++ * Byte 0: [unused(4)] [FD Flag (1, bit 3)] [Device Index (3, bits 0-2)]
++ * Byte 1: Sequence number (per-channel, wraps 0-255)
++ * Config/status frames are identified by device index == 0 with FD flag set.
++ */
++#define SLCANFD_MSG_FLAG_FD             0x08
++#define SLCANFD_MSG_INDEX_MASK          0x07
++
++/*
++ * Serdev kfifo buffer size
++ */
++#define RX_FIFO_BUFFER_SIZE   (256 * 1024)
++
++/*
++ * NAPI-style workqueue budget
++ */
++#define RX_WORK_BUDGET        256
++
++/*
++ * Configuration commands (sent with dev_index = 0)
++ */
++#define SLCANFD_CMD_SET_BITTIMING       0x01
++#define SLCANFD_CMD_SET_DATA_BITTIMING  0x02
++#define SLCANFD_CMD_SET_CTRLMODE        0x03
++#define SLCANFD_CMD_STATUS              0x10
++
++#define DEFAULT_CAN_CLOCK_FREQ 100000000
++#define DEFAULT_BAUDRATE 115200
++
++/*
++ * This is the binary-compatible bittiming struct we send to the
++ * firmware. 
++ * It is 20 bytes total.
++ */
++struct can_bittiming_compat {
++    __u32 brp;        /* Bit-rate prescaler (4 bytes) */
++    __u32 prop_seg;     /* Propagation segment (4 bytes) */
++    __u32 phase_seg1;   /* Phase segment 1 (4 bytes) */
++    __u32 phase_seg2;   /* Phase segment 2 (4 bytes) */
++    __u32 sjw;        /* Synchronisation jump width (4 bytes) */
++} __attribute__((__packed__));
++
++struct slcanfd_can_gateway;
++
++struct slcanfd_can_dev {
++    struct can_priv can; /* MUST be the first member */
++
++    struct net_device *netdev;
++    struct slcanfd_can_gateway *parent;
++    u8 dev_index;
++
++    u8 expected_seq;
++    bool seq_initialized;
++    u32 seq_gaps;
++};
++
++struct slcanfd_can_gateway {
++    struct device *dev;
++    struct serdev_device *serdev;
++    
++    struct slcanfd_can_dev *can_devices[MAX_GATEWAY_DEVICES];
++    int can_device_count;
++
++    struct mutex tx_lock;
++    spinlock_t rx_fifo_lock;
++
++    struct work_struct rx_work;
++    atomic_t ready;
++    
++    /* 16KB ring buffer */
++    struct kfifo rx_fifo;
++    
++    u8 rx_partial_buf[MAX_COBS_PACKET_SIZE];
++    u32 rx_partial_len;
++
++    /* A re-usable 1KB buffer for the rx_work thread */
++    u8 rx_work_buf[4096];
++
++    /* A re-usable buffer for decoding */
++    u8 rx_decode_buf[MAX_RAW_PACKET_SIZE];
++};
++
++static inline struct slcanfd_can_dev *slcanfd_vdev_from_netdev(struct net_device *netdev)
++{
++    return netdev_priv(netdev);
++}
++
++/*
++ * COBS encode/decode functions
++ * These must be the exact inverse of the firmware.
++ */
++static size_t cobs_encode(u8 *dst, size_t dst_len, const u8 *src, size_t src_len)
++{
++    const u8 *src_end = src + src_len;
++    u8 *dst_start = dst;
++    u8 *code_ptr = dst++;
++    u8 code = 0x01;
++
++    if (dst_len < (src_len + 2 + (src_len / 254)))
++        return -EMSGSIZE;
++
++    while (src < src_end) {
++        if (*src == 0) {
++            *code_ptr = code;
++            code_ptr = dst++;
++            code = 0x01;
++        } else {
++            *dst++ = *src;
++            code++;
++            if (code == 0xFF) {
++                *code_ptr = code;
++                code_ptr = dst++;
++                code = 0x01;
++            }
++        }
++        src++;
++    }
++
++    *code_ptr = code;
++    return dst - dst_start;
++}
++
++static size_t cobs_decode(u8 *dst, size_t dst_len, const u8 *src, size_t src_len)
++{
++    const u8 *src_end = src + src_len;
++    u8 *dst_start = dst;
++    u8 code;
++    u8 i;
++
++    while (src < src_end) {
++        code = *src++;
++        if (code == 0)
++            return -EINVAL;
++
++        if ((src + code - 1) > src_end)
++            return -EINVAL;
++
++        for (i = 1; i < code; i++) {
++			if (dst_len == 0)
++				return -EMSGSIZE;
++			*dst++ = *src++;
++			dst_len--;
++        }
++
++        if (code < 0xFF && src < src_end) {
++			if (dst_len == 0)
++				return -EMSGSIZE;
++			*dst++ = 0x00;
++			dst_len--;
++        }
++    }
++
++    return dst - dst_start;
++}
++
++
++// --- RX Path (UART -> Virtual CAN) ---
++
++static void slcanfd_handle_status(struct slcanfd_can_gateway *parent,
++				  u8 *data, u32 len)
++{
++	u8 data_len;
++	u32 drops[2], total[2];
++
++	if (len < 8)
++		return;
++	data_len = data[6];
++	if (len != (8 + data_len) || data_len < 16)
++		return;
++
++	memcpy(drops, &data[8], 8);
++	memcpy(total, &data[16], 8);
++
++	dev_info_ratelimited(parent->dev,
++		"FW status: ch1 drops=%u total=%u, ch2 drops=%u total=%u\n",
++		drops[0], total[0], drops[1], total[1]);
++}
++
++static void slcanfd_check_seq(struct slcanfd_can_dev *vdev, u8 seq)
++{
++	if (!vdev->seq_initialized) {
++		vdev->expected_seq = seq;
++		vdev->seq_initialized = true;
++	}
++
++	if (seq != vdev->expected_seq) {
++		u8 gap = (seq - vdev->expected_seq); /* wrapping subtraction */
++		vdev->seq_gaps += gap;
++		dev_warn_ratelimited(vdev->netdev->dev.parent,
++			"%s: seq gap detected (expected %u, got %u, lost ~%u pkts, total gaps=%u)\n",
++			vdev->netdev->name, vdev->expected_seq, seq,
++			(unsigned)gap, vdev->seq_gaps);
++	}
++	vdev->expected_seq = (u8)(seq + 1);
++}
++
++static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32 len)
++{
++	struct slcanfd_can_dev *vdev;
++	struct sk_buff *skb;
++	u8 pkt_info;
++	u8 dev_index;
++	u8 is_fd;
++	u8 seq;
++
++	/* Minimum: 1(info) + 1(seq) + 4(id) + 1(dlc) = 7 */
++	if (len < 7) {
++		dev_err(parent->dev, "Invalid decoded packet size: %u\n", len);
++		return;
++	}
++
++	pkt_info  = data[0];
++	seq       = data[1];
++	dev_index = (pkt_info & SLCANFD_MSG_INDEX_MASK);
++	is_fd     = (pkt_info & SLCANFD_MSG_FLAG_FD);
++
++	if (dev_index == 0) {
++		if (is_fd) {
++			u32 cmd_id;
++			if (len < 8)
++				return;
++			memcpy(&cmd_id, &data[2], 4);
++			if (cmd_id == SLCANFD_CMD_STATUS)
++				slcanfd_handle_status(parent, data, len);
++		}
++		return;
++	}
++
++	if (dev_index > MAX_GATEWAY_DEVICES || !parent->can_devices[dev_index - 1]) {
++		dev_err(parent->dev, "Packet for invalid device index: %u\n", dev_index);
++		return;
++	}
++
++	vdev = parent->can_devices[dev_index - 1];
++	slcanfd_check_seq(vdev, seq);
++
++	if (is_fd) {
++		struct canfd_frame *cfd;
++		u8 data_len;
++
++		/* 1(info) + 1(seq) + 4(id) + 1(len) + 1(flags) = 8 bytes header */
++		if (len < 8) {
++			dev_err(parent->dev, "Invalid CAN FD packet size: %u\n", len);
++			return;
++		}
++
++		skb = alloc_canfd_skb(vdev->netdev, &cfd);
++		if (!skb) {
++			vdev->netdev->stats.rx_dropped++;
++			return;
++		}
++
++		memset(cfd, 0, sizeof(struct canfd_frame));
++
++		memcpy(&cfd->can_id, &data[2], 4);
++		cfd->len   = data[6];
++		cfd->flags = data[7];
++
++		data_len = cfd->len;
++
++		if (data_len > CANFD_MAX_DLEN) {
++			dev_err(parent->dev, "CAN FD payload length out of bounds (%u)\n", data_len);
++			kfree_skb(skb);
++			vdev->netdev->stats.rx_dropped++;
++			return;
++		}
++
++		if (len != (8 + data_len)) {
++			dev_err(parent->dev, "CAN FD frame len/data mismatch (len=%u, data_len=%u)\n",
++				len, data_len);
++			kfree_skb(skb);
++			return;
++		}
++
++		memcpy(cfd->data, &data[8], data_len);
++
++		vdev->netdev->stats.rx_packets++;
++		vdev->netdev->stats.rx_bytes += cfd->len;
++		netif_rx(skb);
++
++	} else {
++		struct can_frame *cf;
++		u8 dlc;
++
++		/* 1(info) + 1(seq) + 4(id) + 1(dlc) = 7 bytes header */
++		skb = alloc_can_skb(vdev->netdev, &cf);
++		if (!skb) {
++			vdev->netdev->stats.rx_dropped++;
++			return;
++		}
++
++		memset(cf, 0, sizeof(struct can_frame));
++
++		memcpy(&cf->can_id, &data[2], 4);
++		cf->can_dlc = data[6];
++
++		dlc = cf->can_dlc;
++
++		if (dlc > CAN_MAX_DLEN) {
++			dev_err(parent->dev, "Classic CAN DLC out of bounds (%u)\n", dlc);
++			kfree_skb(skb);
++			vdev->netdev->stats.rx_dropped++;
++			return;
++		}
++
++		if (len != (7 + dlc)) {
++			dev_err(parent->dev, "Classic CAN frame len/data mismatch (len=%u, dlc=%u)\n",
++				len, dlc);
++			kfree_skb(skb);
++			return;
++		}
++
++		memcpy(cf->data, &data[7], dlc);
++
++		vdev->netdev->stats.rx_packets++;
++		vdev->netdev->stats.rx_bytes += cf->can_dlc;
++		netif_rx(skb);
++	}
++}
++
++static void slcanfd_process_cobs_packet(struct slcanfd_can_gateway *parent,
++                                     const u8 *cobs_pkt, u32 cobs_len)
++{
++    ssize_t decoded_len;
++
++    u8 *raw_pkt = parent->rx_decode_buf; 
++    
++    decoded_len = cobs_decode(raw_pkt, MAX_RAW_PACKET_SIZE,
++                              cobs_pkt, cobs_len);
++
++    if (decoded_len > 0) {
++        slcanfd_push_frame(parent, raw_pkt, decoded_len);
++    } else {
++        dev_err(parent->dev, "COBS decode error (%zd)\n", decoded_len);
++    }
++}
++
++static void slcanfd_stash_partial_chunk(struct slcanfd_can_gateway *parent,
++                                     const u8 *chunk, u32 chunk_len)
++{
++    if (parent->rx_partial_len + chunk_len > MAX_COBS_PACKET_SIZE) {
++        dev_err(parent->dev, "RX packet overflow, dropping.\n");
++        parent->rx_partial_len = 0;
++    } else {
++        memcpy(&parent->rx_partial_buf[parent->rx_partial_len],
++               chunk, chunk_len);
++        parent->rx_partial_len += chunk_len;
++    }
++}
++
++
++static void slcanfd_rx_work(struct work_struct *work)
++{
++    struct slcanfd_can_gateway *parent = container_of(work,
++                                     struct slcanfd_can_gateway, rx_work);
++    int budget = RX_WORK_BUDGET;
++    int read;
++    unsigned long flags;
++    u8 *p;
++    
++    u8 *local_buf = parent->rx_work_buf;
++    size_t local_buf_size = sizeof(parent->rx_work_buf);
++    u8 cobs_pkt[MAX_COBS_PACKET_SIZE];
++
++    /*
++     * Hold off softirq processing for the entire batch so that all
++     * netif_rx() calls land on the same per-CPU backlog and are
++     * delivered to userspace in strict FIFO order.
++     */
++    local_bh_disable();
++
++    while (budget-- > 0) {
++        spin_lock_irqsave(&parent->rx_fifo_lock, flags);
++        read = kfifo_out(&parent->rx_fifo, local_buf, local_buf_size);
++        spin_unlock_irqrestore(&parent->rx_fifo_lock, flags);
++
++        if (read == 0)
++            break;
++
++        p = local_buf;
++        while (read > 0) {
++            u8 *zero_byte = memchr(p, 0x00, read);
++            
++            if (zero_byte) {
++                int pkt_chunk_len = zero_byte - p;
++                u32 total_cobs_len = parent->rx_partial_len + pkt_chunk_len;
++
++                if (total_cobs_len > 0 &&
++                    total_cobs_len <= MAX_COBS_PACKET_SIZE) {
++                    
++                    memcpy(cobs_pkt, parent->rx_partial_buf,
++                           parent->rx_partial_len);
++                    memcpy(&cobs_pkt[parent->rx_partial_len],
++                           p, pkt_chunk_len);
++
++                    slcanfd_process_cobs_packet(parent,
++                                               cobs_pkt,
++                                               total_cobs_len);
++                } else if (total_cobs_len > MAX_COBS_PACKET_SIZE) {
++                    dev_err(parent->dev, "RX packet overflow, dropping.\n");
++                }
++
++                parent->rx_partial_len = 0;
++                read -= (pkt_chunk_len + 1);
++                p += (pkt_chunk_len + 1);
++
++            } else {
++                slcanfd_stash_partial_chunk(parent, p, read);
++                read = 0;
++            }
++        }
++    }
++
++    local_bh_enable();
++
++    spin_lock_irqsave(&parent->rx_fifo_lock, flags);
++    if (!kfifo_is_empty(&parent->rx_fifo))
++        schedule_work(&parent->rx_work);
++    spin_unlock_irqrestore(&parent->rx_fifo_lock, flags);
++}
++
++static int slcanfd_receive(struct serdev_device *serdev,
++                             const unsigned char *data, size_t count)
++{
++    struct slcanfd_can_gateway *parent = serdev_device_get_drvdata(serdev);
++    unsigned long flags;
++    unsigned int copied;
++
++    if (!parent || !atomic_read(&parent->ready))
++        return count;
++
++    spin_lock_irqsave(&parent->rx_fifo_lock, flags);
++    
++    copied = kfifo_in(&parent->rx_fifo, data, count);
++    
++    spin_unlock_irqrestore(&parent->rx_fifo_lock, flags);
++
++    if (copied != count)
++        dev_warn(parent->dev, "RX kfifo overflow, %zu bytes dropped\n",
++               count - copied);
++
++    if (copied > 0)
++        schedule_work(&parent->rx_work);
++
++    return copied;
++}
++
++
++// --- TX Path (Virtual CAN -> UART) ---
++
++static int slcanfd_send_config_frame(struct slcanfd_can_gateway *parent,
++				     u8 target_index,
++				     u32 cmd_id, u8 *data, u8 len)
++{
++	u8 raw_pkt[MAX_RAW_PACKET_SIZE];
++	u8 cobs_pkt[MAX_COBS_PACKET_SIZE];
++	ssize_t encoded_len;
++	int ret;
++	u8 pkt_info = 0; 
++	size_t raw_len;
++
++	dev_info(parent->dev, "--> CONFIG_FRAME: cmd_id=0x%x, target=%u, len=%d\n", cmd_id, target_index, len);
++
++	pkt_info = SLCANFD_MSG_FLAG_FD; /* index=0, FD flag -> config channel */
++
++	raw_pkt[0] = pkt_info;
++	raw_pkt[1] = 0; /* seq not meaningful for config TX */
++	memcpy(&raw_pkt[2], &cmd_id, 4);
++	raw_pkt[6] = len;
++	raw_pkt[7] = 0; /* flags */
++
++	if (len > 0)
++		memcpy(&raw_pkt[8], data, len);
++
++	raw_len = 8 + len;
++
++	encoded_len = cobs_encode(cobs_pkt, MAX_COBS_PACKET_SIZE, raw_pkt, raw_len);
++	if (encoded_len < 0) {
++		dev_err(parent->dev, "COBS config encode error (%zd)\n", encoded_len);
++		return encoded_len;
++	}
++
++	cobs_pkt[encoded_len] = 0x00;
++	encoded_len++;
++
++	mutex_lock(&parent->tx_lock);
++	ret = serdev_device_write_buf(parent->serdev, cobs_pkt, encoded_len);
++	mutex_unlock(&parent->tx_lock);
++
++	if (ret < 0 || ret != encoded_len) {
++		dev_err(parent->dev, "CONFIG_FRAME: serdev_device_write_buf FAILED (%d, expected %zd)\n",
++			ret, encoded_len);
++		return -EIO;
++	}
++
++	dev_info(parent->dev, "CONFIG_FRAME: Wrote %d bytes to UART\n", ret);
++	return 0;
++}
++
++static int slcanfd_send_data_frame(struct slcanfd_can_dev *vdev,
++				   struct sk_buff *skb)
++{
++	struct slcanfd_can_gateway *parent = vdev->parent;
++	u8 raw_pkt[MAX_RAW_PACKET_SIZE]; 
++	u8 cobs_pkt[MAX_COBS_PACKET_SIZE];
++	ssize_t encoded_len;
++	int ret;
++	size_t raw_len;
++	
++	u8 pkt_info = vdev->dev_index & SLCANFD_MSG_INDEX_MASK;
++	
++	if (can_is_canfd_skb(skb)) {
++		struct canfd_frame *cfd = (struct canfd_frame *)skb->data;
++
++		dev_info(parent->dev, "--> DATA_FRAME (FD): index=%d, id=0x%x, len=%u\n",
++			 vdev->dev_index, cfd->can_id, cfd->len);
++
++		pkt_info |= SLCANFD_MSG_FLAG_FD;
++
++		raw_pkt[0] = pkt_info;
++		raw_pkt[1] = 0; /* seq not tracked on TX direction */
++		memcpy(&raw_pkt[2], &cfd->can_id, 4);
++		raw_pkt[6] = cfd->len;
++		raw_pkt[7] = cfd->flags;
++
++		if (cfd->len > 0)
++			memcpy(&raw_pkt[8], cfd->data, cfd->len);
++
++		raw_len = 8 + cfd->len;
++
++	} else {
++		struct can_frame *cf = (struct can_frame *)skb->data;
++
++		dev_info(parent->dev, "--> DATA_FRAME (Classic): index=%d, id=0x%x, dlc=%u\n",
++			 vdev->dev_index, cf->can_id, cf->can_dlc);
++
++		raw_pkt[0] = pkt_info;
++		raw_pkt[1] = 0;
++		memcpy(&raw_pkt[2], &cf->can_id, 4);
++		raw_pkt[6] = cf->can_dlc;
++
++		if (cf->can_dlc > 0)
++			memcpy(&raw_pkt[7], cf->data, cf->can_dlc);
++
++		raw_len = 7 + cf->can_dlc;
++	}
++
++	encoded_len = cobs_encode(cobs_pkt, MAX_COBS_PACKET_SIZE, raw_pkt, raw_len);
++	if (encoded_len < 0) {
++		dev_err(parent->dev, "DATA_FRAME: COBS encode error (%zd)\n", encoded_len);
++		return encoded_len;
++	}
++
++	cobs_pkt[encoded_len] = 0x00;
++	encoded_len++;
++
++	mutex_lock(&parent->tx_lock);
++	ret = serdev_device_write_buf(parent->serdev, cobs_pkt, encoded_len);
++	mutex_unlock(&parent->tx_lock);
++
++	if (ret < 0 || ret != encoded_len) {
++		dev_err(parent->dev, "DATA_FRAME: serdev_device_write_buf FAILED (%d, expected %zd)\n",
++			ret, encoded_len);
++		return -EIO;
++	}
++
++	dev_info(parent->dev, "DATA_FRAME: Wrote %d bytes to UART\n", ret);
++	return 0;
++}
++
++static netdev_tx_t slcanfd_xmit(struct sk_buff *skb, struct net_device *netdev)
++{
++    struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++    int ret;
++    u8 datalen;
++
++    dev_info(vdev->parent->dev, "==> XMIT: Packet received for %s\n", netdev->name);
++
++    if (!netif_running(netdev)) {
++        dev_err(vdev->parent->dev, "xmit: device %s is down\n", netdev->name);
++        goto out_free_skb;
++    }
++
++    ret = slcanfd_send_data_frame(vdev, skb);
++
++    if (ret)
++        goto out_drop_skb;
++
++    if (can_is_canfd_skb(skb))
++        datalen = ((struct canfd_frame *)skb->data)->len;
++    else
++        datalen = ((struct can_frame *)skb->data)->can_dlc;
++
++    netdev->stats.tx_packets++;
++    netdev->stats.tx_bytes += datalen;
++    
++out_free_skb:
++    kfree_skb(skb); /* "consume" the skb */
++    return NETDEV_TX_OK;
++
++out_drop_skb:
++    netdev->stats.tx_dropped++;
++    goto out_free_skb;
++}
++
++// --- Netdev and CANdev Operations ---
++static int slcanfd_open(struct net_device *netdev)
++{
++	struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++	struct can_priv *can_priv = &vdev->can;
++	u8 ctrlmode_data;
++
++	netif_start_queue(netdev);
++	netif_carrier_on(netdev);
++	dev_info(&netdev->dev, "Device %s opened\n", netdev->name);
++
++	/*
++	 * SYNC FD MODE:
++	 * Send the current FD state to firmware immediately when interface opens.
++	 * The kernel only calls do_set_mode for START/STOP, not for FD parameter changes.
++	 */
++	ctrlmode_data = (can_priv->ctrlmode & CAN_CTRLMODE_FD) ? 1 : 0;
++	
++	dev_info(netdev->dev.parent, "==> OPEN: Syncing FD mode (%s)\n",
++		 ctrlmode_data ? "ON" : "OFF");
++		 
++	slcanfd_send_config_frame(vdev->parent,
++				  vdev->dev_index, 
++				  SLCANFD_CMD_SET_CTRLMODE,
++				  &ctrlmode_data, 1);
++
++	return 0;
++}
++
++static int slcanfd_stop(struct net_device *netdev)
++{
++    netif_stop_queue(netdev);
++    netif_carrier_off(netdev);
++    dev_info(&netdev->dev, "Device %s stopped\n", netdev->name);
++    return 0;
++}
++
++static const struct net_device_ops slcanfd_netdev_ops = {
++    .ndo_open   = slcanfd_open,
++    .ndo_stop   = slcanfd_stop,
++    .ndo_start_xmit = slcanfd_xmit,
++};
++
++static const struct serdev_device_ops slcanfd_serdev_ops = {
++    .receive_buf = slcanfd_receive,
++};
++
++static const struct can_bittiming_const slcanfd_bittiming_const = {
++    .name = DRIVER_NAME,
++    .tseg1_min = 2,
++    .tseg1_max = 256,
++    .tseg2_min = 2,
++    .tseg2_max = 128,
++    .sjw_max = 128,
++    .brp_min = 1,
++    .brp_max = 512,
++    .brp_inc = 1,
++};
++
++static const struct can_bittiming_const slcanfd_data_bittiming_const = {
++    .name = DRIVER_NAME,
++    .tseg1_min = 2,
++    .tseg1_max = 32,
++    .tseg2_min = 1,
++    .tseg2_max = 16,
++    .sjw_max = 16,
++    .brp_min = 1,
++    .brp_max = 32,
++    .brp_inc = 1,
++};
++
++static int slcanfd_set_mode(struct net_device *netdev, enum can_mode mode)
++{
++	dev_info(netdev->dev.parent, "==> NETLINK: set_mode command received\n");
++
++	if (mode == CAN_MODE_START) {
++		return 0;
++	}
++
++	return 0;
++}
++
++static int slcanfd_set_bittiming(struct net_device *netdev)
++{
++	struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++	struct can_priv *can_priv = &vdev->can;
++	struct can_bittiming_compat bt_compat;
++
++	dev_info(netdev->dev.parent, "==> NETLINK: set_bittiming (brp=%u, prop=%u, ps1=%u, ps2=%u)\n",
++		 can_priv->bittiming.brp,
++		 can_priv->bittiming.prop_seg,
++		 can_priv->bittiming.phase_seg1,
++		 can_priv->bittiming.phase_seg2);
++	
++	bt_compat.brp = can_priv->bittiming.brp;
++	bt_compat.prop_seg = can_priv->bittiming.prop_seg;
++	bt_compat.phase_seg1 = can_priv->bittiming.phase_seg1;
++	bt_compat.phase_seg2 = can_priv->bittiming.phase_seg2;
++	bt_compat.sjw = can_priv->bittiming.sjw;
++	
++	return slcanfd_send_config_frame(vdev->parent,
++					 vdev->dev_index,
++					 SLCANFD_CMD_SET_BITTIMING,
++					 (u8 *)&bt_compat,
++					 sizeof(bt_compat));
++}
++
++static int slcanfd_set_data_bittiming(struct net_device *netdev)
++{
++	struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++	struct can_priv *can_priv = &vdev->can;
++	struct can_bittiming_compat dbt_compat;
++	
++	dev_info(netdev->dev.parent, "==> NETLINK: set_data_bittiming (brp=%u, prop=%u, ps1=%u, ps2=%u)\n",
++		 can_priv->data_bittiming.brp,
++		 can_priv->data_bittiming.prop_seg,
++		 can_priv->data_bittiming.phase_seg1,
++		 can_priv->data_bittiming.phase_seg2);
++	
++	dbt_compat.brp = can_priv->data_bittiming.brp;
++	dbt_compat.prop_seg = can_priv->data_bittiming.prop_seg;
++	dbt_compat.phase_seg1 = can_priv->data_bittiming.phase_seg1;
++	dbt_compat.phase_seg2 = can_priv->data_bittiming.phase_seg2;
++	dbt_compat.sjw = can_priv->data_bittiming.sjw;
++
++	return slcanfd_send_config_frame(vdev->parent,
++					 vdev->dev_index,
++					 SLCANFD_CMD_SET_DATA_BITTIMING,
++					 (u8 *)&dbt_compat,
++					 sizeof(dbt_compat));
++}
++
++static int slcanfd_probe(struct serdev_device *serdev)
++{
++    struct slcanfd_can_gateway *parent;
++    struct device_node *np = serdev->dev.of_node;
++    struct device_node *child;
++    struct net_device *netdev = NULL;
++    u32 can_clk_freq;
++    int ret;
++    int i;
++
++	u32 baudrate = DEFAULT_BAUDRATE;
++    enum serdev_parity parity = SERDEV_PARITY_NONE;
++    bool flow_control = false;
++    const char *parity_str;
++
++    dev_info(&serdev->dev, "Probing SLCAN-FD gateway\n");
++
++    parent = devm_kzalloc(&serdev->dev, sizeof(*parent), GFP_KERNEL);
++    if (!parent)
++        return -ENOMEM;
++
++    parent->dev = &serdev->dev;
++    parent->serdev = serdev;
++    serdev_device_set_drvdata(serdev, parent);
++
++    serdev_device_set_client_ops(serdev, &slcanfd_serdev_ops);
++
++    mutex_init(&parent->tx_lock);
++    spin_lock_init(&parent->rx_fifo_lock);
++    parent->rx_partial_len = 0;
++    INIT_WORK(&parent->rx_work, slcanfd_rx_work);
++    atomic_set(&parent->ready, 0);
++
++    ret = kfifo_alloc(&parent->rx_fifo, RX_FIFO_BUFFER_SIZE, GFP_KERNEL);
++    if (ret) {
++        dev_err(parent->dev, "Failed to allocate rx kfifo (%d)\n", ret);
++        return ret;
++    }
++
++    ret = serdev_device_open(serdev);
++    if (ret) {
++        dev_err(parent->dev, "Failed to open serdev device\n");
++        goto out_fail_free_fifo;
++    }
++
++	if (np) {
++        of_property_read_u32(np, "baudrate", &baudrate);
++
++        if (of_property_read_string(np, "parity", &parity_str) == 0) {
++            if (strcmp(parity_str, "odd") == 0)
++                parity = SERDEV_PARITY_ODD;
++            else if (strcmp(parity_str, "even") == 0)
++                parity = SERDEV_PARITY_EVEN;
++            else if (strcmp(parity_str, "none") != 0)
++                dev_warn(parent->dev, "Unknown parity '%s', using 'none'\n", parity_str);
++        }
++
++        flow_control = of_property_read_bool(np, "hw-flow-control");
++    }
++
++	dev_info(parent->dev, "Configuring serial port (Baud: %u, Parity: %s, Flow: %s)\n",
++             baudrate,
++             (parity == SERDEV_PARITY_ODD) ? "odd" : (parity == SERDEV_PARITY_EVEN) ? "even" : "none",
++             flow_control ? "on" : "off");
++
++	serdev_device_set_flow_control(parent->serdev, flow_control);
++    serdev_device_set_parity(parent->serdev, parity);
++
++    ret = serdev_device_set_baudrate(parent->serdev, baudrate);
++    if (ret < 0) {
++        dev_err(parent->dev, "Failed to set baud rate to %u: %d\n", baudrate, ret);
++    }
++
++    ret = of_property_read_u32(np, "can-clock-frequency", &can_clk_freq);
++    if (ret) {
++        dev_warn(parent->dev,
++               "Missing 'can-clock-frequency' DT property. Using default %u Hz\n",
++               DEFAULT_CAN_CLOCK_FREQ);
++        can_clk_freq = DEFAULT_CAN_CLOCK_FREQ;
++    } else {
++        dev_info(parent->dev, "Using CAN clock frequency: %u Hz\n",
++                 can_clk_freq);
++    }
++
++    parent->can_device_count = 0;
++    for_each_available_child_of_node(np, child) {
++        struct slcanfd_can_dev *vdev;
++        struct can_priv *can_priv;
++        u32 index;
++
++        if (parent->can_device_count >= MAX_GATEWAY_DEVICES) {
++            dev_warn(parent->dev, "Found more than %d child nodes, ignoring rest\n",
++                   MAX_GATEWAY_DEVICES);
++            break;
++        }
++
++        netdev = alloc_candev(sizeof(struct slcanfd_can_dev), 1);
++        if (!netdev) {
++            ret = -ENOMEM;
++            goto out_fail_unregister;
++        }
++
++        vdev = netdev_priv(netdev);
++        can_priv = &vdev->can;
++
++
++        vdev->netdev = netdev;
++        vdev->parent = parent;
++
++        if (of_property_read_u32(child, "reg", &index)) {
++            dev_err(parent->dev, "Missing 'reg' property for child node\n");
++            ret = -EINVAL;
++            goto out_fail_free_candev;
++        }
++        
++        if (index >= MAX_GATEWAY_DEVICES) {
++            dev_err(parent->dev, "Invalid 'reg' property: %u (must be 0-%d)\n",
++                   index, MAX_GATEWAY_DEVICES - 1);
++            ret = -EINVAL;
++            goto out_fail_free_candev;
++        }
++        
++        vdev->dev_index = (u8)index + 1;
++        
++        parent->can_devices[index] = vdev;
++        parent->can_device_count++;
++
++        netdev->netdev_ops = &slcanfd_netdev_ops;
++
++        can_priv->clock.freq = can_clk_freq;
++        
++        /* Netlink callbacks */
++        can_priv->bittiming_const = &slcanfd_bittiming_const;
++        can_priv->data_bittiming_const = &slcanfd_data_bittiming_const;
++        can_priv->do_set_bittiming = slcanfd_set_bittiming;
++        can_priv->do_set_data_bittiming = slcanfd_set_data_bittiming;
++        can_priv->do_set_mode = slcanfd_set_mode;
++        /* Note: do_get_* bittiming funcs removed for older kernel */
++
++        /* We support CAN-FD by default */
++        can_priv->ctrlmode_supported = CAN_CTRLMODE_FD;
++        vdev->can.ctrlmode = CAN_CTRLMODE_FD;
++
++		netdev->mtu = CANFD_MTU;
++        
++        netdev->dev.parent = parent->dev;
++
++        ret = register_candev(netdev);
++        if (ret) {
++            dev_err(parent->dev, "Failed to register candev %u\n", index);
++            goto out_fail_free_candev;
++        }
++
++        dev_info(parent->dev, "Registered CAN device %s (index %u)\n",
++                 netdev->name, vdev->dev_index);
++    }
++    
++    of_node_put(child);
++
++    if (parent->can_device_count == 0) {
++        dev_err(parent->dev, "No child CAN device nodes found in device tree\n");
++        ret = -EINVAL;
++        goto out_fail_close_serdev;
++    }
++
++    atomic_set(&parent->ready, 1);
++    dev_info(parent->dev, "Probe successful, found %d devices\n", parent->can_device_count);
++    return 0;
++
++out_fail_free_candev:
++    if (netdev)
++        free_candev(netdev);
++out_fail_unregister:
++    for (i = 0; i < MAX_GATEWAY_DEVICES; i++) {
++        if (parent->can_devices[i]) {
++            unregister_candev(parent->can_devices[i]->netdev);
++            free_candev(parent->can_devices[i]->netdev);
++        }
++    }
++out_fail_close_serdev:
++    serdev_device_close(parent->serdev);
++out_fail_free_fifo:
++    kfifo_free(&parent->rx_fifo);
++    
++    cancel_work_sync(&parent->rx_work);
++    
++    dev_err(parent->dev, "Probe failed with error %d\n", ret);
++    return ret;
++}
++
++static void slcanfd_remove(struct serdev_device *serdev)
++{
++    struct slcanfd_can_gateway *parent = serdev_device_get_drvdata(serdev);
++    int i;
++
++    dev_info(parent->dev, "Removing driver\n");
++
++    /* Stop receiving new data from the serial port */
++    serdev_device_close(serdev);
++
++    /*
++     * Cancel the work queue. This is synchronous and ensures that
++     * slcanfd_rx_work() is no longer running and will not be
++     * scheduled again. This is critical to prevent use-after-free
++     * crashes, as the worker accesses resources we are about to free.
++     */
++    cancel_work_sync(&parent->rx_work);
++
++    /* Now it's safe to free the net devices */
++    for (i = 0; i < MAX_GATEWAY_DEVICES; i++) {
++        if (parent->can_devices[i]) {
++            unregister_candev(parent->can_devices[i]->netdev);
++            free_candev(parent->can_devices[i]->netdev);
++        }
++    }
++
++    /* Free any remaining resources */
++    kfifo_free(&parent->rx_fifo);
++}
++
++
++static const struct of_device_id slcanfd_of_match[] = {
++    { .compatible = "cartken,slcanfd-cobs" },
++    { /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, slcanfd_of_match);
++
++static struct serdev_device_driver slcanfd_cobs_driver = {
++    .driver = {
++        .name = DRIVER_NAME,
++        .of_match_table = slcanfd_of_match,
++    },
++    .probe = slcanfd_probe,
++    .remove = slcanfd_remove,
++};
++
++module_serdev_device_driver(slcanfd_cobs_driver);
++
++MODULE_LICENSE("GPL v2");
++MODULE_AUTHOR("Alex Hoffman <alxhoff@cartken.com>");
++MODULE_DESCRIPTION("Multiplexed CAN-FD gateway over Serial Line driver");
+-- 
+2.54.0
+

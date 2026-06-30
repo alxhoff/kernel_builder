@@ -1,0 +1,434 @@
+From ff341e0cb296f546a8db80474ee7bf3300cc6589 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Sun, 17 May 2026 09:48:16 +0200
+Subject: [PATCH 42/43] slcanfd_cobs: add firmware health monitoring and
+ diagnostics
+
+Detect STM32 gateway firmware freeze or crash from the Jetson without
+requiring a PCB reflash when only the kernel can be updated.
+
+Passive heartbeat (works with existing firmware):
+- Treat periodic STATUS frames (1 Hz) as an implicit heartbeat
+- Mark firmware dead if no heartbeat for 5 seconds; log recovery
+- Suppress boot-time COBS errors until the stream is synchronized
+
+Active ping/pong (when firmware supports SLCANFD_CMD_PING):
+- Send ping every 5 seconds; parse pong with uptime, reset reason,
+  main loop count, and per-channel FDCAN error counters
+- Fall back to passive status monitoring on older firmware
+
+Sysfs on the serdev device:
+- fw_alive, fw_last_seen_ms, fw_uptime_ms, fw_reset_reason, fw_version
+
+Per-interface sysfs:
+- seq_gaps (UART packet loss counter per CAN port)
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ kernel/kernel/drivers/net/can/slcanfd_cobs.c | 266 ++++++++++++++++++-
+ 1 file changed, 264 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/kernel/drivers/net/can/slcanfd_cobs.c b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+index 97b6c39f1..37d1509d9 100644
+--- a/kernel/kernel/drivers/net/can/slcanfd_cobs.c
++++ b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+@@ -22,6 +22,7 @@
+ #include <linux/kfifo.h>
+ #include <linux/device.h>
+ #include <linux/uaccess.h> // For copy_from_user, etc. (future)
++#include <linux/jiffies.h>
+ 
+ #define DRIVER_NAME "slcanfd_cobs"
+ #define MAX_GATEWAY_DEVICES 3
+@@ -58,6 +59,19 @@
+ #define SLCANFD_CMD_SET_DATA_BITTIMING  0x02
+ #define SLCANFD_CMD_SET_CTRLMODE        0x03
+ #define SLCANFD_CMD_STATUS              0x10
++#define SLCANFD_CMD_PING                0x11
++
++#define HEALTH_CHECK_INTERVAL_MS        3000
++#define HEARTBEAT_TIMEOUT_MS            5000
++#define PING_INTERVAL_MS                5000
++
++/* STM32G4 RCC->CSR reset flags (firmware copies raw CSR) */
++#define FW_RCC_PINRSTF                  BIT(26)
++#define FW_RCC_BORRSTF                  BIT(27)
++#define FW_RCC_SFTRSTF                  BIT(28)
++#define FW_RCC_IWDGRSTF                 BIT(29)
++#define FW_RCC_WWDGRSTF                 BIT(30)
++#define FW_RCC_LPWRRSTF                 BIT(31)
+ 
+ #define DEFAULT_CAN_CLOCK_FREQ 100000000
+ #define DEFAULT_BAUDRATE 115200
+@@ -75,6 +89,16 @@ struct can_bittiming_compat {
+     __u32 sjw;        /* Synchronisation jump width (4 bytes) */
+ } __attribute__((__packed__));
+ 
++/*
++ * Pong payload from firmware (cmd_id == SLCANFD_CMD_PING), 24 bytes LE.
++ */
++struct slcanfd_pong_payload {
++	__le32 uptime_ms;
++	__le32 reset_reason;
++	__le32 main_loop_count;
++	__le32 can_errors[MAX_GATEWAY_DEVICES];
++} __attribute__((packed));
++
+ struct slcanfd_can_gateway;
+ 
+ struct slcanfd_can_dev {
+@@ -115,6 +139,18 @@ struct slcanfd_can_gateway {
+     u8 rx_decode_buf[MAX_RAW_PACKET_SIZE];
+ 
+     bool rx_synced;
++
++    /* Firmware health / heartbeat */
++    unsigned long last_heartbeat_jiffies;
++    unsigned long last_ping_jiffies;
++    bool fw_alive;
++    bool fw_ping_capable;
++    struct delayed_work health_work;
++
++    u32 fw_uptime_ms;
++    u32 fw_reset_reason;
++    u32 fw_main_loop_count;
++    u32 fw_can_errors[MAX_GATEWAY_DEVICES];
+ };
+ 
+ static inline struct slcanfd_can_dev *slcanfd_vdev_from_netdev(struct net_device *netdev)
+@@ -193,6 +229,34 @@ static size_t cobs_decode(u8 *dst, size_t dst_len, const u8 *src, size_t src_len
+ 
+ // --- RX Path (UART -> Virtual CAN) ---
+ 
++static void slcanfd_note_heartbeat(struct slcanfd_can_gateway *parent)
++{
++	unsigned long now = jiffies;
++
++	parent->last_heartbeat_jiffies = now;
++	if (!parent->fw_alive) {
++		parent->fw_alive = true;
++		dev_info(parent->dev, "Firmware heartbeat detected\n");
++	}
++}
++
++static const char *slcanfd_reset_reason_str(u32 csr)
++{
++	if (csr & FW_RCC_IWDGRSTF)
++		return "iwdg";
++	if (csr & FW_RCC_WWDGRSTF)
++		return "wwdg";
++	if (csr & FW_RCC_SFTRSTF)
++		return "software";
++	if (csr & FW_RCC_PINRSTF)
++		return "pin";
++	if (csr & FW_RCC_BORRSTF)
++		return "bor";
++	if (csr & FW_RCC_LPWRRSTF)
++		return "low_power";
++	return "unknown";
++}
++
+ static void slcanfd_handle_status(struct slcanfd_can_gateway *parent,
+ 				  u8 *data, u32 len)
+ {
+@@ -214,6 +278,8 @@ static void slcanfd_handle_status(struct slcanfd_can_gateway *parent,
+ 	memcpy(drops, &data[8], num_ch * sizeof(u32));
+ 	memcpy(total, &data[8 + num_ch * sizeof(u32)], num_ch * sizeof(u32));
+ 
++	slcanfd_note_heartbeat(parent);
++
+ 	for (i = 0; i < num_ch; i++) {
+ 		if (drops[i] > 0)
+ 			dev_warn_ratelimited(parent->dev,
+@@ -226,6 +292,37 @@ static void slcanfd_handle_status(struct slcanfd_can_gateway *parent,
+ 		num_ch > 2 ? total[2] : 0);
+ }
+ 
++static void slcanfd_handle_pong(struct slcanfd_can_gateway *parent,
++				u8 *data, u32 len)
++{
++	u8 data_len;
++	const struct slcanfd_pong_payload *pong;
++	u32 csr;
++
++	if (len < 8)
++		return;
++
++	data_len = data[6];
++	if (data_len != sizeof(*pong) || len != 8 + data_len)
++		return;
++
++	pong = (const struct slcanfd_pong_payload *)&data[8];
++
++	parent->fw_ping_capable = true;
++	parent->fw_uptime_ms = le32_to_cpu(pong->uptime_ms);
++	parent->fw_reset_reason = le32_to_cpu(pong->reset_reason);
++	parent->fw_main_loop_count = le32_to_cpu(pong->main_loop_count);
++	memcpy(parent->fw_can_errors, pong->can_errors,
++	       sizeof(parent->fw_can_errors));
++
++	slcanfd_note_heartbeat(parent);
++
++	csr = parent->fw_reset_reason;
++	if (csr & FW_RCC_IWDGRSTF)
++		dev_warn_ratelimited(parent->dev,
++			"Firmware last reset: IWDG watchdog\n");
++}
++
+ static void slcanfd_check_seq(struct slcanfd_can_dev *vdev, u8 seq)
+ {
+ 	if (!vdev->seq_initialized) {
+@@ -274,6 +371,9 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 			if (cmd_id == SLCANFD_CMD_STATUS) {
+ 				parent->rx_synced = true;
+ 				slcanfd_handle_status(parent, data, len);
++			} else if (cmd_id == SLCANFD_CMD_PING) {
++				parent->rx_synced = true;
++				slcanfd_handle_pong(parent, data, len);
+ 			}
+ 		}
+ 		return;
+@@ -516,7 +616,11 @@ static int slcanfd_send_config_frame(struct slcanfd_can_gateway *parent,
+ 	u8 pkt_info = 0; 
+ 	size_t raw_len;
+ 
+-	dev_info(parent->dev, "--> CONFIG_FRAME: cmd_id=0x%x, target=%u, len=%d\n", cmd_id, target_index, len);
++	if (cmd_id == SLCANFD_CMD_PING)
++		dev_dbg(parent->dev, "--> CONFIG_FRAME: PING\n");
++	else
++		dev_info(parent->dev, "--> CONFIG_FRAME: cmd_id=0x%x, target=%u, len=%d\n",
++			  cmd_id, target_index, len);
+ 
+ 	pkt_info = SLCANFD_MSG_FLAG_FD; /* index=0, FD flag -> config channel */
+ 
+@@ -550,10 +654,59 @@ static int slcanfd_send_config_frame(struct slcanfd_can_gateway *parent,
+ 		return -EIO;
+ 	}
+ 
+-	dev_info(parent->dev, "CONFIG_FRAME: Wrote %d bytes to UART\n", ret);
++	if (cmd_id != SLCANFD_CMD_PING)
++		dev_info(parent->dev, "CONFIG_FRAME: Wrote %d bytes to UART\n", ret);
+ 	return 0;
+ }
+ 
++static void slcanfd_health_work_fn(struct work_struct *work)
++{
++	struct slcanfd_can_gateway *parent;
++	unsigned long now = jiffies;
++	unsigned long stale_ms;
++	bool stale;
++
++	parent = container_of(work, struct slcanfd_can_gateway, health_work.work);
++
++	if (!atomic_read(&parent->ready))
++		goto reschedule;
++
++	/* Active ping every PING_INTERVAL_MS (ignored by old firmware) */
++	if (time_after(now, parent->last_ping_jiffies +
++		       msecs_to_jiffies(PING_INTERVAL_MS))) {
++		parent->last_ping_jiffies = now;
++		slcanfd_send_config_frame(parent, 0, SLCANFD_CMD_PING, NULL, 0);
++	}
++
++	stale = false;
++	if (parent->last_heartbeat_jiffies == 0) {
++		if (time_after(now, msecs_to_jiffies(HEARTBEAT_TIMEOUT_MS)))
++			stale = true;
++	} else if (time_after(now, parent->last_heartbeat_jiffies +
++			      msecs_to_jiffies(HEARTBEAT_TIMEOUT_MS))) {
++		stale = true;
++	}
++
++	if (stale && parent->fw_alive) {
++		parent->fw_alive = false;
++		dev_err(parent->dev,
++			"Firmware heartbeat lost -- PCB may be frozen\n");
++	} else if (!stale && !parent->fw_alive &&
++		   parent->last_heartbeat_jiffies != 0) {
++		parent->fw_alive = true;
++		dev_info(parent->dev, "Firmware heartbeat recovered\n");
++	}
++
++	stale_ms = (parent->last_heartbeat_jiffies == 0) ? 0 :
++		jiffies_to_msecs(now - parent->last_heartbeat_jiffies);
++	dev_dbg(parent->dev, "health: alive=%d stale_ms=%lu ping_capable=%d\n",
++		parent->fw_alive, stale_ms, parent->fw_ping_capable);
++
++reschedule:
++	schedule_delayed_work(&parent->health_work,
++			      msecs_to_jiffies(HEALTH_CHECK_INTERVAL_MS));
++}
++
+ static int slcanfd_send_data_frame(struct slcanfd_can_dev *vdev,
+ 				   struct sk_buff *skb)
+ {
+@@ -706,6 +859,91 @@ static ssize_t dev_index_show(struct device *dev,
+ }
+ static DEVICE_ATTR_RO(dev_index);
+ 
++static ssize_t seq_gaps_show(struct device *dev,
++			     struct device_attribute *attr, char *buf)
++{
++	struct net_device *netdev = to_net_dev(dev);
++	struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++
++	return sysfs_emit(buf, "%u\n", vdev->seq_gaps);
++}
++static DEVICE_ATTR_RO(seq_gaps);
++
++/* Gateway (serdev parent) health sysfs */
++static ssize_t fw_alive_show(struct device *dev,
++			     struct device_attribute *attr, char *buf)
++{
++	struct slcanfd_can_gateway *parent = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%d\n", parent->fw_alive ? 1 : 0);
++}
++static DEVICE_ATTR_RO(fw_alive);
++
++static ssize_t fw_last_seen_ms_show(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	struct slcanfd_can_gateway *parent = dev_get_drvdata(dev);
++	unsigned long ms;
++
++	if (parent->last_heartbeat_jiffies == 0)
++		return sysfs_emit(buf, "-1\n");
++
++	ms = jiffies_to_msecs(jiffies - parent->last_heartbeat_jiffies);
++	return sysfs_emit(buf, "%lu\n", ms);
++}
++static DEVICE_ATTR_RO(fw_last_seen_ms);
++
++static ssize_t fw_uptime_ms_show(struct device *dev,
++				 struct device_attribute *attr, char *buf)
++{
++	struct slcanfd_can_gateway *parent = dev_get_drvdata(dev);
++
++	if (!parent->fw_ping_capable)
++		return sysfs_emit(buf, "unavailable\n");
++
++	return sysfs_emit(buf, "%u\n", parent->fw_uptime_ms);
++}
++static DEVICE_ATTR_RO(fw_uptime_ms);
++
++static ssize_t fw_reset_reason_show(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	struct slcanfd_can_gateway *parent = dev_get_drvdata(dev);
++
++	if (!parent->fw_ping_capable)
++		return sysfs_emit(buf, "unavailable\n");
++
++	return sysfs_emit(buf, "%s (0x%08x)\n",
++			  slcanfd_reset_reason_str(parent->fw_reset_reason),
++			  parent->fw_reset_reason);
++}
++static DEVICE_ATTR_RO(fw_reset_reason);
++
++/*
++ * v2: STATUS heartbeat (1 Hz) — passive health monitoring
++ * v3: PING/PONG — adds uptime, reset reason, CAN error counters in pong
++ */
++static ssize_t fw_version_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct slcanfd_can_gateway *parent = dev_get_drvdata(dev);
++
++	if (parent->fw_ping_capable)
++		return sysfs_emit(buf, "v3\n");
++	return sysfs_emit(buf, "v2\n");
++}
++static DEVICE_ATTR_RO(fw_version);
++
++static struct attribute *slcanfd_gateway_attrs[] = {
++	&dev_attr_fw_alive.attr,
++	&dev_attr_fw_last_seen_ms.attr,
++	&dev_attr_fw_uptime_ms.attr,
++	&dev_attr_fw_reset_reason.attr,
++	&dev_attr_fw_version.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(slcanfd_gateway);
++
+ static const struct net_device_ops slcanfd_netdev_ops = {
+     .ndo_open   = slcanfd_open,
+     .ndo_stop   = slcanfd_stop,
+@@ -825,6 +1063,7 @@ static int slcanfd_probe(struct serdev_device *serdev)
+     parent->dev = &serdev->dev;
+     parent->serdev = serdev;
+     serdev_device_set_drvdata(serdev, parent);
++    dev_set_drvdata(parent->dev, parent);
+ 
+     serdev_device_set_client_ops(serdev, &slcanfd_serdev_ops);
+ 
+@@ -832,7 +1071,16 @@ static int slcanfd_probe(struct serdev_device *serdev)
+     spin_lock_init(&parent->rx_fifo_lock);
+     parent->rx_partial_len = 0;
+     parent->rx_synced = false;
++    parent->last_heartbeat_jiffies = 0;
++    parent->last_ping_jiffies = 0;
++    parent->fw_alive = false;
++    parent->fw_ping_capable = false;
++    parent->fw_uptime_ms = 0;
++    parent->fw_reset_reason = 0;
++    parent->fw_main_loop_count = 0;
++    memset(parent->fw_can_errors, 0, sizeof(parent->fw_can_errors));
+     INIT_WORK(&parent->rx_work, slcanfd_rx_work);
++    INIT_DELAYED_WORK(&parent->health_work, slcanfd_health_work_fn);
+     atomic_set(&parent->ready, 0);
+ 
+     ret = kfifo_alloc(&parent->rx_fifo, RX_FIFO_BUFFER_SIZE, GFP_KERNEL);
+@@ -965,6 +1213,7 @@ static int slcanfd_probe(struct serdev_device *serdev)
+         }
+ 
+         device_create_file(&netdev->dev, &dev_attr_dev_index);
++        device_create_file(&netdev->dev, &dev_attr_seq_gaps);
+ 
+         dev_info(parent->dev, "Registered CAN device %s (index %u)\n",
+                  netdev->name, vdev->dev_index);
+@@ -978,7 +1227,13 @@ static int slcanfd_probe(struct serdev_device *serdev)
+         goto out_fail_close_serdev;
+     }
+ 
++    if (sysfs_create_groups(&parent->dev->kobj, slcanfd_gateway_groups)) {
++        dev_warn(parent->dev, "Failed to create gateway health sysfs\n");
++    }
++
+     atomic_set(&parent->ready, 1);
++    schedule_delayed_work(&parent->health_work,
++			  msecs_to_jiffies(HEALTH_CHECK_INTERVAL_MS));
+     dev_info(parent->dev, "Probe successful, found %d devices\n", parent->can_device_count);
+     return 0;
+ 
+@@ -990,6 +1245,8 @@ out_fail_unregister:
+         if (parent->can_devices[i]) {
+             device_remove_file(&parent->can_devices[i]->netdev->dev,
+                                &dev_attr_dev_index);
++            device_remove_file(&parent->can_devices[i]->netdev->dev,
++                               &dev_attr_seq_gaps);
+             unregister_candev(parent->can_devices[i]->netdev);
+             free_candev(parent->can_devices[i]->netdev);
+         }
+@@ -1012,6 +1269,9 @@ static void slcanfd_remove(struct serdev_device *serdev)
+ 
+     dev_info(parent->dev, "Removing driver\n");
+ 
++    cancel_delayed_work_sync(&parent->health_work);
++    sysfs_remove_groups(&parent->dev->kobj, slcanfd_gateway_groups);
++
+     /* Stop receiving new data from the serial port */
+     serdev_device_close(serdev);
+ 
+@@ -1028,6 +1288,8 @@ static void slcanfd_remove(struct serdev_device *serdev)
+         if (parent->can_devices[i]) {
+             device_remove_file(&parent->can_devices[i]->netdev->dev,
+                                &dev_attr_dev_index);
++            device_remove_file(&parent->can_devices[i]->netdev->dev,
++                               &dev_attr_seq_gaps);
+             unregister_candev(parent->can_devices[i]->netdev);
+             free_candev(parent->can_devices[i]->netdev);
+         }
+-- 
+2.54.0
+

@@ -1,0 +1,157 @@
+From 4f4d91da366ea34aadb92f0e4f30dd7c25ff7ac2 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 27 Apr 2026 12:56:37 +0200
+Subject: [PATCH 40/43] media: i2c: max9295: fix primary prim_priv and
+ sdev_pair error return
+
+Set prim_priv to self for is-prim-ser devices so pst2_ref and shared
+setup use a consistent primary pointer. Avoid taking prim_priv->lock
+when prim_priv == priv to prevent ABBA self-deadlock with priv->lock.
+
+Return -EINVAL from max9295_sdev_pair when already paired instead of
+success, so callers (e.g. d4xx GMSL probe) can fail and unwind.
+
+Fix max9295_setup_control to unlock the primary mutex only when it was
+locked, which would have oopsed on the !prim_priv error path before.
+---
+ kernel/nvidia/drivers/media/i2c/max9295.c | 37 +++++++++++++++--------
+ 1 file changed, 25 insertions(+), 12 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/i2c/max9295.c b/kernel/nvidia/drivers/media/i2c/max9295.c
+index 95be4cea8..171481f25 100644
+--- a/kernel/nvidia/drivers/media/i2c/max9295.c
++++ b/kernel/nvidia/drivers/media/i2c/max9295.c
+@@ -307,6 +307,7 @@ int max9295_setup_control(struct device *dev)
+ {
+ 	struct max9295 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
++	bool lock_prim = false;
+ 	struct gmsl_link_ctx *g_ctx;
+ 	u32 offset1 = 0;
+ 	u32 offset2 = 0;
+@@ -337,16 +338,19 @@ int max9295_setup_control(struct device *dev)
+ 	mutex_lock(&priv->lock);
+ 
+ 	if (!priv->prim_priv) {
+-	  err = -EINVAL;
+-	  goto error;
++		err = -EINVAL;
++		goto out;
+ 	}
+ 
+-	mutex_lock(&priv->prim_priv->lock);
++	if (priv->prim_priv != priv) {
++		mutex_lock(&priv->prim_priv->lock);
++		lock_prim = true;
++	}
+ 
+ 	if (!priv->g_client.g_ctx) {
+ 		dev_err(dev, "%s: no sensor dev client found\n", __func__);
+ 		err = -EINVAL;
+-		goto error;
++		goto out;
+ 	}
+ 
+ 	g_ctx = priv->g_client.g_ctx;
+@@ -363,7 +367,7 @@ int max9295_setup_control(struct device *dev)
+ 	/* check if serializer device exists */
+ 	if (err) {
+ 		dev_err(dev, "%s: ERROR: ser device not found\n", __func__);
+-		goto error;
++		goto out;
+ 	}
+ 
+ 	/* delay to settle link */
+@@ -380,7 +384,7 @@ int max9295_setup_control(struct device *dev)
+ 	if (i == ARRAY_SIZE(addr_offset)) {
+ 		dev_err(dev, "%s: invalid ser slave address\n", __func__);
+ 		err = -EINVAL;
+-		goto error;
++		goto out;
+ 	}
+ 
+ 	for (i = 0; i < ARRAY_SIZE(i2c_ovrd); i += 2) {
+@@ -405,8 +409,9 @@ int max9295_setup_control(struct device *dev)
+ 
+ 	g_ctx->serdev_found = true;
+ 
+-error:
+-	mutex_unlock(&priv->prim_priv->lock);
++out:
++	if (lock_prim)
++		mutex_unlock(&priv->prim_priv->lock);
+ 	mutex_unlock(&priv->lock);
+ 	return err;
+ }
+@@ -416,6 +421,7 @@ int max9295_reset_control(struct device *dev)
+ {
+ 	struct max9295 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
++	bool lock_prim = false;
+ 
+ 	if (!priv) {
+ 		dev_err(dev, "Couldn't get drvdata");
+@@ -437,7 +443,10 @@ int max9295_reset_control(struct device *dev)
+ 		goto error;
+ 	}
+ 
+-	mutex_lock(&priv->prim_priv->lock);
++	if (priv->prim_priv != priv) {
++		mutex_lock(&priv->prim_priv->lock);
++		lock_prim = true;
++	}
+ 
+ 	priv->prim_priv->pst2_ref--;
+ 	max9295_write_reg(dev, MAX9295_DEV_ADDR,
+@@ -447,7 +456,8 @@ int max9295_reset_control(struct device *dev)
+ 				MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
+ 	}
+ 
+-	mutex_unlock(&priv->prim_priv->lock);
++	if (lock_prim)
++		mutex_unlock(&priv->prim_priv->lock);
+ error:
+ 	mutex_unlock(&priv->lock);
+ ret:
+@@ -458,6 +468,7 @@ EXPORT_SYMBOL(max9295_reset_control);
+ int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
+ {
+ 	struct max9295 *priv;
++	int ret = 0;
+ 
+ 	if (!dev || !g_ctx || !g_ctx->s_dev) {
+ 		dev_err(dev, "%s: invalid input params\n", __func__);
+@@ -473,6 +484,7 @@ int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
+ 
+ 	if (priv->g_client.g_ctx) {
+ 		dev_err(dev, "%s: device already ser_paired\n", __func__);
++		ret = -EINVAL;
+ 		goto error;
+ 	}
+ 
+@@ -481,7 +493,7 @@ int max9295_sdev_pair(struct device *dev, struct gmsl_link_ctx *g_ctx)
+ 
+ error:
+ 	mutex_unlock(&priv->lock);
+-	return 0;
++	return ret;
+ }
+ EXPORT_SYMBOL(max9295_sdev_pair);
+ 
+@@ -718,11 +730,12 @@ static int max9295_probe(struct i2c_client *client,
+ 	mutex_init(&priv->lock);
+ 
+ 	if (of_get_property(node, "is-prim-ser", NULL)) {
+-		 err = of_property_read_u32(node, "reg", &priv->def_addr);
++		err = of_property_read_u32(node, "reg", &priv->def_addr);
+ 		if (err < 0) {
+ 			dev_err(&client->dev, "reg not found\n");
+ 			return -EINVAL;
+ 		}
++		priv->prim_priv = priv;
+ 	} else {
+ 		prim_node = of_parse_phandle(node, "prim-ser", 0);
+ 		if (!prim_node) {
+-- 
+2.54.0
+

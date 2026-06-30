@@ -1,0 +1,142 @@
+From 7e3c1adddc7f6af05f0a9e381241beea8d6fa3d3 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 15:30:05 +0100
+Subject: [PATCH 34/43] d4xx: increased line_length from 2200 to 2400
+
+---
+ ...4-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi | 28 +++++++++----------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+index d5fd82dbe..ae6741520 100644
+--- a/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
++++ b/hardware/nvidia/platform/t23x/concord/kernel-dts/cvb/tegra234-p3737-0000-camera-d4xx-quad-sw-v1_1.dtsi
+@@ -297,7 +297,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -345,7 +345,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -392,7 +392,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -440,7 +440,7 @@
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -523,7 +523,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -571,7 +571,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -618,7 +618,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "1";
+ 					};
+ 					gmsl-link {
+@@ -666,7 +666,7 @@
+ 						tegra_sinterface = "serial_c";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "74250000";
+-						line_length = "2200";
++						line_length = "2400";
+ 						embedded_metadata_height = "0";
+ 					};
+ 					gmsl-link {
+@@ -724,7 +724,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -796,7 +796,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -880,7 +880,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -952,7 +952,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -1022,7 +1022,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+@@ -1093,7 +1093,7 @@
+ 						active_w = "1920";
+ 						active_h = "1536";
+ 						readout_orientation = "0";
+-						line_length = "2200";
++						line_length = "2400";
+ 						inherent_gain = "1";
+ 						
+ 						pix_clk_hz = "74250000";
+-- 
+2.54.0
+

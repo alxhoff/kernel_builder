@@ -1,0 +1,262 @@
+From 64eee9502e2598cf12279df4cdf0ae1c035c89a5 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Tue, 31 Mar 2026 12:11:28 +0200
+Subject: [PATCH 37/43] slcanfd_cobs: add v2 protocol support with diagnostics
+
+Update the SLCAN-FD serial driver to support the v2 wire protocol
+which adds a per-channel sequence byte at offset 1, shifting all
+subsequent packet fields by one byte.
+
+Protocol and reliability:
+- Parse v2 packet format: info, seq, CAN ID, len/dlc, flags, data
+- Track per-channel sequence numbers and report gaps to detect
+  packet loss caused by UART byte errors
+- Handle firmware status frames carrying per-channel drop and
+  total counters for up to 3 channels
+- Log firmware FIFO overflows at warn level; demote normal status
+  to dev_dbg to avoid log spam
+- Replace all hot-path dev_err() with dev_err_ratelimited() so a
+  protocol mismatch or data corruption cannot flood the kernel log
+  and lock up the system
+
+Boot and udev:
+- Add rx_synced flag to suppress COBS decode errors during initial
+  stream synchronisation at driver probe
+- Expose per-device dev_index sysfs attribute so udev rules can
+  match on a stable channel number instead of the volatile ifindex
+
+Packet ordering:
+- Wrap the RX work batch in local_bh_disable/enable so all
+  netif_rx() calls in one pass land on the same per-CPU backlog
+  and are delivered to userspace in strict FIFO order
+---
+ kernel/kernel/drivers/net/can/slcanfd_cobs.c | 76 +++++++++++++++-----
+ 1 file changed, 57 insertions(+), 19 deletions(-)
+
+diff --git a/kernel/kernel/drivers/net/can/slcanfd_cobs.c b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+index 8b26a4bcd..91006aaf3 100644
+--- a/kernel/kernel/drivers/net/can/slcanfd_cobs.c
++++ b/kernel/kernel/drivers/net/can/slcanfd_cobs.c
+@@ -113,6 +113,8 @@ struct slcanfd_can_gateway {
+ 
+     /* A re-usable buffer for decoding */
+     u8 rx_decode_buf[MAX_RAW_PACKET_SIZE];
++
++    bool rx_synced;
+ };
+ 
+ static inline struct slcanfd_can_dev *slcanfd_vdev_from_netdev(struct net_device *netdev)
+@@ -195,20 +197,33 @@ static void slcanfd_handle_status(struct slcanfd_can_gateway *parent,
+ 				  u8 *data, u32 len)
+ {
+ 	u8 data_len;
+-	u32 drops[2], total[2];
++	u32 drops[MAX_GATEWAY_DEVICES];
++	u32 total[MAX_GATEWAY_DEVICES];
++	int num_ch, i;
+ 
+ 	if (len < 8)
+ 		return;
+ 	data_len = data[6];
+-	if (len != (8 + data_len) || data_len < 16)
++	if (len != (8 + data_len))
++		return;
++
++	num_ch = data_len / (2 * sizeof(u32));
++	if (num_ch < 1 || num_ch > MAX_GATEWAY_DEVICES)
+ 		return;
+ 
+-	memcpy(drops, &data[8], 8);
+-	memcpy(total, &data[16], 8);
++	memcpy(drops, &data[8], num_ch * sizeof(u32));
++	memcpy(total, &data[8 + num_ch * sizeof(u32)], num_ch * sizeof(u32));
+ 
+-	dev_info_ratelimited(parent->dev,
+-		"FW status: ch1 drops=%u total=%u, ch2 drops=%u total=%u\n",
+-		drops[0], total[0], drops[1], total[1]);
++	for (i = 0; i < num_ch; i++) {
++		if (drops[i] > 0)
++			dev_warn_ratelimited(parent->dev,
++				"FW FIFO overflow: ch%d drops=%u total=%u\n",
++				i + 1, drops[i], total[i]);
++	}
++	dev_dbg(parent->dev, "FW status: %d channels, total=[%u,%u,%u]\n",
++		num_ch, total[0],
++		num_ch > 1 ? total[1] : 0,
++		num_ch > 2 ? total[2] : 0);
+ }
+ 
+ static void slcanfd_check_seq(struct slcanfd_can_dev *vdev, u8 seq)
+@@ -240,7 +255,8 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 
+ 	/* Minimum: 1(info) + 1(seq) + 4(id) + 1(dlc) = 7 */
+ 	if (len < 7) {
+-		dev_err(parent->dev, "Invalid decoded packet size: %u\n", len);
++		if (parent->rx_synced)
++			dev_err_ratelimited(parent->dev, "Invalid decoded packet size: %u\n", len);
+ 		return;
+ 	}
+ 
+@@ -255,14 +271,16 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 			if (len < 8)
+ 				return;
+ 			memcpy(&cmd_id, &data[2], 4);
+-			if (cmd_id == SLCANFD_CMD_STATUS)
++			if (cmd_id == SLCANFD_CMD_STATUS) {
++				parent->rx_synced = true;
+ 				slcanfd_handle_status(parent, data, len);
++			}
+ 		}
+ 		return;
+ 	}
+ 
+ 	if (dev_index > MAX_GATEWAY_DEVICES || !parent->can_devices[dev_index - 1]) {
+-		dev_err(parent->dev, "Packet for invalid device index: %u\n", dev_index);
++		dev_err_ratelimited(parent->dev, "Packet for invalid device index: %u\n", dev_index);
+ 		return;
+ 	}
+ 
+@@ -275,7 +293,7 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 
+ 		/* 1(info) + 1(seq) + 4(id) + 1(len) + 1(flags) = 8 bytes header */
+ 		if (len < 8) {
+-			dev_err(parent->dev, "Invalid CAN FD packet size: %u\n", len);
++			dev_err_ratelimited(parent->dev, "Invalid CAN FD packet size: %u\n", len);
+ 			return;
+ 		}
+ 
+@@ -294,14 +312,14 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 		data_len = cfd->len;
+ 
+ 		if (data_len > CANFD_MAX_DLEN) {
+-			dev_err(parent->dev, "CAN FD payload length out of bounds (%u)\n", data_len);
++			dev_err_ratelimited(parent->dev, "CAN FD payload length out of bounds (%u)\n", data_len);
+ 			kfree_skb(skb);
+ 			vdev->netdev->stats.rx_dropped++;
+ 			return;
+ 		}
+ 
+ 		if (len != (8 + data_len)) {
+-			dev_err(parent->dev, "CAN FD frame len/data mismatch (len=%u, data_len=%u)\n",
++			dev_err_ratelimited(parent->dev, "CAN FD frame len/data mismatch (len=%u, data_len=%u)\n",
+ 				len, data_len);
+ 			kfree_skb(skb);
+ 			return;
+@@ -309,6 +327,7 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 
+ 		memcpy(cfd->data, &data[8], data_len);
+ 
++		parent->rx_synced = true;
+ 		vdev->netdev->stats.rx_packets++;
+ 		vdev->netdev->stats.rx_bytes += cfd->len;
+ 		netif_rx(skb);
+@@ -332,14 +351,14 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 		dlc = cf->can_dlc;
+ 
+ 		if (dlc > CAN_MAX_DLEN) {
+-			dev_err(parent->dev, "Classic CAN DLC out of bounds (%u)\n", dlc);
++			dev_err_ratelimited(parent->dev, "Classic CAN DLC out of bounds (%u)\n", dlc);
+ 			kfree_skb(skb);
+ 			vdev->netdev->stats.rx_dropped++;
+ 			return;
+ 		}
+ 
+ 		if (len != (7 + dlc)) {
+-			dev_err(parent->dev, "Classic CAN frame len/data mismatch (len=%u, dlc=%u)\n",
++			dev_err_ratelimited(parent->dev, "Classic CAN frame len/data mismatch (len=%u, dlc=%u)\n",
+ 				len, dlc);
+ 			kfree_skb(skb);
+ 			return;
+@@ -347,6 +366,7 @@ static void slcanfd_push_frame(struct slcanfd_can_gateway *parent, u8 *data, u32
+ 
+ 		memcpy(cf->data, &data[7], dlc);
+ 
++		parent->rx_synced = true;
+ 		vdev->netdev->stats.rx_packets++;
+ 		vdev->netdev->stats.rx_bytes += cf->can_dlc;
+ 		netif_rx(skb);
+@@ -365,8 +385,8 @@ static void slcanfd_process_cobs_packet(struct slcanfd_can_gateway *parent,
+ 
+     if (decoded_len > 0) {
+         slcanfd_push_frame(parent, raw_pkt, decoded_len);
+-    } else {
+-        dev_err(parent->dev, "COBS decode error (%zd)\n", decoded_len);
++    } else if (parent->rx_synced) {
++        dev_err_ratelimited(parent->dev, "COBS decode error (%zd)\n", decoded_len);
+     }
+ }
+ 
+@@ -374,7 +394,8 @@ static void slcanfd_stash_partial_chunk(struct slcanfd_can_gateway *parent,
+                                      const u8 *chunk, u32 chunk_len)
+ {
+     if (parent->rx_partial_len + chunk_len > MAX_COBS_PACKET_SIZE) {
+-        dev_err(parent->dev, "RX packet overflow, dropping.\n");
++        if (parent->rx_synced)
++            dev_err_ratelimited(parent->dev, "RX packet overflow, dropping.\n");
+         parent->rx_partial_len = 0;
+     } else {
+         memcpy(&parent->rx_partial_buf[parent->rx_partial_len],
+@@ -432,7 +453,8 @@ static void slcanfd_rx_work(struct work_struct *work)
+                                                cobs_pkt,
+                                                total_cobs_len);
+                 } else if (total_cobs_len > MAX_COBS_PACKET_SIZE) {
+-                    dev_err(parent->dev, "RX packet overflow, dropping.\n");
++                    if (parent->rx_synced)
++                        dev_err_ratelimited(parent->dev, "RX packet overflow, dropping.\n");
+                 }
+ 
+                 parent->rx_partial_len = 0;
+@@ -675,6 +697,15 @@ static int slcanfd_stop(struct net_device *netdev)
+     return 0;
+ }
+ 
++static ssize_t dev_index_show(struct device *dev,
++			     struct device_attribute *attr, char *buf)
++{
++	struct net_device *netdev = to_net_dev(dev);
++	struct slcanfd_can_dev *vdev = slcanfd_vdev_from_netdev(netdev);
++	return sysfs_emit(buf, "%u\n", vdev->dev_index);
++}
++static DEVICE_ATTR_RO(dev_index);
++
+ static const struct net_device_ops slcanfd_netdev_ops = {
+     .ndo_open   = slcanfd_open,
+     .ndo_stop   = slcanfd_stop,
+@@ -800,6 +831,7 @@ static int slcanfd_probe(struct serdev_device *serdev)
+     mutex_init(&parent->tx_lock);
+     spin_lock_init(&parent->rx_fifo_lock);
+     parent->rx_partial_len = 0;
++    parent->rx_synced = false;
+     INIT_WORK(&parent->rx_work, slcanfd_rx_work);
+     atomic_set(&parent->ready, 0);
+ 
+@@ -923,6 +955,8 @@ static int slcanfd_probe(struct serdev_device *serdev)
+             goto out_fail_free_candev;
+         }
+ 
++        device_create_file(&netdev->dev, &dev_attr_dev_index);
++
+         dev_info(parent->dev, "Registered CAN device %s (index %u)\n",
+                  netdev->name, vdev->dev_index);
+     }
+@@ -945,6 +979,8 @@ out_fail_free_candev:
+ out_fail_unregister:
+     for (i = 0; i < MAX_GATEWAY_DEVICES; i++) {
+         if (parent->can_devices[i]) {
++            device_remove_file(&parent->can_devices[i]->netdev->dev,
++                               &dev_attr_dev_index);
+             unregister_candev(parent->can_devices[i]->netdev);
+             free_candev(parent->can_devices[i]->netdev);
+         }
+@@ -981,6 +1017,8 @@ static void slcanfd_remove(struct serdev_device *serdev)
+     /* Now it's safe to free the net devices */
+     for (i = 0; i < MAX_GATEWAY_DEVICES; i++) {
+         if (parent->can_devices[i]) {
++            device_remove_file(&parent->can_devices[i]->netdev->dev,
++                               &dev_attr_dev_index);
+             unregister_candev(parent->can_devices[i]->netdev);
+             free_candev(parent->can_devices[i]->netdev);
+         }
+-- 
+2.54.0
+

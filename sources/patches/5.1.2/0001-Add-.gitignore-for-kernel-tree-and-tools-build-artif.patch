@@ -1,0 +1,33 @@
+From 3a51d250f62bb1be722d4c1a10b6ae72ded93dd4 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 14:48:18 +0100
+Subject: [PATCH 01/43] Add .gitignore for kernel tree and tools build
+ artifacts
+
+Ignore common build outputs including compiled objects, kernel images,
+module files, and perf tool build artifacts to keep the working tree
+clean.
+---
+ kernel/kernel/.gitignore | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/kernel/kernel/.gitignore b/kernel/kernel/.gitignore
+index 44573c4b7..929054df5 100644
+--- a/kernel/kernel/.gitignore
++++ b/kernel/kernel/.gitignore
+@@ -176,11 +176,10 @@ x509.genkey
+ *.kdev4
+ 
+ # Clang's compilation database file
+-compile_commands.json
++/compile_commands.json
+ 
+ # Documentation toolchain
+ sphinx_*/
+ 
+ # Rust analyzer configuration
+ /rust-project.json
+-
+-- 
+2.54.0
+

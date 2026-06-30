@@ -1,0 +1,315 @@
+From 0baea7fe793ed1cd6a9437cf61d0963087e439b0 Mon Sep 17 00:00:00 2001
+From: Alexander Hoffman <alxhoff@gmail.com>
+Date: Mon, 23 Mar 2026 14:50:27 +0100
+Subject: [PATCH 10/43] vi5_fops: Fix memory leaks and improve error recovery
+ lifecycle
+
+- Remove CSI event sync from error recovery path that caused NULL
+  pointer dereference and kernel panic during channel teardown
+- Free DMA capture request and embedded data buffers in stop_streaming
+  to prevent memory leak on repeated stream start/stop cycles
+- Add status code logging to corr_err messages for better diagnostics
+  of CSI packet errors
+- Improve channel teardown ordering in error_recover to properly stop
+  kthreads before releasing hardware resources
+---
+ .../media/platform/tegra/camera/csi/csi.c     |   6 +-
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 117 +++++++++++++-----
+ kernel/nvidia/include/media/mc_common.h       |   2 +
+ 3 files changed, 92 insertions(+), 33 deletions(-)
+
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+index d788f7041..8632b9b68 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/csi/csi.c
+@@ -229,6 +229,7 @@ static int tegra_csi_s_power(struct v4l2_subdev *subdev, int enable)
+ 	return err;
+ }
+ 
++#if 0
+ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 	unsigned int sync_events)
+ {
+@@ -242,6 +243,7 @@ static int tegra_csi_sync_event(struct v4l2_subdev *subdev,
+ 
+ 	return err;
+ }
++#endif
+ 
+ /*
+  * -----------------------------------------------------------------------------
+@@ -738,7 +740,9 @@ static struct v4l2_subdev_pad_ops tegra_csi_pad_ops = {
+ 
+ static struct v4l2_subdev_core_ops tegra_csi_core_ops = {
+ 	.s_power	= tegra_csi_s_power,
+-	.sync		= tegra_csi_sync_event,
++#if 0
++    .sync		= tegra_csi_sync_event,
++#endif
+ };
+ 
+ static struct v4l2_subdev_ops tegra_csi_ops = {
+diff --git a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 59ee7fe32..91fcbd8a6 100644
+--- a/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/kernel/nvidia/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -1,7 +1,8 @@
+-/*
+- * Tegra Video Input 5 device common APIs
++// SPDX-License-Identifier: GPL-2.0-only
++/* SPDX-FileCopyrightText: Copyright (c) 2016- 2024 NVIDIA CORPORATION & AFFILIATES.
++ * All rights reserved.
+  *
+- * Copyright (c) 2016-2022, NVIDIA CORPORATION.  All rights reserved.
++ * Tegra Video Input 5 device common APIs
+  *
+  * Author: Frank Chen <frank@nvidia.com>
+  *
+@@ -140,6 +141,9 @@ static int tegra_vi5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 	case TEGRA_CAMERA_CID_WRITE_ISPFORMAT:
+ 		chan->write_ispformat = ctrl->val;
+ 		break;
++	case TEGRA_CAMERA_CID_VI_CAPTURE_TIMEOUT:
++		chan->capture_timeout_ms = ctrl->val;
++		break;
+ 	default:
+ 		dev_err(&chan->video->dev, "%s:Not valid ctrl\n", __func__);
+ 		return -EINVAL;
+@@ -206,6 +210,16 @@ static const struct v4l2_ctrl_config vi5_custom_ctrls[] = {
+ 		.step = 1,
+ 		.dims = { SENSOR_CTRL_BLOB_SIZE },
+ 	},
++	{
++		.ops = &vi5_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_VI_CAPTURE_TIMEOUT,
++		.name = "Override capture timeout ms",
++		.type = V4L2_CTRL_TYPE_INTEGER,
++		.def = CAPTURE_TIMEOUT_MS,
++		.min = -1,
++		.max = 0x7FFFFFFF,
++		.step = 1,
++	},
+ };
+ 
+ static int vi5_add_ctrls(struct tegra_channel *chan)
+@@ -236,16 +250,14 @@ static int vi5_channel_open(struct tegra_channel *chan, u32 vi_port)
+ 	bool found = false;
+ 	char chanFilePath[VI_CHAN_PATH_MAX];
+ 	int channel = 0;
+-	struct file *filp = NULL;
+ 	long err = 0;
+ 
+ 	while (!found) {
+ 		sprintf(chanFilePath, "%s%u", VI_CHANNEL_DEV, channel);
++		chan->fp[vi_port] = filp_open(chanFilePath, O_RDONLY, 0);
+ 
+-		filp = filp_open(chanFilePath, O_RDONLY, 0);
+-
+-		if (IS_ERR(filp)) {
+-			err = PTR_ERR(filp);
++		if (IS_ERR(chan->fp[vi_port])) {
++			err = PTR_ERR(chan->fp[vi_port]);
+ 			/* Retry with the next available channel. Opening
+ 			 * a channel number greater than the ones supported
+ 			 * by the platform will trigger a ENODEV from the
+@@ -267,7 +279,7 @@ static int vi5_channel_open(struct tegra_channel *chan, u32 vi_port)
+ 	err = 0;
+ 	chan->vi_channel_id[vi_port] = channel;
+ 
+-	chan->tegra_vi_channel[vi_port] = filp->private_data;
++	chan->tegra_vi_channel[vi_port] = chan->fp[vi_port]->private_data;
+ 
+ 	return err;
+ }
+@@ -326,6 +338,8 @@ static int tegra_channel_capture_setup(struct tegra_channel *chan, unsigned int
+ 	chan->request[vi_port] = dma_alloc_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
+ 					setup.queue_depth * setup.request_size,
+ 					&setup.iova, GFP_KERNEL);
++	chan->request_iova[vi_port] = setup.iova;
++
+ 	if (chan->request[vi_port] == NULL) {
+ 		dev_err(chan->vi->dev, "dma_alloc_coherent failed\n");
+ 		return -ENOMEM;
+@@ -523,12 +537,13 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+ 	int err = 0;
++	bool frame_err = false;
+ 	int vi_port = 0;
+ 	int gang_prev_frame_id = 0;
+ 	unsigned long flags;
+ 	struct tegra_mc_vi *vi = chan->vi;
+ 	struct vb2_v4l2_buffer *vb = &buf->buf;
+-
++	int timeout_ms = CAPTURE_TIMEOUT_MS;
+ #if KERNEL_VERSION(5, 4, 0) > LINUX_VERSION_CODE
+ 	struct timespec ts;
+ #else
+@@ -544,12 +559,21 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 			goto rel_buf;
+ 
+ 		/* Dequeue a frame and check its capture status */
+-		err = vi_capture_status(chan->tegra_vi_channel[vi_port], CAPTURE_TIMEOUT_MS);
++		timeout_ms = chan->capture_timeout_ms;
++		err = vi_capture_status(chan->tegra_vi_channel[vi_port], timeout_ms);
+ 		if (err) {
+ 			if (err == -ETIMEDOUT) {
+-				dev_err(vi->dev,
+-					"uncorr_err: request timed out after %d ms\n",
+-					CAPTURE_TIMEOUT_MS);
++				if (timeout_ms < 0) {
++					spin_lock_irqsave(&chan->capture_state_lock, flags);
++					chan->capture_state = CAPTURE_ERROR_TIMEOUT;
++					spin_unlock_irqrestore(&chan->capture_state_lock, flags);
++					buf->vb2_state = VB2_BUF_STATE_ERROR;
++					goto rel_buf;
++				} else {
++					dev_err(vi->dev,
++						"uncorr_err: request timed out after %d ms\n",
++						timeout_ms);
++				}
+ 			} else {
+ 				dev_err(vi->dev, "uncorr_err: request err %d\n", err);
+ 			}
+@@ -563,15 +587,10 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 			} else {
+ 				dev_warn(vi->dev,
+ 					"corr_err: discarding frame %d, flags: %d, "
+-					"err_data %d\n",
++					"err_data %d, status %d\n",
+ 					descr->status.frame_id, descr->status.flags,
+-					descr->status.err_data);
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
+-					buf->vb2_state = VB2_BUF_STATE_REQUEUEING;
+-#else
+-					buf->vb2_state = VB2_BUF_STATE_ERROR;
+-#endif
+-			goto done;
++					descr->status.err_data, descr->status.status);
++				frame_err = true;
+ 			}
+ 		} else if (!vi_port) {
+ 			gang_prev_frame_id = descr->status.frame_id;
+@@ -603,7 +622,14 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ #endif
+ 	vb->vb2_buf.timestamp = descr->status.sof_timestamp;
+ 
+-	buf->vb2_state = VB2_BUF_STATE_DONE;
++	if (frame_err)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
++		buf->vb2_state = VB2_BUF_STATE_REQUEUEING;
++#else
++		buf->vb2_state = VB2_BUF_STATE_ERROR;
++#endif
++	else
++		buf->vb2_state = VB2_BUF_STATE_DONE;
+ 	/* Read EOF from capture descriptor */
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
+ 	ts = ns_to_timespec((s64)descr->status.eof_timestamp);
+@@ -616,7 +642,6 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	trace_tegra_channel_capture_frame("eof", &ts);
+ #endif
+ 
+-done:
+ 	goto rel_buf;
+ 
+ uncorr_err:
+@@ -680,8 +705,10 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+ 		goto done;
+ 	}
+ 
++#if 0
+ 	v4l2_subdev_call(csi_subdev, core, sync,
+ 		V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER);
++#endif
+ 
+ 	/* restart vi channel */
+ 	for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+@@ -713,6 +740,7 @@ static int tegra_channel_kthread_capture_enqueue(void *data)
+ 	struct tegra_channel_buffer *buf;
+ 	unsigned long flags;
+ 	set_freezable();
++	allow_signal(SIGINT);
+ 
+ 	while (1) {
+ 		try_to_freeze();
+@@ -776,6 +804,12 @@ static int tegra_channel_kthread_capture_dequeue(void *data)
+ 		}
+ 
+ 		spin_lock_irqsave(&chan->capture_state_lock, flags);
++		if (chan->capture_state == CAPTURE_ERROR_TIMEOUT) {
++			spin_unlock_irqrestore(&chan->capture_state_lock,
++				flags);
++			break;
++		}
++
+ 		if (chan->capture_state == CAPTURE_ERROR) {
+ 			spin_unlock_irqrestore(&chan->capture_state_lock,
+ 				flags);
+@@ -845,6 +879,7 @@ static void vi5_channel_stop_kthreads(struct tegra_channel *chan)
+ 
+ 	/* Stop the kthread for capture dequeue */
+ 	if (chan->kthread_capture_dequeue) {
++		send_sig(SIGINT, chan->kthread_capture_dequeue, 1);
+ 		kthread_stop(chan->kthread_capture_dequeue);
+ 		chan->kthread_capture_dequeue = NULL;
+ 	}
+@@ -1016,16 +1051,34 @@ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+ 
+ 	if (!chan->bypass) {
+ 		for (vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
+-			err = vi_capture_release(chan->tegra_vi_channel[vi_port],
+-				CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
++            err = vi_capture_release(chan->tegra_vi_channel[vi_port],
++                CAPTURE_CHANNEL_RESET_FLAG_IMMEDIATE);
++
++            if (err)
++                dev_err(&chan->video->dev,
++                    "vi capture release failed\n");
++
++			/* Release capture requests */
++			if (chan->request[vi_port] != NULL) {
++					dma_free_coherent(chan->tegra_vi_channel[vi_port]->rtcpu_dev,
++					chan->capture_queue_depth * sizeof(struct capture_descriptor),
++					chan->request[vi_port], chan->request_iova[vi_port]);
++			}
++			chan->request[vi_port] = NULL;
+ 
+-			if (err)
+-				dev_err(&chan->video->dev,
+-					"vi capture release failed\n");
++			/* Release emd data buffers */
++			if (chan->emb_buf_size > 0) {
++					struct device *vi_unit_dev;
++					vi5_unit_get_device_handle(chan->vi->ndev, chan->port[0],\
++																	&vi_unit_dev);
++					dma_free_coherent(vi_unit_dev, chan->emb_buf_size,
++													chan->emb_buf_addr, chan->emb_buf);
++					chan->emb_buf_size = 0;
++			}
+ 
+-			vi_channel_close_ex(chan->vi_channel_id[vi_port],
+-						chan->tegra_vi_channel[vi_port]);
+-			chan->tegra_vi_channel[vi_port] = NULL;
++            vi_channel_close_ex(chan->vi_channel_id[vi_port],
++                        chan->tegra_vi_channel[vi_port]);
++            chan->tegra_vi_channel[vi_port] = NULL;
+ 		}
+ 
+ 		/* release all remaining buffers to v4l2 */
+diff --git a/kernel/nvidia/include/media/mc_common.h b/kernel/nvidia/include/media/mc_common.h
+index d0e908bf1..0ce7102fa 100644
+--- a/kernel/nvidia/include/media/mc_common.h
++++ b/kernel/nvidia/include/media/mc_common.h
+@@ -276,6 +276,8 @@ struct tegra_channel {
+ 	struct nvcsi_deskew_context *deskew_ctx;
+ 	struct tegra_vi_channel *tegra_vi_channel[TEGRA_CSI_BLOCKS];
+ 	struct capture_descriptor *request[TEGRA_CSI_BLOCKS];
++	dma_addr_t request_iova[TEGRA_CSI_BLOCKS];
++
+ 	bool is_slvsec;
+ 	int is_interlaced;
+ 	enum interlaced_type interlace_type;
+-- 
+2.54.0
+
