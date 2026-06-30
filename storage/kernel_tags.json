@@ -157,5 +157,35 @@
         "by": "Alexander Hoffman <alxhoff@gmail.com>"
       }
     ]
+  },
+  {
+    "tag": "300626",
+    "kernel_name": "cartken_5_1_2",
+    "localversion": "cartken5.1.2.300626",
+    "build_date": "2026-06-30T08:58:44Z",
+    "builder": "Alexander Hoffman <alxhoff@gmail.com>",
+    "repo_commit": "9fbe929",
+    "config": "defconfig",
+    "dtb_name": "",
+    "description": "240426 5.1.5 kernel ported to 5.1.2",
+    "status": "development",
+    "soc": "orin",
+    "jetpack_version": "5.1.2",
+    "deb_package": "",
+    "config_archived": "storage/kernel_archive/300626/kernel.config",
+    "patches_archived": "storage/kernel_archive/300626/patches.tar.gz",
+    "production_deb": "",
+    "source_repos_tagged": [
+      "storage/kernels/cartken_5_1_2"
+    ],
+    "notes": [],
+    "deployments": [],
+    "status_history": [
+      {
+        "status": "development",
+        "date": "2026-06-30T08:58:44Z",
+        "by": "Alexander Hoffman <alxhoff@gmail.com>"
+      }
+    ]
   }
 ]
